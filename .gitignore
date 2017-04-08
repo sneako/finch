@@ -1,0 +1,45 @@
+# The directory Mix will write compiled artifacts to.
+/_build
+
+# If you run "mix test --cover", coverage assets end up here.
+/cover
+
+# The directory Mix downloads your dependencies sources to.
+/deps
+
+# Where 3rd-party dependencies like ExDoc output generated docs.
+/doc
+
+# If the VM crashes, it generates a dump, let's ignore it too.
+erl_crash.dump
+
+# Also ignore archive artifacts (built via "mix archive.build").
+*.ez
+
+# Don't commit benchmark snapshots
+bench/snapshots
+
+# Don't commit editor configs
+.idea
+*.iws
+/out/
+atlassian-ide-plugin.xml
+*.tmlanguage.cache
+*.tmPreferences.cache
+*.stTheme.cache
+*.sublime-workspace
+sftp-config.json
+GitHub.sublime-settings
+.tags
+.tags_sorted_by_file
+.vagrant
+.DS_Store
+
+# Ignore released binaries
+rel/*/
+!rel/config.exs
+.deliver
+
+# Don't commit file uploads
+uploads/
+!uploads/.gitkeep
