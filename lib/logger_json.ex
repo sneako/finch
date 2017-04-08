@@ -15,7 +15,6 @@ defmodule LoggerJSON do
       {:error, :ignore}
     end
   end
-
   def init({__MODULE__, opts}) when is_list(opts) do
     config = configure_merge(Application.get_env(:logger_json, :console), opts)
     {:ok, init(config, %__MODULE__{})}
@@ -28,7 +27,6 @@ defmodule LoggerJSON do
   def handle_event({_level, gl, _event}, state) when node(gl) != node() do
     {:ok, state}
   end
-
   def handle_event({level, _gl, {Logger, msg, ts, md}}, state) do
     %{level: log_level, ref: ref, buffer_size: buffer_size,
       max_buffer: max_buffer} = state
@@ -44,11 +42,9 @@ defmodule LoggerJSON do
         {:ok, await_io(state)}
     end
   end
-
   def handle_event(:flush, state) do
     {:ok, flush(state)}
   end
-
   def handle_event(_, state) do
     {:ok, state}
   end
@@ -56,11 +52,9 @@ defmodule LoggerJSON do
   def handle_info({:io_reply, ref, msg}, %{ref: ref} = state) do
     {:ok, handle_io_reply(msg, state)}
   end
-
   def handle_info({:DOWN, ref, _, pid, reason}, %{ref: ref}) do
     raise "device #{inspect pid} exited: " <> Exception.format_exit(reason)
   end
-
   def handle_info(_, state) do
     {:ok, state}
   end
@@ -75,8 +69,8 @@ defmodule LoggerJSON do
 
   ## Helpers
 
-  defp meet_level?(_lvl, nil), do: true
-
+  defp meet_level?(_lvl, nil),
+    do: true
   defp meet_level?(lvl, min) do
     Logger.compare_levels(lvl, min) != :lt
   end
@@ -144,8 +138,8 @@ defmodule LoggerJSON do
     ref
   end
 
-  defp await_io(%{ref: nil} = state), do: state
-
+  defp await_io(%{ref: nil} = state),
+    do: state
   defp await_io(%{ref: ref} = state) do
     receive do
       {:io_reply, ^ref, :ok} ->
@@ -176,14 +170,12 @@ defmodule LoggerJSON do
   end
 
   defp color_event(data, _level, %{enabled: false}, _md), do: data
-
   defp color_event(data, level, %{enabled: true} = colors, md) do
     color = md[:ansi_color] || Map.fetch!(colors, level)
     [IO.ANSI.format_fragment(color, true), data | IO.ANSI.reset]
   end
 
   defp log_buffer(%{buffer_size: 0, buffer: []} = state), do: state
-
   defp log_buffer(state) do
     %{device: device, buffer: buffer} = state
     %{state | ref: async_io(device, buffer), buffer: [], buffer_size: 0,
@@ -194,15 +186,12 @@ defmodule LoggerJSON do
     Process.demonitor(ref, [:flush])
     log_buffer(%{state | ref: nil, output: nil})
   end
-
   defp handle_io_reply({:error, {:put_chars, :unicode, _} = error}, state) do
     retry_log(error, state)
   end
-
   defp handle_io_reply({:error, :put_chars}, %{output: output} = state) do
     retry_log({:put_chars, :unicode, output}, state)
   end
-
   defp handle_io_reply({:error, error}, _) do
     raise "failure while logging console messages: " <> inspect(error)
   end
@@ -219,12 +208,11 @@ defmodule LoggerJSON do
     end
   end
 
-  defp flush(%{ref: nil} = state), do: state
-
+  defp flush(%{ref: nil} = state),
+    do: state
   defp flush(state) do
     state
     |> await_io()
     |> flush()
   end
 end
-0
