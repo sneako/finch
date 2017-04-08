@@ -1,4 +1,4 @@
-defmodule LoggerJson.Mixfile do
+defmodule LoggerJSON.Mixfile do
   use Mix.Project
 
   @version "0.1.0"

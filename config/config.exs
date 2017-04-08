@@ -26,4 +26,7 @@ use Mix.Config
 
 # config :ex_unit, capture_log: true
 config :logger,
-  backends: [{LoggerJson, :logger_json}]
+  backends: [LoggerJSON]
+
+config :logger_json,
+  console: []
