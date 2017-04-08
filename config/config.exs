@@ -24,4 +24,6 @@ use Mix.Config
 #
 #     :var_name, "${ENV_VAR_NAME}"
 
-config :ex_unit, capture_log: true
+# config :ex_unit, capture_log: true
+config :logger,
+  backends: [{LoggerJson, :logger_json}]

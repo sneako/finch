@@ -5,7 +5,7 @@ defmodule LoggerJson.Mixfile do
 
   def project do
     [app: :logger_json,
-     description: "Add description to your package.",
+     description: "Console Logger back-end that outputs in JSON format.",
      package: package(),
      version: @version,
      elixir: "~> 1.4",
@@ -23,7 +23,7 @@ defmodule LoggerJson.Mixfile do
   #
   # Type "mix help compile.app" for more information
   def application do
-    [extra_applications: [:logger, :confex]]
+    [extra_applications: [:logger]]
   end
 
   # Specifies which paths to compile per environment.
@@ -44,9 +44,7 @@ defmodule LoggerJson.Mixfile do
   #
   # Type "mix help deps" for more examples and options
   defp deps do
-    [{:distillery, "~> 1.2"},
-     {:confex, "~> 1.4"},
-     {:benchfella, ">= 0.3.4", only: [:dev, :test]},
+    [{:benchfella, ">= 0.3.4", only: [:dev, :test]},
      {:ex_doc, ">= 0.15.0", only: [:dev, :test]},
      {:excoveralls, ">= 0.5.0", only: [:dev, :test]},
      {:dogma, ">= 0.1.12", only: [:dev, :test]},
