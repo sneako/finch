@@ -1,4 +1,4 @@
-defmodule LoggerJsonTest do
+defmodule LoggerJSONTest do
   use Logger.Case
 
   require Logger
@@ -6,28 +6,28 @@ defmodule LoggerJsonTest do
 
   setup do
     on_exit fn ->
-      :ok = Logger.configure_backend(LoggerJsonTest,
+      :ok = Logger.configure_backend(LoggerJSON,
               [format: nil, device: :user, level: nil, metadata: [], colors: [enabled: false]])
     end
   end
 
   test "does not start when there is no user" do
-    :ok = Logger.remove_backend(LoggerJsonTest)
+    :ok = Logger.remove_backend(LoggerJSON)
     user = Process.whereis(:user)
 
     try do
       Process.unregister(:user)
-      assert :gen_event.add_handler(Logger, LoggerJsonTest, LoggerJsonTest) ==
+      assert :gen_event.add_handler(Logger, LoggerJSON, LoggerJSON) ==
              {:error, :ignore}
     after
       Process.register(user, :user)
     end
   after
-    {:ok, _} = Logger.add_backend(LoggerJsonTest)
+    {:ok, _} = Logger.add_backend(LoggerJSON)
   end
 
   test "may use another device" do
-    Logger.configure_backend(LoggerJsonTest, device: :standard_error)
+    Logger.configure_backend(LoggerJSON, device: :standard_error)
 
     assert capture_io(:standard_error, fn ->
       Logger.debug("hello")
@@ -36,7 +36,7 @@ defmodule LoggerJsonTest do
   end
 
   test "can configure format" do
-    Logger.configure_backend(LoggerJsonTest, format: "$message [$level]")
+    Logger.configure_backend(LoggerJSON, format: "$message [$level]")
 
     assert capture_log(fn ->
       Logger.debug("hello")
@@ -44,7 +44,7 @@ defmodule LoggerJsonTest do
   end
 
   test "can configure metadata" do
-    Logger.configure_backend(LoggerJsonTest, format: "$metadata$message", metadata: [:user_id])
+    Logger.configure_backend(LoggerJSON, format: "$metadata$message", metadata: [:user_id])
 
     assert capture_log(fn ->
       Logger.debug("hello")
@@ -59,7 +59,7 @@ defmodule LoggerJsonTest do
   end
 
   test "can configure formatter to {module, function} tuple" do
-    Logger.configure_backend(LoggerJsonTest, format: {__MODULE__, :format})
+    Logger.configure_backend(LoggerJSON, format: {__MODULE__, :format})
 
     assert capture_log(fn ->
       Logger.debug("hello")
@@ -71,7 +71,7 @@ defmodule LoggerJsonTest do
   end
 
   test "can configure metadata to :all" do
-    Logger.configure_backend(LoggerJsonTest, format: "$metadata", metadata: :all)
+    Logger.configure_backend(LoggerJSON, format: "$metadata", metadata: :all)
 
     Logger.metadata(user_id: 11)
     Logger.metadata(dynamic_metadata: 5)
@@ -90,7 +90,7 @@ defmodule LoggerJsonTest do
   end
 
   test "metadata defaults" do
-    Logger.configure_backend(LoggerJsonTest,
+    Logger.configure_backend(LoggerJSON,
       format: "$metadata", metadata: [:file, :line, :module, :function])
 
     %{module: mod, function: {name, arity}, file: file, line: line} = __ENV__
@@ -101,7 +101,7 @@ defmodule LoggerJsonTest do
   end
 
   test "can configure level" do
-    Logger.configure_backend(LoggerJsonTest, level: :info)
+    Logger.configure_backend(LoggerJSON, level: :info)
 
     assert capture_log(fn ->
       Logger.debug("hello")
@@ -109,13 +109,13 @@ defmodule LoggerJsonTest do
   end
 
   test "can configure colors" do
-    Logger.configure_backend(LoggerJsonTest, [format: "$message", colors: [enabled: true]])
+    Logger.configure_backend(LoggerJSON, [format: "$message", colors: [enabled: true]])
 
     assert capture_log(fn ->
       Logger.debug("hello")
     end) == IO.ANSI.cyan() <> "hello" <> IO.ANSI.reset()
 
-    Logger.configure_backend(LoggerJsonTest, [colors: [debug: :magenta]])
+    Logger.configure_backend(LoggerJSON, [colors: [debug: :magenta]])
 
     assert capture_log(fn ->
       Logger.debug("hello")
@@ -125,7 +125,7 @@ defmodule LoggerJsonTest do
       Logger.info("hello")
     end) == IO.ANSI.normal() <> "hello" <> IO.ANSI.reset()
 
-    Logger.configure_backend(LoggerJsonTest, [colors: [info: :cyan]])
+    Logger.configure_backend(LoggerJSON, [colors: [info: :cyan]])
 
     assert capture_log(fn ->
       Logger.info("hello")
@@ -135,7 +135,7 @@ defmodule LoggerJsonTest do
       Logger.warn("hello")
     end) == IO.ANSI.yellow() <> "hello" <> IO.ANSI.reset()
 
-    Logger.configure_backend(LoggerJsonTest, [colors: [warn: :cyan]])
+    Logger.configure_backend(LoggerJSON, [colors: [warn: :cyan]])
 
     assert capture_log(fn ->
       Logger.warn("hello")
@@ -145,7 +145,7 @@ defmodule LoggerJsonTest do
       Logger.error("hello")
     end) == IO.ANSI.red() <> "hello" <> IO.ANSI.reset()
 
-    Logger.configure_backend(LoggerJsonTest, [colors: [error: :cyan]])
+    Logger.configure_backend(LoggerJSON, [colors: [error: :cyan]])
 
     assert capture_log(fn ->
       Logger.error("hello")
@@ -153,7 +153,7 @@ defmodule LoggerJsonTest do
   end
 
   test "can use colors from metadata" do
-    Logger.configure_backend(LoggerJsonTest, [format: "$message", colors: [enabled: true]])
+    Logger.configure_backend(LoggerJSON, [format: "$message", colors: [enabled: true]])
 
     assert capture_log(fn ->
       Logger.log(:error, "hello", ansi_color: :yellow)
