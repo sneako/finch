@@ -56,7 +56,7 @@ defmodule LoggerJSON.Mixfile do
   defp package do
     [contributors: ["Nebo #15"],
      maintainers: ["Nebo #15"],
-     licenses: ["LISENSE.md"],
+     licenses: ["MIT", "LISENSE.md"],
      links: %{github: "https://github.com/Nebo15/logger_json"},
      files: ~w(lib LICENSE.md mix.exs README.md)]
   end
