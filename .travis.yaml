@@ -1,0 +1,22 @@
+language: elixir
+cache:
+  directories:
+  - deps
+elixir:
+  - 1.4.2
+otp_release:
+  - 19.3
+env:
+  global:
+    - MIX_ENV=test
+script:
+  # Install dependencies
+  - "mix deps.get"
+  # Run all tests except pending ones
+  - "mix test --exclude pending --trace"
+  # Submit code coverage report to Coveralls
+  - "mix coveralls.travis"
+  # Run static code analysis
+  - "mix credo"
+  # Check code style
+  - "mix dogma"
