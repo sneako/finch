@@ -1,4 +1,4 @@
-# LoggerJson
+# LoggerJSON
 
 [![Deps Status](https://beta.hexfaktor.org/badge/all/github/Nebo15/logger_json.svg)](https://beta.hexfaktor.org/github/Nebo15/logger_json) [![Hex.pm Downloads](https://img.shields.io/hexpm/dw/logger_json.svg?maxAge=3600)](https://hex.pm/packages/logger_json) [![Latest Version](https://img.shields.io/hexpm/v/logger_json.svg?maxAge=3600)](https://hex.pm/packages/logger_json) [![License](https://img.shields.io/hexpm/l/logger_json.svg?maxAge=3600)](https://hex.pm/packages/logger_json) [![Build Status](https://travis-ci.org/Nebo15/logger_json.svg?branch=master)](https://travis-ci.org/Nebo15/logger_json) [![Coverage Status](https://coveralls.io/repos/github/Nebo15/logger_json/badge.svg?branch=master)](https://coveralls.io/github/Nebo15/logger_json?branch=master) [![Ebert](https://ebertapp.io/github/Nebo15/logger_json.svg)](https://ebertapp.io/github/Nebo15/logger_json)
 
