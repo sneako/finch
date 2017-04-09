@@ -48,7 +48,7 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
   1. Add `logger_json` to your list of dependencies in `mix.exs`:
 
     def deps do
-      [{:logger_json, "~> 0.1.0"}]
+      [{:logger_json, "~> 0.2.0"}]
     end
 
   2. Ensure `logger_json` is started before your application:
