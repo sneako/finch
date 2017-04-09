@@ -6,8 +6,7 @@ defmodule LoggerJSONTest do
 
   setup do
     on_exit fn ->
-      :ok = Logger.configure_backend(LoggerJSON,
-              [format: nil, device: :user, level: nil, metadata: [], colors: [enabled: false]])
+      :ok = Logger.configure_backend(LoggerJSON, [device: :user, level: nil, metadata: [], json_encoder: Poison])
     end
   end
 
@@ -17,8 +16,7 @@ defmodule LoggerJSONTest do
 
     try do
       Process.unregister(:user)
-      assert :gen_event.add_handler(Logger, LoggerJSON, LoggerJSON) ==
-             {:error, :ignore}
+      assert {:error, :ignore} == :gen_event.add_handler(Logger, LoggerJSON, LoggerJSON)
     after
       Process.register(user, :user)
     end
@@ -35,16 +33,8 @@ defmodule LoggerJSONTest do
     end) =~ "hello"
   end
 
-  test "can configure format" do
-    Logger.configure_backend(LoggerJSON, format: "$message [$level]")
-
-    assert capture_log(fn ->
-      Logger.debug("hello")
-    end) =~ "hello [debug]"
-  end
-
   test "can configure metadata" do
-    Logger.configure_backend(LoggerJSON, format: "$metadata$message", metadata: [:user_id])
+    Logger.configure_backend(LoggerJSON, metadata: [:user_id])
 
     assert capture_log(fn ->
       Logger.debug("hello")
@@ -53,51 +43,73 @@ defmodule LoggerJSONTest do
     Logger.metadata(user_id: 11)
     Logger.metadata(user_id: 13)
 
-    assert capture_log(fn ->
-      Logger.debug("hello")
-    end) =~ "user_id=13 hello"
+    log =
+      fn -> Logger.debug("hello") end
+      |> capture_log()
+      |> Poison.decode!()
+
+    assert %{"metadata" => %{"user_id" => 13}} = log
   end
 
-  test "can configure formatter to {module, function} tuple" do
-    Logger.configure_backend(LoggerJSON, format: {__MODULE__, :format})
+  describe "metadata" do
+    test "can be configured to :all" do
+      Logger.configure_backend(LoggerJSON, metadata: :all)
 
-    assert capture_log(fn ->
-      Logger.debug("hello")
-    end) =~ "my_format: hello"
+      Logger.metadata(user_id: 11)
+      Logger.metadata(dynamic_metadata: 5)
+
+      log =
+        fn -> Logger.debug("hello") end
+        |> capture_log()
+        |> Poison.decode!()
+
+      assert %{"metadata" => %{"user_id" => 11}} = log
+      assert %{"metadata" => %{"dynamic_metadata" => 5}} = log
+    end
+
+    test "can be empty" do
+      Logger.configure_backend(LoggerJSON, metadata: [])
+
+      %{"metadata" => meta} =
+        fn -> Logger.debug("hello") end
+        |> capture_log()
+        |> Poison.decode!()
+
+      assert %{} == meta
+    end
   end
 
-  def format(_level, message, _ts, _metadata) do
-    "my_format: #{message}"
-  end
-
-  test "can configure metadata to :all" do
-    Logger.configure_backend(LoggerJSON, format: "$metadata", metadata: :all)
+  test "on_init/1 callback" do
+    Logger.configure_backend(LoggerJSON, metadata: [], on_init: {LoggerJSONTest, :on_init_cb, []})
 
     Logger.metadata(user_id: 11)
-    Logger.metadata(dynamic_metadata: 5)
 
-    %{module: mod, function: {name, arity}, file: file, line: line} = __ENV__
+    log =
+      fn -> Logger.debug("hello") end
+      |> capture_log()
+      |> Poison.decode!()
 
-    log = capture_log(fn ->
-      Logger.debug("hello")
-    end)
-
-    assert log =~ "file=#{file}"
-    assert log =~ "line=#{line + 3}"
-    assert log =~ "module=#{inspect(mod)}"
-    assert log =~ "function=#{name}/#{arity}"
-    assert log =~ "dynamic_metadata=5 user_id=11"
+    assert %{"metadata" => %{"user_id" => 11}} = log
   end
 
-  test "metadata defaults" do
-    Logger.configure_backend(LoggerJSON,
-      format: "$metadata", metadata: [:file, :line, :module, :function])
-
+  test "contains source location" do
     %{module: mod, function: {name, arity}, file: file, line: line} = __ENV__
 
-    assert capture_log(fn ->
-      Logger.debug("hello")
-    end) =~ "file=#{file} line=#{line + 3} module=#{inspect(mod)} function=#{name}/#{arity}"
+    log =
+      fn -> Logger.debug("hello") end
+      |> capture_log()
+      |> Poison.decode!()
+
+    line = line + 3
+    fun_name = "#{name}/#{arity}"
+    mod_name = "Elixir.#{inspect(mod)}"
+
+    assert %{"sourceLocation" => %{
+      "file" => ^file,
+      "line" => ^line,
+      "functionName" => ^fun_name,
+      "moduleName" => ^mod_name,
+    }} = log
   end
 
   test "can configure level" do
@@ -108,55 +120,8 @@ defmodule LoggerJSONTest do
     end) == ""
   end
 
-  test "can configure colors" do
-    Logger.configure_backend(LoggerJSON, [format: "$message", colors: [enabled: true]])
-
-    assert capture_log(fn ->
-      Logger.debug("hello")
-    end) == IO.ANSI.cyan() <> "hello" <> IO.ANSI.reset()
-
-    Logger.configure_backend(LoggerJSON, [colors: [debug: :magenta]])
-
-    assert capture_log(fn ->
-      Logger.debug("hello")
-    end) == IO.ANSI.magenta() <> "hello" <> IO.ANSI.reset()
-
-    assert capture_log(fn ->
-      Logger.info("hello")
-    end) == IO.ANSI.normal() <> "hello" <> IO.ANSI.reset()
-
-    Logger.configure_backend(LoggerJSON, [colors: [info: :cyan]])
-
-    assert capture_log(fn ->
-      Logger.info("hello")
-    end) == IO.ANSI.cyan() <> "hello" <> IO.ANSI.reset()
-
-    assert capture_log(fn ->
-      Logger.warn("hello")
-    end) == IO.ANSI.yellow() <> "hello" <> IO.ANSI.reset()
-
-    Logger.configure_backend(LoggerJSON, [colors: [warn: :cyan]])
-
-    assert capture_log(fn ->
-      Logger.warn("hello")
-    end) == IO.ANSI.cyan() <> "hello" <> IO.ANSI.reset()
-
-    assert capture_log(fn ->
-      Logger.error("hello")
-    end) == IO.ANSI.red() <> "hello" <> IO.ANSI.reset()
-
-    Logger.configure_backend(LoggerJSON, [colors: [error: :cyan]])
-
-    assert capture_log(fn ->
-      Logger.error("hello")
-    end) == IO.ANSI.cyan() <> "hello" <> IO.ANSI.reset()
-  end
-
-  test "can use colors from metadata" do
-    Logger.configure_backend(LoggerJSON, [format: "$message", colors: [enabled: true]])
-
-    assert capture_log(fn ->
-      Logger.log(:error, "hello", ansi_color: :yellow)
-    end) == IO.ANSI.yellow() <> "hello" <> IO.ANSI.reset()
+  # Sets metadata to :all for test purposes
+  def on_init_cb(conf) do
+    {:ok, Keyword.put(conf, :metadata, :all)}
   end
 end

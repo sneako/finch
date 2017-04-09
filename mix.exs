@@ -44,7 +44,8 @@ defmodule LoggerJSON.Mixfile do
   #
   # Type "mix help deps" for more examples and options
   defp deps do
-    [{:benchfella, ">= 0.3.4", only: [:dev, :test]},
+    [{:poison, "~> 3.1", optional: true},
+     {:benchfella, ">= 0.3.4", only: [:dev, :test]},
      {:ex_doc, ">= 0.15.0", only: [:dev, :test]},
      {:excoveralls, ">= 0.5.0", only: [:dev, :test]},
      {:dogma, ">= 0.1.12", only: [:dev, :test]},
