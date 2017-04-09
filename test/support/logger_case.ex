@@ -1,4 +1,5 @@
 defmodule Logger.Case do
+  @moduledoc false
   use ExUnit.CaseTemplate
   import ExUnit.CaptureIO
 
@@ -19,7 +20,7 @@ defmodule Logger.Case do
     end
   end
 
-  def wait_for_logger() do
+  def wait_for_logger do
     try do
       :gen_event.which_handlers(Logger)
     else

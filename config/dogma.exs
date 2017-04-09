@@ -6,6 +6,7 @@ config :dogma,
   exclude: [
     ~r(\Arel/),
     ~r(\Adeps/),
+    ~r(\Atest/),
   ],
   override: [
     %Rule.LineLength{ max_length: 120 },

@@ -24,9 +24,6 @@ use Mix.Config
 #
 #     :var_name, "${ENV_VAR_NAME}"
 
-# config :ex_unit, capture_log: true
-config :logger,
-  backends: [LoggerJSON]
-
-config :logger_json,
-  console: []
+if Mix.env == :test do
+  import_config "#{Mix.env}.exs"
+end
