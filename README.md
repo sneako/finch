@@ -11,7 +11,7 @@ use Google Cloud Logger or other JSON-based log collectors.
 
 [We](https://github.com/Nebo15) deploy our applications as dockerized containers in Google Container Engine (Kubernetes cluster), in this case all your logs will go to `stdout` and log solution on top of Kubernetes should collect and persist it elsewhere.
 
-In GKE it is persisted in Google Cloud Logger, but traditional single log records may contain newlines, and GCL counts each new line as separate log record, this making it hard to search over it.
+In GKE it is persisted in Google Cloud Logger, but traditional single Logger output may contain newlines for a single log line, and GCL counts each new line as separate log entry, this making it hard to search over it.
 
 This backed makes sure that there is only one line per log record and adds additional integration niceness, like [LogLine](https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine) format support.
 
