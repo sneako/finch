@@ -7,24 +7,13 @@ JSON console back-end for Elixir Logger.
 It can be used as drop-in replacement for default `:console` Logger back-end in cases where you use
 use Google Cloud Logger or other JSON-based log collectors.
 
-## Encoders support
-
-You can replace default Poison encoder with other module that supports `encode!/1` function. This can be even used
-as custom formatter callback.
-
-Popular Poison alternatives:
-
- * [exjsx](https://github.com/talentdeficit/exjsx).
- * [elixir-json](https://github.com/cblage/elixir-json) - native Elixir encoder implementation.
-
-If your application is performance-critical, take look at [jiffy](https://github.com/davisp/jiffy).
-
 ## Log Format
 
 Output JSON is compatible with
 [Google Cloud Logger format](https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine) with
 additional properties in `serviceLocation` and `metadata` objects:
 
+  ```
   {
      "time":"2017-04-09T17:52:12.497Z",
      "severity":"DEBUG",
@@ -40,16 +29,7 @@ additional properties in `serviceLocation` and `metadata` objects:
      },
      "logMessage":"hello"
   }
-
-## Dynamic configuration
-
-For dynamically configuring the endpoint, such as loading data
-from environment variables or configuration files, LoggerJSON provides
-an `:on_init` option that allows developers to set a module, function
-and list of arguments that is invoked when the endpoint starts.
-
-    config :logger_json, :backend,
-      on_init: {YourApp.Logger, :load_from_system_env, []}
+  ```
 
 ## Installation
 
@@ -72,8 +52,28 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
     config :logger_json,
       backend: [json_encoder: Poison]
 
+## Dynamic configuration
+
+For dynamically configuring the endpoint, such as loading data
+from environment variables or configuration files, LoggerJSON provides
+an `:on_init` option that allows developers to set a module, function
+and list of arguments that is invoked when the endpoint starts.
+
+    config :logger_json, :backend,
+      on_init: {YourApp.Logger, :load_from_system_env, []}
+
+## Encoders support
+
+You can replace default Poison encoder with other module that supports `encode!/1` function. This can be even used
+as custom formatter callback.
+
+Popular Poison alternatives:
+
+ * [exjsx](https://github.com/talentdeficit/exjsx).
+ * [elixir-json](https://github.com/cblage/elixir-json) - native Elixir encoder implementation.
+
+If your application is performance-critical, take look at [jiffy](https://github.com/davisp/jiffy).
 
 ## Documentation
 
 The docs can be found at [https://hexdocs.pm/logger_json](https://hexdocs.pm/logger_json)
-

@@ -5,25 +5,13 @@ defmodule LoggerJSON do
   It can be used as drop-in replacement for default `:console` Logger back-end in cases where you use
   use Google Cloud Logger or other JSON-based log collectors.
 
-  ## Encoders support
-
-  You can replace default Poison encoder with other module that supports `encode!/1` function. This can be even used
-  as custom formatter callback.
-
-  Popular Poison alternatives:
-
-   * [exjsx](https://github.com/talentdeficit/exjsx).
-   * [elixir-json](https://github.com/cblage/elixir-json) - native Elixir encoder implementation.
-
-  If your application is performance-critical, take look at [jiffy](https://github.com/davisp/jiffy).
-
   ## Log Format
 
   Output JSON is compatible with
   [Google Cloud Logger format](https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine) with
   additional properties in `serviceLocation` and `metadata` objects:
 
-    ```
+    ```json
     {
        "time":"2017-04-09T17:52:12.497Z",
        "severity":"DEBUG",
@@ -41,6 +29,18 @@ defmodule LoggerJSON do
     }
     ```
 
+  ## Encoders support
+
+  You can replace default Poison encoder with other module that supports `encode!/1` function. This can be even used
+  as custom formatter callback.
+
+  Popular Poison alternatives:
+
+   * [exjsx](https://github.com/talentdeficit/exjsx).
+   * [elixir-json](https://github.com/cblage/elixir-json) - native Elixir encoder implementation.
+
+  If your application is performance-critical, take look at [jiffy](https://github.com/davisp/jiffy).
+
   ## Dynamic configuration
 
   For dynamically configuring the endpoint, such as loading data
@@ -48,8 +48,10 @@ defmodule LoggerJSON do
   an `:on_init` option that allows developers to set a module, function
   and list of arguments that is invoked when the endpoint starts.
 
-      config :logger_json, :backend,
-        on_init: {YourApp.Logger, :load_from_system_env, []}
+    ```elixir
+    config :logger_json, :backend,
+      on_init: {YourApp.Logger, :load_from_system_env, []}
+    ```
   """
   @behaviour :gen_event
 
