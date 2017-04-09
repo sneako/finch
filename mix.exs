@@ -1,7 +1,7 @@
 defmodule LoggerJSON.Mixfile do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.3.0"
 
   def project do
     [app: :logger_json,
@@ -23,7 +23,8 @@ defmodule LoggerJSON.Mixfile do
   #
   # Type "mix help compile.app" for more information
   def application do
-    [extra_applications: [:logger]]
+    [extra_applications: [:logger],
+     env: [backend: []]]
   end
 
   # Specifies which paths to compile per environment.

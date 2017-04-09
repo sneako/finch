@@ -61,7 +61,7 @@ defmodule LoggerJSON do
 
   def init(__MODULE__) do
     config = get_env()
-    device = Keyword.get(config || [], :device, :user)
+    device = Keyword.get(config, :device, :user)
 
     if Process.whereis(device) do
       {:ok, init(config, %__MODULE__{})}
@@ -144,9 +144,6 @@ defmodule LoggerJSON do
   defp meet_level?(lvl, min),
     do: Logger.compare_levels(lvl, min) != :lt
 
-  defp init(nil, %{json_encoder: nil}),
-    do: raise ArgumentError, ":json_encoder option for :logger_json application is not set. " <>
-                             "Expected one of supported encoders module name."
   defp init(config, state) do
     config =
       case Keyword.fetch(config, :on_init) do
@@ -161,12 +158,6 @@ defmodule LoggerJSON do
       end
 
     json_encoder = Keyword.get(config, :json_encoder)
-
-    unless json_encoder do
-      raise ArgumentError, "invalid :json_encoder option for :logger_json application. " <>
-                           "Expected one of supported encoders module name, got: #{inspect json_encoder}"
-    end
-
     level = Keyword.get(config, :level)
     device = Keyword.get(config, :device, :user)
     max_buffer = Keyword.get(config, :max_buffer, 32)
@@ -179,8 +170,12 @@ defmodule LoggerJSON do
               max_buffer: max_buffer, json_encoder: json_encoder}
   end
 
-  defp configure_metadata(:all), do: :all
-  defp configure_metadata(metadata) when is_list(metadata), do: Enum.reverse(metadata)
+  defp configure_metadata([]),
+    do: []
+  defp configure_metadata(:all),
+    do: :all
+  defp configure_metadata(metadata) when is_list(metadata),
+    do: Enum.reverse(metadata)
 
   defp configure_merge(env, options),
     do: Keyword.merge(env, options, fn _key, _v1, v2 -> v2 end)
@@ -227,6 +222,11 @@ defmodule LoggerJSON do
 
   defp format_event(level, msg, ts, md, state) do
     %{metadata: keys, json_encoder: json_encoder} = state
+
+    unless json_encoder do
+      raise ArgumentError, "invalid :json_encoder option for :logger_json application. " <>
+                           "Expected one of supported encoders module name, got: #{inspect json_encoder}"
+    end
 
     %{time: format_time(ts),
       severity: format_severity(level),
