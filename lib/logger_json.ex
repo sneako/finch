@@ -133,8 +133,10 @@ defmodule LoggerJSON do
 
   # Helpers
 
+  # Somehow Logger.Watcher is started before Application loads configuration
+  # so we use default value here and expect back-end to be reconfigured later.
   defp get_env,
-    do: Application.get_env(:logger_json, :backend)
+    do: Application.get_env(:logger_json, :backend, [])
 
   defp put_env(env),
     do: Application.put_env(:logger_json, :backend, env)

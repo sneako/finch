@@ -23,8 +23,7 @@ defmodule LoggerJSON.Mixfile do
   #
   # Type "mix help compile.app" for more information
   def application do
-    [extra_applications: [:logger],
-     env: [backend: []]]
+    [extra_applications: [:logger]]
   end
 
   # Specifies which paths to compile per environment.

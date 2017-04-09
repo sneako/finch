@@ -1,6 +1,5 @@
-use Mix.Config
-
 # Configuration for tests
+use Mix.Config
 
 config :logger,
   backends: [LoggerJSON]
