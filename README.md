@@ -45,16 +45,17 @@ additional properties in `serviceLocation` and `metadata` objects:
 
 It's [available on Hex](https://hex.pm/packages/logger_json), the package can be installed as:
 
-  1. Add `logger_json` to your list of dependencies in `mix.exs`:
+  1. Add `:logger_json` and `:poison` to your list of dependencies in `mix.exs`:
 
     def deps do
-      [{:logger_json, "~> 0.2.0"}]
+      [{:logger_json, "~> 0.2.0"},
+       {:poison, "~> 3.1"}]
     end
 
-  2. Ensure `logger_json` is started before your application:
+  2. Ensure `logger_json` and `:poison` is started before your application:
 
     def application do
-      [extra_applications: [:logger_json]]
+      [extra_applications: [:poison, :logger_json]]
     end
 
   3. Set a `:json_encoder` in your `config/config.exs`:
@@ -66,6 +67,8 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
 
     config :logger,
       backends: [LoggerJSON]
+
+  `Poison` can be replaced by any other compatible encoder, see "Encoders support" section.
 
 ## Dynamic configuration
 
