@@ -19,7 +19,7 @@ After adding this back-end you may also be interested in [redirecting otp and sa
 
 ## Log Format
 
-Output JSON is compatible with
+By default, output JSON is compatible with
 [Google Cloud Logger format](https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine) with
 additional properties in `serviceLocation` and `metadata` objects:
 
@@ -41,6 +41,8 @@ additional properties in `serviceLocation` and `metadata` objects:
   }
   ```
 
+You can change this structure by implementing `LoggerJSON.Formatter` behaviour and passing module name to `:formatter` configuration. Example module can be found in `LoggerJSON.Formatters.GoogleCloudLogger`.
+
 ## Installation
 
 It's [available on Hex](https://hex.pm/packages/logger_json), the package can be installed as:
@@ -49,7 +51,7 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
 
     def deps do
       [{:poison, "~> 3.1"},
-       {:logger_json, "~> 0.3.0"}]
+       {:logger_json, "~> 0.4.0"}]
     end
 
   2. Ensure `logger_json` and `:poison` is started before your application:

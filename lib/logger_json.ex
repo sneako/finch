@@ -57,7 +57,7 @@ defmodule LoggerJSON do
 
   defstruct [metadata: nil, level: nil, device: nil, max_buffer: nil,
              buffer_size: 0, buffer: [], ref: nil, output: nil,
-             json_encoder: nil, on_init: nil]
+             json_encoder: nil, on_init: nil, formatter: nil]
 
   def init(__MODULE__) do
     config = get_env()
@@ -84,6 +84,7 @@ defmodule LoggerJSON do
     {:ok, state}
   end
 
+  # TODO: ignore "metadata":{"error_logger":"progress"} events for sasl
   def handle_event({level, _gl, {Logger, msg, ts, md}}, state) do
     %{level: log_level,
       ref: ref,
@@ -160,6 +161,7 @@ defmodule LoggerJSON do
       end
 
     json_encoder = Keyword.get(config, :json_encoder)
+    formatter = Keyword.get(config, :formatter, LoggerJSON.Formatters.GoogleCloudLogger)
     level = Keyword.get(config, :level)
     device = Keyword.get(config, :device, :user)
     max_buffer = Keyword.get(config, :max_buffer, 32)
@@ -169,7 +171,8 @@ defmodule LoggerJSON do
       |> configure_metadata()
 
     %{state | metadata: metadata, level: level, device: device,
-              max_buffer: max_buffer, json_encoder: json_encoder}
+              max_buffer: max_buffer, json_encoder: json_encoder,
+              formatter: formatter}
   end
 
   defp configure_metadata([]),
@@ -223,65 +226,31 @@ defmodule LoggerJSON do
   end
 
   defp format_event(level, msg, ts, md, state) do
-    %{metadata: keys, json_encoder: json_encoder} = state
+    %{json_encoder: json_encoder, formatter: formatter} = state
 
     unless json_encoder do
       raise ArgumentError, "invalid :json_encoder option for :logger_json application. " <>
                            "Expected one of supported encoders module name, got: #{inspect json_encoder}"
     end
 
-    %{time: format_time(ts),
-      severity: format_severity(level),
-      logMessage: IO.iodata_to_binary(msg),
-      sourceLocation: source_location(md)}
-    |> Map.put(:metadata, take_metadata(md, keys))
+    unless formatter do
+      raise ArgumentError, "invalid :formatter option for :logger_json application. " <>
+                           "Expected module name that implements LoggerJSON.Formatter behaviour, " <>
+                           "got: #{inspect json_encoder}"
+    end
+
+    level
+    |> formatter.format_event(msg, ts, md, state)
     |> json_encoder.encode!()
     |> Kernel.<>("\n")
   end
 
-  # RFC3339 UTC "Zulu" format
-  defp format_time({date, time}) do
-    [Logger.Utils.format_date(date), Logger.Utils.format_time(time)]
-    |> Enum.map(&IO.iodata_to_binary/1)
-    |> Enum.join("T")
-    |> Kernel.<>("Z")
-  end
-
-  # Severity levels can be found in Google Cloud Logger docs:
-  # https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/projects.logs.entries/write#LogSeverity
-  defp format_severity(:debug),
-    do: "DEBUG"
-  defp format_severity(:info),
-    do: "INFO"
-  defp format_severity(:warn),
-    do: "WARNING"
-  defp format_severity(:error),
-    do: "ERROR"
-  defp format_severity(nil),
-    do: "DEFAULT"
-
-  # Description can be found in Google Cloud Logger docs;
-  # https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine#SourceLocation
-  defp source_location(metadata) do
-    file = Keyword.get(metadata, :file)
-    line = Keyword.get(metadata, :line)
-    function = Keyword.get(metadata, :function)
-    module = Keyword.get(metadata, :module)
-
-    %{
-      file: file,
-      line: line,
-      functionName: function,
-      moduleName: module
-    }
-  end
-
-  defp take_metadata(metadata, :all) do
+  def take_metadata(metadata, :all) do
     metadata
     |> Keyword.drop([:pid, :file, :line, :function, :module])
     |> Enum.into(%{})
   end
-  defp take_metadata(metadata, keys) do
+  def take_metadata(metadata, keys) do
     Enum.reduce keys, %{}, fn key, acc ->
       case Keyword.fetch(metadata, key) do
         {:ok, val} ->
