@@ -230,7 +230,7 @@ defmodule LoggerJSON do
 
     %{time: format_time(ts),
       severity: format_severity(level),
-      logMessage: (msg |> IO.iodata_to_binary),
+      logMessage: IO.iodata_to_binary(msg),
       sourceLocation: source_location(md)}
     |> Map.put(:metadata, take_metadata(md, keys))
     |> json_encoder.encode!()
