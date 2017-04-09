@@ -7,7 +7,7 @@ defmodule LoggerJSON do
 
   ## Log Format
 
-  Output JSON is compatible with
+  By-default, generated JSON is compatible with
   [Google Cloud Logger format](https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine) with
   additional properties in `serviceLocation` and `metadata` objects:
 
@@ -27,6 +27,14 @@ defmodule LoggerJSON do
        },
        "logMessage":"hello"
     }
+    ```
+
+  You can change this structure by implementing `LoggerJSON.Formatter` behaviour and passing module
+  name to `:formatter` config option. Example module can be found in `LoggerJSON.Formatters.GoogleCloudLogger`.
+
+    ```elixir
+    config :logger_json, :backend,
+      formatter: MyFormatterImplementation
     ```
 
   ## Encoders support

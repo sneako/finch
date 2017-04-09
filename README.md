@@ -23,7 +23,7 @@ By default, output JSON is compatible with
 [Google Cloud Logger format](https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine) with
 additional properties in `serviceLocation` and `metadata` objects:
 
-  ```
+  ```json
   {
      "time":"2017-04-09T17:52:12.497Z",
      "severity":"DEBUG",
@@ -41,7 +41,13 @@ additional properties in `serviceLocation` and `metadata` objects:
   }
   ```
 
-You can change this structure by implementing `LoggerJSON.Formatter` behaviour and passing module name to `:formatter` configuration. Example module can be found in `LoggerJSON.Formatters.GoogleCloudLogger`.
+You can change this structure by implementing `LoggerJSON.Formatter` behaviour and passing module
+name to `:formatter` config option. Example module can be found in `LoggerJSON.Formatters.GoogleCloudLogger`.
+
+  ```elixir
+  config :logger_json, :backend,
+    formatter: MyFormatterImplementation
+  ```
 
 ## Installation
 

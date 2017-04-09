@@ -5,7 +5,8 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
   @behaviour LoggerJSON.Formatter
 
   @doc """
-  Formatter callback.
+  Builds a map that corresponds to Google Cloud Logger
+  [`LogLine`](https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine) format.
   """
   def format_event(level, msg, ts, md, %{metadata: keys}) do
     %{
