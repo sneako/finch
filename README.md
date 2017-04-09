@@ -85,3 +85,7 @@ If your application is performance-critical, take look at [jiffy](https://github
 ## Documentation
 
 The docs can be found at [https://hexdocs.pm/logger_json](https://hexdocs.pm/logger_json)
+
+## Thanks
+
+Many source code has been taken from original Elixir Logger `:console` back-end source code, so I want to thank all it's authors and contributors.
