@@ -13,7 +13,7 @@ use Google Cloud Logger or other JSON-based log collectors.
 
 In GKE it is persisted in Google Cloud Logger, but traditional single log records may contain newlines, and GCL counts each new line as separate log record, this making it hard to search over it.
 
-This backed makes sure that there is only one line per log record and adds additional integration niceness, like )LogLine)(https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine) format support.
+This backed makes sure that there is only one line per log record and adds additional integration niceness, like [LogLine](https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine) format support.
 
 After adding this back-end you may also be interested in [redirecting otp and sasl reports to Logger](https://hexdocs.pm/logger/Logger.html#error-logger-configuration) (see "Error Logger configuration" section).
 
