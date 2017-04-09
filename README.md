@@ -62,6 +62,11 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
     config :logger_json,
       backend: [json_encoder: Poison]
 
+  4. Replace default Logger `:console` back-end with `LoggerJSON`:
+
+    config :logger,
+      backends: [LoggerJSON]
+
 ## Dynamic configuration
 
 For dynamically configuring the endpoint, such as loading data
