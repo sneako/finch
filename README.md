@@ -48,8 +48,8 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
   1. Add `:logger_json` and `:poison` to your list of dependencies in `mix.exs`:
 
     def deps do
-      [{:logger_json, "~> 0.2.0"},
-       {:poison, "~> 3.1"}]
+      [{:poison, "~> 3.1"},
+       {:logger_json, "~> 0.2.0"}]
     end
 
   2. Ensure `logger_json` and `:poison` is started before your application:
@@ -60,8 +60,8 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
 
   3. Set a `:json_encoder` in your `config/config.exs`:
 
-    config :logger_json,
-      backend: [json_encoder: Poison]
+    config :logger_json, :backend,
+      json_encoder: Poison
 
   4. Replace default Logger `:console` back-end with `LoggerJSON`:
 
