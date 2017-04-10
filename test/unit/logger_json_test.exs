@@ -33,25 +33,25 @@ defmodule LoggerJSONTest do
     end) =~ "hello"
   end
 
-  test "can configure metadata" do
-    Logger.configure_backend(LoggerJSON, metadata: [:user_id])
-
-    assert capture_log(fn ->
-      Logger.debug("hello")
-    end) =~ "hello"
-
-    Logger.metadata(user_id: 11)
-    Logger.metadata(user_id: 13)
-
-    log =
-      fn -> Logger.debug("hello") end
-      |> capture_log()
-      |> Poison.decode!()
-
-    assert %{"metadata" => %{"user_id" => 13}} = log
-  end
-
   describe "metadata" do
+    test "can be configured" do
+      Logger.configure_backend(LoggerJSON, metadata: [:user_id])
+
+      assert capture_log(fn ->
+        Logger.debug("hello")
+      end) =~ "hello"
+
+      Logger.metadata(user_id: 11)
+      Logger.metadata(user_id: 13)
+
+      log =
+        fn -> Logger.debug("hello") end
+        |> capture_log()
+        |> Poison.decode!()
+
+      assert %{"metadata" => %{"user_id" => 13}} = log
+    end
+
     test "can be configured to :all" do
       Logger.configure_backend(LoggerJSON, metadata: :all)
 
@@ -79,17 +79,26 @@ defmodule LoggerJSONTest do
     end
   end
 
-  test "on_init/1 callback" do
-    Logger.configure_backend(LoggerJSON, metadata: [], on_init: {LoggerJSONTest, :on_init_cb, []})
+  describe "on_init/1 callback" do
+    test "raises when invalid" do
+      assert_raise ArgumentError, "invalid :on_init option for :logger_json application. " <>
+                                  "Expected a tuple with module, function and args, got: :atom", fn ->
+        LoggerJSON.init({LoggerJSON, [on_init: :atom]})
+      end
+    end
 
-    Logger.metadata(user_id: 11)
+    test "is triggered" do
+      Logger.configure_backend(LoggerJSON, metadata: [], on_init: {LoggerJSONTest, :on_init_cb, []})
 
-    log =
-      fn -> Logger.debug("hello") end
-      |> capture_log()
-      |> Poison.decode!()
+      Logger.metadata(user_id: 11)
 
-    assert %{"metadata" => %{"user_id" => 11}} = log
+      log =
+        fn -> Logger.debug("hello") end
+        |> capture_log()
+        |> Poison.decode!()
+
+      assert %{"metadata" => %{"user_id" => 11}} = log
+    end
   end
 
   test "contains source location" do
@@ -112,7 +121,7 @@ defmodule LoggerJSONTest do
     }} = log
   end
 
-  test "can configure level" do
+  test "may configure level" do
     Logger.configure_backend(LoggerJSON, level: :info)
 
     assert capture_log(fn ->
@@ -131,9 +140,10 @@ defmodule LoggerJSONTest do
         Enum.map(tasks, &Task.await/1)
       end)
 
-    logs
-    |> String.split("\n")
-    |> length()
+    assert 1001 ==
+      logs
+      |> String.split("\n")
+      |> length()
   end
 
   # Sets metadata to :all for test purposes
