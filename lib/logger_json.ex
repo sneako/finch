@@ -233,7 +233,7 @@ defmodule LoggerJSON do
   end
 
   defp format_event(level, msg, ts, md, state) do
-    %{json_encoder: json_encoder, formatter: formatter} = state
+    %{json_encoder: json_encoder, formatter: formatter, metadata: md_keys} = state
 
     unless json_encoder do
       raise ArgumentError, "invalid :json_encoder option for :logger_json application. " <>
@@ -247,7 +247,7 @@ defmodule LoggerJSON do
     end
 
     level
-    |> formatter.format_event(msg, ts, md, state)
+    |> formatter.format_event(msg, ts, md, md_keys)
     |> json_encoder.encode!()
     |> Kernel.<>("\n")
   end

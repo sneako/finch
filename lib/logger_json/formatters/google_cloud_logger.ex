@@ -8,20 +8,20 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
   Builds a map that corresponds to Google Cloud Logger
   [`LogLine`](https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine) format.
   """
-  def format_event(level, msg, ts, md, %{metadata: keys}) do
+  def format_event(level, msg, ts, md, md_keys) do
     %{
       time: format_time(ts),
       severity: format_severity(level),
       logMessage: IO.iodata_to_binary(msg),
       sourceLocation: format_source_location(md),
-      metadata: format_metadata(md, keys)
+      metadata: format_metadata(md, md_keys)
     }
   end
 
-  defp format_metadata(md, keys) do
+  defp format_metadata(md, md_keys) do
     md
     |> Keyword.drop([:pid, :file, :line, :function, :module])
-    |> LoggerJSON.take_metadata(keys)
+    |> LoggerJSON.take_metadata(md_keys)
   end
 
   # RFC3339 UTC "Zulu" format
