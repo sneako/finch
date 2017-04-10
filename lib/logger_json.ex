@@ -92,7 +92,6 @@ defmodule LoggerJSON do
     {:ok, state}
   end
 
-  # TODO: ignore "metadata":{"error_logger":"progress"} events for sasl
   def handle_event({level, _gl, {Logger, msg, ts, md}}, state) do
     %{level: log_level,
       ref: ref,
