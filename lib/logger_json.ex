@@ -63,6 +63,21 @@ defmodule LoggerJSON do
   """
   @behaviour :gen_event
 
+  # Logger application is stated two times:
+  # 1. Before loading application. Configuration will be empty.
+  # 2. After main application is loaded. Logger will be reinitialized with application configuration.
+  # Thus we need to detect JSON encoder to make sure that errors before application start are still logged.
+  default_encoder =
+    cond do
+      Code.ensure_loaded?(Poison) -> Poison
+      Code.ensure_loaded?(JSX) -> JSX
+      Code.ensure_loaded?(JSON) -> JSON
+      Code.ensure_loaded?(:jiffy) -> {:jiffy, :encode}
+      true -> nil
+    end
+
+  @default_encoder default_encoder
+
   defstruct [metadata: nil, level: nil, device: nil, max_buffer: nil,
              buffer_size: 0, buffer: [], ref: nil, output: nil,
              json_encoder: nil, on_init: nil, formatter: nil]
@@ -167,7 +182,7 @@ defmodule LoggerJSON do
           config
       end
 
-    json_encoder = Keyword.get(config, :json_encoder)
+    json_encoder = Keyword.get(config, :json_encoder, @default_encoder)
     formatter = Keyword.get(config, :formatter, LoggerJSON.Formatters.GoogleCloudLogger)
     level = Keyword.get(config, :level)
     device = Keyword.get(config, :device, :user)
@@ -235,21 +250,26 @@ defmodule LoggerJSON do
   defp format_event(level, msg, ts, md, state) do
     %{json_encoder: json_encoder, formatter: formatter, metadata: md_keys} = state
 
-    unless json_encoder do
-      raise ArgumentError, "invalid :json_encoder option for :logger_json application. " <>
-                           "Expected one of supported encoders module name, got: #{inspect json_encoder}"
-    end
-
     unless formatter do
       raise ArgumentError, "invalid :formatter option for :logger_json application. " <>
                            "Expected module name that implements LoggerJSON.Formatter behaviour, " <>
                            "got: #{inspect json_encoder}"
     end
 
-    level
-    |> formatter.format_event(msg, ts, md, md_keys)
-    |> json_encoder.encode!()
-    |> Kernel.<>("\n")
+    event = formatter.format_event(level, msg, ts, md, md_keys)
+
+    case json_encoder do
+      nil ->
+        raise ArgumentError, "invalid :json_encoder option for :logger_json application. " <>
+                             "Expected one of supported encoders module name or {module, function}, " <>
+                             "got: #{inspect json_encoder}. Logged entry: #{inspect event}"
+      {module, fun} ->
+        apply(module, fun, [event]) <> "\n"
+      json_encoder ->
+        event
+        |> json_encoder.encode!()
+        |> Kernel.<>("\n")
+    end
   end
 
   def take_metadata(metadata, :all) do
