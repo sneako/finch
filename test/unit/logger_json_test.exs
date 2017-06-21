@@ -1,8 +1,7 @@
 defmodule LoggerJSONTest do
   use Logger.Case
-
-  require Logger
   import ExUnit.CaptureIO
+  require Logger
 
   setup do
     on_exit fn ->
@@ -110,14 +109,12 @@ defmodule LoggerJSONTest do
       |> Poison.decode!()
 
     line = line + 3
-    fun_name = "#{name}/#{arity}"
-    mod_name = "Elixir.#{inspect(mod)}"
+    function = "Elixir.#{inspect(mod)}.#{name}/#{arity}"
 
     assert %{"sourceLocation" => %{
       "file" => ^file,
       "line" => ^line,
-      "functionName" => ^fun_name,
-      "moduleName" => ^mod_name,
+      "function" => ^function
     }} = log
   end
 

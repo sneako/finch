@@ -6,15 +6,28 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
 
   @doc """
   Builds a map that corresponds to Google Cloud Logger
-  [`LogLine`](https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine) format.
+  [`LogEntry`](https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry) format.
   """
   def format_event(level, msg, ts, md, md_keys) do
     %{
-      time: format_time(ts),
+      timestamp: format_time(ts),
       severity: format_severity(level),
-      logMessage: IO.iodata_to_binary(msg),
+      jsonPayload: %{
+        message: IO.iodata_to_binary(msg),
+        serviceContext: format_service_context(md)
+      },
       sourceLocation: format_source_location(md),
       metadata: format_metadata(md, md_keys)
+    }
+  end
+
+  defp format_service_context(md) do
+    application = Keyword.get(md, :application)
+    application_version = if application, do: Application.spec(application, :vsn)
+
+    %{
+      service: application,
+      version: application_version
     }
   end
 
@@ -33,7 +46,7 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
   end
 
   # Description can be found in Google Cloud Logger docs;
-  # https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine#SourceLocation
+  # https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#LogEntrySourceLocation
   defp format_source_location(metadata) do
     file = Keyword.get(metadata, :file)
     line = Keyword.get(metadata, :line)
@@ -43,13 +56,17 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
     %{
       file: file,
       line: line,
-      functionName: function,
-      moduleName: module
+      function: format_function(module, function)
     }
   end
 
+  defp format_function(nil, function),
+    do: function
+  defp format_function(module, function),
+    do: to_string(module) <> "." <> to_string(function)
+
   # Severity levels can be found in Google Cloud Logger docs:
-  # https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/projects.logs.entries/write#LogSeverity
+  # https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#LogSeverity
   defp format_severity(:debug),
     do: "DEBUG"
   defp format_severity(:info),
