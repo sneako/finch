@@ -19,7 +19,7 @@ defmodule LoggerJSON.Ecto do
   @doc """
   Logs query string with metadata from `Ecto.LogEntry` in with debug level.
   """
-  @spec log(Ecto.LogEntry.t()) :: Ecto.LogEntry.t()
+  @spec log(entry :: Ecto.LogEntry.t()) :: Ecto.LogEntry.t()
   def log(entry) do
     {query, metadata} = query_and_metadata(entry)
 
@@ -36,7 +36,7 @@ defmodule LoggerJSON.Ecto do
   The logger call won't be removed at compile time as
   custom level is given.
   """
-  @spec log(Ecto.LogEntry.t(), Logger.level()) :: Ecto.LogEntry.t()
+  @spec log(entry :: Ecto.LogEntry.t(), level :: Logger.level()) :: Ecto.LogEntry.t()
   def log(entry, level) do
     {query, metadata} = query_and_metadata(entry)
 
@@ -73,6 +73,6 @@ defmodule LoggerJSON.Ecto do
     {query, metadata}
   end
 
-  defp format_time(nil), do: nil
+  defp format_time(nil), do: 0.0
   defp format_time(time), do: div(System.convert_time_unit(time, :native, :micro_seconds), 100) / 10
 end
