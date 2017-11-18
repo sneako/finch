@@ -78,9 +78,17 @@ defmodule LoggerJSON do
 
   @default_encoder default_encoder
 
-  defstruct [metadata: nil, level: nil, device: nil, max_buffer: nil,
-             buffer_size: 0, buffer: [], ref: nil, output: nil,
-             json_encoder: nil, on_init: nil, formatter: nil]
+  defstruct metadata: nil,
+            level: nil,
+            device: nil,
+            max_buffer: nil,
+            buffer_size: 0,
+            buffer: [],
+            ref: nil,
+            output: nil,
+            json_encoder: nil,
+            on_init: nil,
+            formatter: nil
 
   def init(__MODULE__) do
     config = get_env()
@@ -92,6 +100,7 @@ defmodule LoggerJSON do
       {:error, :ignore}
     end
   end
+
   def init({__MODULE__, opts}) when is_list(opts) do
     config = configure_merge(get_env(), opts)
     {:ok, init(config, %__MODULE__{})}
@@ -108,18 +117,18 @@ defmodule LoggerJSON do
   end
 
   def handle_event({level, _gl, {Logger, msg, ts, md}}, state) do
-    %{level: log_level,
-      ref: ref,
-      buffer_size: buffer_size,
-      max_buffer: max_buffer} = state
+    %{level: log_level, ref: ref, buffer_size: buffer_size, max_buffer: max_buffer} = state
 
     cond do
       not meet_level?(level, log_level) ->
         {:ok, state}
+
       is_nil(ref) ->
         {:ok, log_event(level, msg, ts, md, state)}
+
       buffer_size < max_buffer ->
         {:ok, buffer_event(level, msg, ts, md, state)}
+
       buffer_size === max_buffer ->
         state = buffer_event(level, msg, ts, md, state)
         {:ok, await_io(state)}
@@ -139,7 +148,7 @@ defmodule LoggerJSON do
   end
 
   def handle_info({:DOWN, ref, _, pid, reason}, %{ref: ref}) do
-    raise "device #{inspect pid} exited: " <> Exception.format_exit(reason)
+    raise "device #{inspect(pid)} exited: " <> Exception.format_exit(reason)
   end
 
   def handle_info(_, state) do
@@ -158,16 +167,12 @@ defmodule LoggerJSON do
 
   # Somehow Logger.Watcher is started before Application loads configuration
   # so we use default value here and expect back-end to be reconfigured later.
-  defp get_env,
-    do: Application.get_env(:logger_json, :backend, [])
+  defp get_env, do: Application.get_env(:logger_json, :backend, [])
 
-  defp put_env(env),
-    do: Application.put_env(:logger_json, :backend, env)
+  defp put_env(env), do: Application.put_env(:logger_json, :backend, env)
 
-  defp meet_level?(_lvl, nil),
-    do: true
-  defp meet_level?(lvl, min),
-    do: Logger.compare_levels(lvl, min) != :lt
+  defp meet_level?(_lvl, nil), do: true
+  defp meet_level?(lvl, min), do: Logger.compare_levels(lvl, min) != :lt
 
   defp init(config, state) do
     config =
@@ -175,9 +180,12 @@ defmodule LoggerJSON do
         {:ok, {mod, fun, args}} ->
           {:ok, conf} = apply(mod, fun, [config | args])
           conf
+
         {:ok, other} ->
-          raise ArgumentError, "invalid :on_init option for :logger_json application. " <>
-                               "Expected a tuple with module, function and args, got: #{inspect other}"
+          raise ArgumentError,
+                "invalid :on_init option for :logger_json application. " <>
+                  "Expected a tuple with module, function and args, got: #{inspect(other)}"
+
         :error ->
           config
       end
@@ -187,25 +195,28 @@ defmodule LoggerJSON do
     level = Keyword.get(config, :level)
     device = Keyword.get(config, :device, :user)
     max_buffer = Keyword.get(config, :max_buffer, 32)
+
     metadata =
       config
       |> Keyword.get(:metadata, [])
       |> configure_metadata()
 
-    %{state | metadata: metadata, level: level, device: device,
-              max_buffer: max_buffer, json_encoder: json_encoder,
-              formatter: formatter}
+    %{
+      state
+      | metadata: metadata,
+        level: level,
+        device: device,
+        max_buffer: max_buffer,
+        json_encoder: json_encoder,
+        formatter: formatter
+    }
   end
 
-  defp configure_metadata([]),
-    do: []
-  defp configure_metadata(:all),
-    do: :all
-  defp configure_metadata(metadata) when is_list(metadata),
-    do: Enum.reverse(metadata)
+  defp configure_metadata([]), do: []
+  defp configure_metadata(:all), do: :all
+  defp configure_metadata(metadata) when is_list(metadata), do: Enum.reverse(metadata)
 
-  defp configure_merge(env, options),
-    do: Keyword.merge(env, options, fn _key, _v1, v2 -> v2 end)
+  defp configure_merge(env, options), do: Keyword.merge(env, options, fn _key, _v1, v2 -> v2 end)
 
   defp log_event(level, msg, ts, md, %{device: device} = state) do
     output = format_event(level, msg, ts, md, state)
@@ -222,28 +233,32 @@ defmodule LoggerJSON do
     case Process.whereis(name) do
       device when is_pid(device) ->
         async_io(device, output)
+
       nil ->
-        raise "no device registered with the name #{inspect name}"
+        raise "no device registered with the name #{inspect(name)}"
     end
   end
+
   defp async_io(device, output) when is_pid(device) do
     ref = Process.monitor(device)
     send(device, {:io_request, self(), ref, {:put_chars, :unicode, output}})
     ref
   end
 
-  defp await_io(%{ref: nil} = state),
-    do: state
+  defp await_io(%{ref: nil} = state), do: state
+
   defp await_io(%{ref: ref} = state) do
     receive do
       {:io_reply, ^ref, :ok} ->
         handle_io_reply(:ok, state)
+
       {:io_reply, ^ref, error} ->
         error
         |> handle_io_reply(state)
         |> await_io()
+
       {:DOWN, ^ref, _, pid, reason} ->
-        raise "device #{inspect pid} exited: " <> Exception.format_exit(reason)
+        raise "device #{inspect(pid)} exited: " <> Exception.format_exit(reason)
     end
   end
 
@@ -251,20 +266,23 @@ defmodule LoggerJSON do
     %{json_encoder: json_encoder, formatter: formatter, metadata: md_keys} = state
 
     unless formatter do
-      raise ArgumentError, "invalid :formatter option for :logger_json application. " <>
-                           "Expected module name that implements LoggerJSON.Formatter behaviour, " <>
-                           "got: #{inspect json_encoder}"
+      raise ArgumentError,
+            "invalid :formatter option for :logger_json application. " <>
+              "Expected module name that implements LoggerJSON.Formatter behaviour, " <> "got: #{inspect(json_encoder)}"
     end
 
     event = formatter.format_event(level, msg, ts, md, md_keys)
 
     case json_encoder do
       nil ->
-        raise ArgumentError, "invalid :json_encoder option for :logger_json application. " <>
-                             "Expected one of supported encoders module name or {module, function}, " <>
-                             "got: #{inspect json_encoder}. Logged entry: #{inspect event}"
+        raise ArgumentError,
+              "invalid :json_encoder option for :logger_json application. " <>
+                "Expected one of supported encoders module name or {module, function}, " <>
+                "got: #{inspect(json_encoder)}. Logged entry: #{inspect(event)}"
+
       {module, fun} ->
         apply(module, fun, [event]) <> "\n"
+
       json_encoder ->
         event
         |> json_encoder.encode!()
@@ -277,18 +295,21 @@ defmodule LoggerJSON do
     |> Keyword.drop([:pid, :file, :line, :function, :module])
     |> Enum.into(%{})
   end
+
   def take_metadata(metadata, keys) do
-    Enum.reduce keys, %{}, fn key, acc ->
+    Enum.reduce(keys, %{}, fn key, acc ->
       case Keyword.fetch(metadata, key) do
         {:ok, val} ->
           Map.merge(acc, %{key => val})
+
         :error ->
           acc
       end
-    end
+    end)
   end
 
   defp log_buffer(%{buffer_size: 0, buffer: []} = state), do: state
+
   defp log_buffer(state) do
     %{device: device, buffer: buffer} = state
     %{state | ref: async_io(device, buffer), buffer: [], buffer_size: 0, output: buffer}
@@ -298,30 +319,35 @@ defmodule LoggerJSON do
     Process.demonitor(ref, [:flush])
     log_buffer(%{state | ref: nil, output: nil})
   end
+
   defp handle_io_reply({:error, {:put_chars, :unicode, _} = error}, state) do
     retry_log(error, state)
   end
+
   defp handle_io_reply({:error, :put_chars}, %{output: output} = state) do
     retry_log({:put_chars, :unicode, output}, state)
   end
+
   defp handle_io_reply({:error, error}, _) do
     raise "failure while logging console messages: " <> inspect(error)
   end
 
   defp retry_log(error, %{device: device, ref: ref, output: dirty} = state) do
     Process.demonitor(ref, [:flush])
+
     case :unicode.characters_to_binary(dirty) do
       {_, good, bad} ->
         clean = [good | Logger.Formatter.prune(bad)]
         %{state | ref: async_io(device, clean), output: clean}
+
       _ ->
         # A well behaved IO device should not error on good data
         raise "failure while logging consoles messages: " <> inspect(error)
     end
   end
 
-  defp flush(%{ref: nil} = state),
-    do: state
+  defp flush(%{ref: nil} = state), do: state
+
   defp flush(state) do
     state
     |> await_io()

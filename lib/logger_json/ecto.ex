@@ -67,7 +67,7 @@ defmodule LoggerJSON.Ecto do
       queue_time: queue_time,
       duration: Float.round(query_time + decode_time + queue_time, 3),
       connection_pid: connection_pid,
-      ansi_color: ansi_color,
+      ansi_color: ansi_color
     ]
 
     {query, metadata}

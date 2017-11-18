@@ -3,13 +3,13 @@ defmodule LoggerJSON.EctoTest do
   import ExUnit.CaptureIO
   require Logger
 
-
   setup do
-    on_exit fn ->
-      :ok = Logger.configure_backend(LoggerJSON, [device: :user, level: nil, metadata: [], json_encoder: Poison])
-    end
+    on_exit(fn ->
+      :ok = Logger.configure_backend(LoggerJSON, device: :user, level: nil, metadata: [], json_encoder: Poison)
+    end)
 
     diff = :erlang.convert_time_unit(1, :micro_seconds, :native)
+
     entry = %Ecto.LogEntry{
       query: fn -> "done" end,
       result: {:ok, []},
@@ -17,20 +17,20 @@ defmodule LoggerJSON.EctoTest do
       query_time: 2100 * diff,
       decode_time: 500 * diff,
       queue_time: 100 * diff,
-      source: "test",
+      source: "test"
     }
 
     %{log_entry: entry}
   end
 
-
   test "logs ecto queries", %{log_entry: entry} do
     Logger.configure_backend(LoggerJSON, device: :standard_error, metadata: :all)
 
-    log = capture_io(:standard_error, fn ->
-      LoggerJSON.Ecto.log(entry)
-      Logger.flush()
-    end)
+    log =
+      capture_io(:standard_error, fn ->
+        LoggerJSON.Ecto.log(entry)
+        Logger.flush()
+      end)
 
     %{
       "jsonPayload" => %{

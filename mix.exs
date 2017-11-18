@@ -4,19 +4,21 @@ defmodule LoggerJSON.Mixfile do
   @version "0.5.0"
 
   def project do
-    [app: :logger_json,
-     description: "Console Logger back-end, Plug and Ecto.LogEntry adapter that writes logs in JSON format.",
-     package: package(),
-     version: @version,
-     elixir: "~> 1.5",
-     elixirc_paths: elixirc_paths(Mix.env),
-     compilers: [] ++ Mix.compilers,
-     build_embedded: Mix.env == :prod,
-     start_permanent: Mix.env == :prod,
-     deps: deps(),
-     test_coverage: [tool: ExCoveralls],
-     preferred_cli_env: [coveralls: :test],
-     docs: [source_ref: "v#\{@version\}", main: "readme", extras: ["README.md"]]]
+    [
+      app: :logger_json,
+      description: "Console Logger back-end, Plug and Ecto.LogEntry adapter that writes logs in JSON format.",
+      package: package(),
+      version: @version,
+      elixir: "~> 1.5",
+      elixirc_paths: elixirc_paths(Mix.env()),
+      compilers: [] ++ Mix.compilers(),
+      build_embedded: Mix.env() == :prod,
+      start_permanent: Mix.env() == :prod,
+      deps: deps(),
+      test_coverage: [tool: ExCoveralls],
+      preferred_cli_env: [coveralls: :test],
+      docs: [source_ref: "v#\{@version\}", main: "readme", extras: ["README.md"]]
+    ]
   end
 
   # Configuration for the OTP application
@@ -28,7 +30,7 @@ defmodule LoggerJSON.Mixfile do
 
   # Specifies which paths to compile per environment.
   defp elixirc_paths(:test), do: ["lib", "test/support"]
-  defp elixirc_paths(_),     do: ["lib"]
+  defp elixirc_paths(_), do: ["lib"]
 
   # Dependencies can be Hex packages:
   #
@@ -44,24 +46,28 @@ defmodule LoggerJSON.Mixfile do
   #
   # Type "mix help deps" for more examples and options
   defp deps do
-    [{:poison, "~> 3.1", optional: true},
-     # {:exjsx, "~> 4.0", optional: true, override: true},
-     # {:json, "~> 1.0", optional: true},
-     {:ecto, "~> 2.1", optional: true},
-     {:plug, "~> 1.0", optional: true},
-     {:ex_doc, ">= 0.15.0", only: [:dev, :test]},
-     {:excoveralls, ">= 0.5.0", only: [:dev, :test]},
-     {:dogma, ">= 0.1.12", only: [:dev, :test]},
-     {:credo, ">= 0.5.1", only: [:dev, :test]},
-     {:dialyxir, "~> 0.5", only: [:dev], runtime: false}]
+    [
+      {:poison, "~> 3.1", optional: true},
+      # {:exjsx, "~> 4.0", optional: true, override: true},
+      # {:json, "~> 1.0", optional: true},
+      {:ecto, "~> 2.1", optional: true},
+      {:plug, "~> 1.0", optional: true},
+      {:ex_doc, ">= 0.15.0", only: [:dev, :test]},
+      {:excoveralls, ">= 0.5.0", only: [:dev, :test]},
+      {:dogma, ">= 0.1.12", only: [:dev, :test]},
+      {:credo, ">= 0.5.1", only: [:dev, :test]},
+      {:dialyxir, "~> 0.5", only: [:dev], runtime: false}
+    ]
   end
 
   # Settings for publishing in Hex package manager:
   defp package do
-    [contributors: ["Nebo #15"],
-     maintainers: ["Nebo #15"],
-     licenses: ["MIT", "LISENSE.md"],
-     links: %{github: "https://github.com/Nebo15/logger_json"},
-     files: ~w(lib LICENSE.md mix.exs README.md)]
+    [
+      contributors: ["Nebo #15"],
+      maintainers: ["Nebo #15"],
+      licenses: ["MIT", "LISENSE.md"],
+      links: %{github: "https://github.com/Nebo15/logger_json"},
+      files: ~w(lib LICENSE.md mix.exs README.md)
+    ]
   end
 end

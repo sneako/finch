@@ -29,9 +29,11 @@ defmodule LoggerJSON.Plug do
   @impl true
   def call(conn, level) do
     start = System.monotonic_time()
+
     Conn.register_before_send(conn, fn conn ->
       diff = format_time(System.monotonic_time() - start)
-      Logger.log(level, "", request_metadata(conn, diff))
+      metadata = request_metadata(conn, diff)
+      Logger.log(level, "", metadata)
       conn
     end)
   end
@@ -43,12 +45,12 @@ defmodule LoggerJSON.Plug do
         method: conn.method,
         request_path: conn.request_path,
         request_id: request_id(conn),
-        status: conn.status,
+        status: conn.status
       },
       client: client_info(conn),
       system: system_info(),
       runtime: runtime_info(conn),
-      latency: diff,
+      latency: diff
     ]
   end
 
@@ -85,14 +87,14 @@ defmodule LoggerJSON.Plug do
     %{
       user_agent: get_header(conn, "user-agent"),
       ip: get_header(conn, "x-forwarded-for") || to_string(:inet_parse.ntoa(conn.remote_ip)),
-      version: get_header(conn, "x-api-version"),
+      version: get_header(conn, "x-api-version")
     }
   end
 
   defp runtime_info(%{private: %{phoenix_controller: controller, phoenix_action: action}}),
     do: %{controller: Atom.to_string(controller), action: Atom.to_string(action)}
-  defp runtime_info(_conn),
-    do: %{}
+
+  defp runtime_info(_conn), do: %{}
 
   defp get_header(conn, header) do
     case Conn.get_req_header(conn, header) do

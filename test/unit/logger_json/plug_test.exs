@@ -7,8 +7,8 @@ defmodule LoggerJSON.PlugTest do
   defmodule MyPlug do
     use Plug.Builder
 
-    plug LoggerJSON.Plug
-    plug :passthrough
+    plug(LoggerJSON.Plug)
+    plug(:passthrough)
 
     defp passthrough(conn, _) do
       Plug.Conn.send_resp(conn, 200, "Passthrough")
@@ -16,64 +16,67 @@ defmodule LoggerJSON.PlugTest do
   end
 
   setup do
-    on_exit fn ->
-      :ok = Logger.configure_backend(LoggerJSON, [device: :user, level: nil, metadata: [], json_encoder: Poison])
-    end
+    on_exit(fn ->
+      :ok = Logger.configure_backend(LoggerJSON, device: :user, level: nil, metadata: [], json_encoder: Poison)
+    end)
 
     Logger.configure_backend(LoggerJSON, device: :standard_error, metadata: :all)
   end
 
   test "logs proper message to console" do
-    log = capture_io(:standard_error, fn ->
-      call(conn(:get, "/"))
-      Logger.flush()
-    end)
+    log =
+      capture_io(:standard_error, fn ->
+        call(conn(:get, "/"))
+        Logger.flush()
+      end)
 
     assert %{
-      "jsonPayload" => %{
-        "message" => "",
-        "metadata" => %{
-          "application" => "logger_json",
-          "client" => %{"ip" => "127.0.0.1", "user_agent" => nil, "version" => nil},
-          "connection" => %{
-            "method" => "GET",
-            "request_id" => nil,
-            "request_path" => "/",
-            "status" => 200,
-            "type" => "sent"
-          },
-          "latency" => _,
-          "runtime" => %{},
-          "system" => %{"hostname" => _, "pid" => _}
-        }
-      }
-    } = Poison.decode!(log)
+             "jsonPayload" => %{
+               "message" => "",
+               "metadata" => %{
+                 "application" => "logger_json",
+                 "client" => %{"ip" => "127.0.0.1", "user_agent" => nil, "version" => nil},
+                 "connection" => %{
+                   "method" => "GET",
+                   "request_id" => nil,
+                   "request_path" => "/",
+                   "status" => 200,
+                   "type" => "sent"
+                 },
+                 "latency" => _,
+                 "runtime" => %{},
+                 "system" => %{"hostname" => _, "pid" => _}
+               }
+             }
+           } = Poison.decode!(log)
 
     conn = %{conn(:get, "/hello/world") | private: %{phoenix_controller: MyController, phoenix_action: :foo}}
-    log = capture_io(:standard_error, fn ->
-      call(conn)
-      Logger.flush()
-    end)
+
+    log =
+      capture_io(:standard_error, fn ->
+        call(conn)
+        Logger.flush()
+      end)
 
     assert %{
-      "jsonPayload" => %{
-        "message" => "",
-        "metadata" => %{
-          "application" => "logger_json",
-          "client" => %{"ip" => "127.0.0.1", "user_agent" => nil, "version" => nil},
-          "connection" => %{
-            "method" => "GET",
-            "request_id" => nil,
-            "request_path" => "/hello/world",
-            "status" => 200,
-            "type" => "sent"
-          },
-          "latency" => _,
-          "runtime" => %{"controller" => "Elixir.MyController", "action" => "foo"},
-          "system" => %{"hostname" => _, "pid" => _}
-        }
-      }
-    } = Poison.decode!(log)
+             "jsonPayload" => %{
+               "message" => "",
+               "metadata" => %{
+                 "application" => "logger_json",
+                 "client" => %{"ip" => "127.0.0.1", "user_agent" => nil, "version" => nil},
+                 "connection" => %{
+                   "method" => "GET",
+                   "request_id" => nil,
+                   "request_path" => "/hello/world",
+                   "status" => 200,
+                   "type" => "sent"
+                 },
+                 "latency" => _,
+                 "runtime" => %{"controller" => "Elixir.MyController", "action" => "foo"},
+                 "system" => %{"hostname" => _, "pid" => _}
+               }
+             }
+           } = Poison.decode!(log)
   end
 
   defp call(conn) do

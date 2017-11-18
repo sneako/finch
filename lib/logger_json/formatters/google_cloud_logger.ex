@@ -14,10 +14,10 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
       severity: format_severity(level),
       jsonPayload: %{
         message: format_message(msg),
-        metadata: format_metadata(md, md_keys),
+        metadata: format_metadata(md, md_keys)
       },
       resource: format_resource(md),
-      sourceLocation: format_source_location(md),
+      sourceLocation: format_source_location(md)
     }
   end
 
@@ -28,6 +28,7 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
 
   defp format_resource(md) do
     application = Keyword.get(md, :application)
+
     if application do
       %{
         type: "elixir-application",
@@ -68,21 +69,14 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
     }
   end
 
-  defp format_function(nil, function),
-    do: function
-  defp format_function(module, function),
-    do: to_string(module) <> "." <> to_string(function)
+  defp format_function(nil, function), do: function
+  defp format_function(module, function), do: to_string(module) <> "." <> to_string(function)
 
   # Severity levels can be found in Google Cloud Logger docs:
   # https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#LogSeverity
-  defp format_severity(:debug),
-    do: "DEBUG"
-  defp format_severity(:info),
-    do: "INFO"
-  defp format_severity(:warn),
-    do: "WARNING"
-  defp format_severity(:error),
-    do: "ERROR"
-  defp format_severity(nil),
-    do: "DEFAULT"
+  defp format_severity(:debug), do: "DEBUG"
+  defp format_severity(:info), do: "INFO"
+  defp format_severity(:warn), do: "WARNING"
+  defp format_severity(:error), do: "ERROR"
+  defp format_severity(nil), do: "DEFAULT"
 end

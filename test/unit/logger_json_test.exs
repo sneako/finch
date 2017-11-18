@@ -4,9 +4,9 @@ defmodule LoggerJSONTest do
   require Logger
 
   setup do
-    on_exit fn ->
-      :ok = Logger.configure_backend(LoggerJSON, [device: :user, level: nil, metadata: [], json_encoder: Poison])
-    end
+    on_exit(fn ->
+      :ok = Logger.configure_backend(LoggerJSON, device: :user, level: nil, metadata: [], json_encoder: Poison)
+    end)
   end
 
   test "does not start when there is no user" do
@@ -27,9 +27,9 @@ defmodule LoggerJSONTest do
     Logger.configure_backend(LoggerJSON, device: :standard_error)
 
     assert capture_io(:standard_error, fn ->
-      Logger.debug("hello")
-      Logger.flush()
-    end) =~ "hello"
+             Logger.debug("hello")
+             Logger.flush()
+           end) =~ "hello"
   end
 
   describe "metadata" do
@@ -37,8 +37,8 @@ defmodule LoggerJSONTest do
       Logger.configure_backend(LoggerJSON, metadata: [:user_id])
 
       assert capture_log(fn ->
-        Logger.debug("hello")
-      end) =~ "hello"
+               Logger.debug("hello")
+             end) =~ "hello"
 
       Logger.metadata(user_id: 11)
       Logger.metadata(user_id: 13)
@@ -80,10 +80,12 @@ defmodule LoggerJSONTest do
 
   describe "on_init/1 callback" do
     test "raises when invalid" do
-      assert_raise ArgumentError, "invalid :on_init option for :logger_json application. " <>
-                                  "Expected a tuple with module, function and args, got: :atom", fn ->
-        LoggerJSON.init({LoggerJSON, [on_init: :atom]})
-      end
+      assert_raise ArgumentError,
+                   "invalid :on_init option for :logger_json application. " <>
+                     "Expected a tuple with module, function and args, got: :atom",
+                   fn ->
+                     LoggerJSON.init({LoggerJSON, [on_init: :atom]})
+                   end
     end
 
     test "is triggered" do
@@ -111,19 +113,21 @@ defmodule LoggerJSONTest do
     line = line + 3
     function = "Elixir.#{inspect(mod)}.#{name}/#{arity}"
 
-    assert %{"sourceLocation" => %{
-      "file" => ^file,
-      "line" => ^line,
-      "function" => ^function
-    }} = log
+    assert %{
+             "sourceLocation" => %{
+               "file" => ^file,
+               "line" => ^line,
+               "function" => ^function
+             }
+           } = log
   end
 
   test "may configure level" do
     Logger.configure_backend(LoggerJSON, level: :info)
 
     assert capture_log(fn ->
-      Logger.debug("hello")
-    end) == ""
+             Logger.debug("hello")
+           end) == ""
   end
 
   # This should be rewritten for custom IO handler implementation that proxies events to test pid
@@ -131,6 +135,7 @@ defmodule LoggerJSONTest do
     Logger.configure_backend(LoggerJSON, max_buffer: 10)
 
     fun = fn -> Logger.debug("hello") end
+
     logs =
       capture_log(fn ->
         tasks = for _ <- 1..1000, do: Task.async(fun)
@@ -138,9 +143,9 @@ defmodule LoggerJSONTest do
       end)
 
     assert 1001 ==
-      logs
-      |> String.split("\n")
-      |> length()
+             logs
+             |> String.split("\n")
+             |> length()
   end
 
   # Sets metadata to :all for test purposes
