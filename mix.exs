@@ -8,7 +8,7 @@ defmodule LoggerJSON.Mixfile do
      description: "Console Logger back-end that outputs in JSON format.",
      package: package(),
      version: @version,
-     elixir: "~> 1.4",
+     elixir: "~> 1.5",
      elixirc_paths: elixirc_paths(Mix.env),
      compilers: [] ++ Mix.compilers,
      build_embedded: Mix.env == :prod,

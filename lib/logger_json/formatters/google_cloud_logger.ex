@@ -13,33 +13,41 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
       timestamp: format_time(ts),
       severity: format_severity(level),
       jsonPayload: %{
-        message: IO.iodata_to_binary(msg),
-        serviceContext: format_service_context(md)
+        message: format_message(msg),
+        metadata: format_metadata(md, md_keys),
       },
+      resource: format_resource(md),
       sourceLocation: format_source_location(md),
-      metadata: format_metadata(md, md_keys)
     }
   end
 
-  defp format_service_context(md) do
-    application = Keyword.get(md, :application)
-    application_version = if application, do: Application.spec(application, :vsn)
+  defp format_message(map) when is_map(map), do: map
+  defp format_message(binary) when is_binary(binary), do: binary
+  defp format_message([{_k, _v} | _] = keyword), do: keyword
+  defp format_message(iolist) when is_list(iolist), do: IO.iodata_to_binary(iolist)
 
-    %{
-      service: application,
-      version: application_version
-    }
+  defp format_resource(md) do
+    application = Keyword.get(md, :application)
+    if application do
+      %{
+        type: "elixir-application",
+        labels: %{
+          service: application,
+          version: Application.spec(application, :vsn)
+        }
+      }
+    end
   end
 
   defp format_metadata(md, md_keys) do
     md
-    |> Keyword.drop([:pid, :file, :line, :function, :module])
+    |> Keyword.drop([:pid, :file, :line, :function, :module, :ansi_color])
     |> LoggerJSON.take_metadata(md_keys)
   end
 
   # RFC3339 UTC "Zulu" format
   defp format_time({date, time}) do
-    [Logger.Utils.format_date(date), Logger.Utils.format_time(time)]
+    [Logger.Formatter.format_date(date), Logger.Formatter.format_time(time)]
     |> Enum.map(&IO.iodata_to_binary/1)
     |> Enum.join("T")
     |> Kernel.<>("Z")

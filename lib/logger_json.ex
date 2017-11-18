@@ -63,7 +63,7 @@ defmodule LoggerJSON do
   """
   @behaviour :gen_event
 
-  # Logger application is stated two times:
+  # Logger application is started two times:
   # 1. Before loading application. Configuration will be empty.
   # 2. After main application is loaded. Logger will be reinitialized with application configuration.
   # Thus we need to detect JSON encoder to make sure that errors before application start are still logged.

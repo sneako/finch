@@ -48,7 +48,7 @@ defmodule LoggerJSONTest do
         |> capture_log()
         |> Poison.decode!()
 
-      assert %{"metadata" => %{"user_id" => 13}} = log
+      assert %{"jsonPayload" => %{"metadata" => %{"user_id" => 13}}} = log
     end
 
     test "can be configured to :all" do
@@ -62,14 +62,14 @@ defmodule LoggerJSONTest do
         |> capture_log()
         |> Poison.decode!()
 
-      assert %{"metadata" => %{"user_id" => 11}} = log
-      assert %{"metadata" => %{"dynamic_metadata" => 5}} = log
+      assert %{"jsonPayload" => %{"metadata" => %{"user_id" => 11}}} = log
+      assert %{"jsonPayload" => %{"metadata" => %{"dynamic_metadata" => 5}}} = log
     end
 
     test "can be empty" do
       Logger.configure_backend(LoggerJSON, metadata: [])
 
-      %{"metadata" => meta} =
+      %{"jsonPayload" => %{"metadata" => meta}} =
         fn -> Logger.debug("hello") end
         |> capture_log()
         |> Poison.decode!()
@@ -96,7 +96,7 @@ defmodule LoggerJSONTest do
         |> capture_log()
         |> Poison.decode!()
 
-      assert %{"metadata" => %{"user_id" => 11}} = log
+      assert %{"jsonPayload" => %{"metadata" => %{"user_id" => 11}}} = log
     end
   end
 
