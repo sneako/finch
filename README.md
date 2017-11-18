@@ -76,6 +76,17 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
     config :logger,
       backends: [LoggerJSON]
 
+  5. Optionally. Log requests and responses by replacing a `Plug.Logger` in your endpoint with a:
+
+    plug LoggerJSON.Plug
+
+  6. Optionally. Log Ecto queries via Plug:
+
+    config :my_app, MyApp.Repo,
+      adapter: Ecto.Adapters.Postgres,
+      ...
+      loggers: [{LoggerJSON.Ecto, :log, [:info]}]
+
   `Poison` can be replaced by any other compatible encoder, see "Encoders support" section.
 
 ## Dynamic configuration
@@ -107,3 +118,6 @@ The docs can be found at [https://hexdocs.pm/logger_json](https://hexdocs.pm/log
 ## Thanks
 
 Many source code has been taken from original Elixir Logger `:console` back-end source code, so I want to thank all it's authors and contributors.
+
+Part of `LoggerJSON.Plug` module have origins from `plug_logger_json` by @bleacherreport,
+originally licensed under Apache License 2.0. Part of `LoggerJSON.PlugTest` are from Elixir's Plug licensed under Apache 2.

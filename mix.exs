@@ -5,7 +5,7 @@ defmodule LoggerJSON.Mixfile do
 
   def project do
     [app: :logger_json,
-     description: "Console Logger back-end that outputs in JSON format.",
+     description: "Console Logger back-end, Plug and Ecto.LogEntry adapter that writes logs in JSON format.",
      package: package(),
      version: @version,
      elixir: "~> 1.5",
@@ -47,10 +47,13 @@ defmodule LoggerJSON.Mixfile do
     [{:poison, "~> 3.1", optional: true},
      # {:exjsx, "~> 4.0", optional: true, override: true},
      # {:json, "~> 1.0", optional: true},
+     {:ecto, "~> 2.1", optional: true},
+     {:plug, "~> 1.0", optional: true},
      {:ex_doc, ">= 0.15.0", only: [:dev, :test]},
      {:excoveralls, ">= 0.5.0", only: [:dev, :test]},
      {:dogma, ">= 0.1.12", only: [:dev, :test]},
-     {:credo, ">= 0.5.1", only: [:dev, :test]}]
+     {:credo, ">= 0.5.1", only: [:dev, :test]},
+     {:dialyxir, "~> 0.5", only: [:dev], runtime: false}]
   end
 
   # Settings for publishing in Hex package manager:
