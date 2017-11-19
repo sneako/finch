@@ -46,4 +46,28 @@ defmodule LoggerJSON.EctoTest do
       }
     } = Poison.decode!(log)
   end
+
+  test "logs ecto queries with debug level", %{log_entry: entry} do
+    Logger.configure_backend(LoggerJSON, device: :standard_error, metadata: :all)
+
+    log =
+      capture_io(:standard_error, fn ->
+        LoggerJSON.Ecto.log(entry, :debug)
+        Logger.flush()
+      end)
+
+    %{
+      "jsonPayload" => %{
+        "message" => "done",
+        "metadata" => %{
+          "application" => "logger_json",
+          "connection_pid" => nil,
+          "decode_time" => 0.5,
+          "duration" => 2.7,
+          "query_time" => 2.1,
+          "queue_time" => 0.1
+        }
+      }
+    } = Poison.decode!(log)
+  end
 end

@@ -23,7 +23,7 @@ defmodule LoggerJSON.PlugTest do
     Logger.configure_backend(LoggerJSON, device: :standard_error, metadata: :all)
   end
 
-  test "logs proper message to console" do
+  test "logs proper message" do
     log =
       capture_io(:standard_error, fn ->
         call(conn(:get, "/"))
@@ -73,6 +73,43 @@ defmodule LoggerJSON.PlugTest do
                  },
                  "latency" => _,
                  "runtime" => %{"controller" => "Elixir.MyController", "action" => "foo"},
+                 "system" => %{"hostname" => _, "pid" => _}
+               }
+             }
+           } = Poison.decode!(log)
+  end
+
+  test "logs message with values from headers" do
+    request_id = Ecto.UUID.generate()
+    conn =
+      :get
+      |> conn("/")
+      |> Plug.Conn.put_resp_header("x-request-id", request_id)
+      |> Plug.Conn.put_req_header("user-agent", "chrome")
+      |> Plug.Conn.put_req_header("x-forwarded-for", "127.0.0.10")
+      |> Plug.Conn.put_req_header("x-api-version", "2017-01-01")
+
+    log =
+      capture_io(:standard_error, fn ->
+        call(conn)
+        Logger.flush()
+      end)
+
+    assert %{
+             "jsonPayload" => %{
+               "message" => "",
+               "metadata" => %{
+                 "application" => "logger_json",
+                 "client" => %{"ip" => "127.0.0.10", "user_agent" => "chrome", "version" => "2017-01-01"},
+                 "connection" => %{
+                   "method" => "GET",
+                   "request_id" => ^request_id,
+                   "request_path" => "/",
+                   "status" => 200,
+                   "type" => "sent"
+                 },
+                 "latency" => _,
+                 "runtime" => %{},
                  "system" => %{"hostname" => _, "pid" => _}
                }
              }
