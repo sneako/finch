@@ -13,18 +13,13 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
       timestamp: format_timestamp(ts),
       severity: format_severity(level),
       jsonPayload: %{
-        message: format_message(msg),
+        message: IO.iodata_to_binary(msg),
         metadata: format_metadata(md, md_keys)
       },
       resource: format_resource(md),
       sourceLocation: format_source_location(md)
     }
   end
-
-  defp format_message(map) when is_map(map), do: map
-  defp format_message(binary) when is_binary(binary), do: binary
-  defp format_message([{_k, _v} | _] = keyword), do: keyword
-  defp format_message(iolist) when is_list(iolist), do: IO.iodata_to_binary(iolist)
 
   defp format_resource(md) do
     application = Keyword.get(md, :application)
