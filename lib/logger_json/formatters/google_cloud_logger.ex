@@ -10,7 +10,7 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
   """
   def format_event(level, msg, ts, md, md_keys) do
     %{
-      timestamp: format_time(ts),
+      timestamp: format_timestamp(ts),
       severity: format_severity(level),
       jsonPayload: %{
         message: format_message(msg),
@@ -47,8 +47,8 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
   end
 
   # RFC3339 UTC "Zulu" format
-  defp format_time({date, time}) do
-    [Logger.Formatter.format_date(date), Logger.Formatter.format_time(time)]
+  defp format_timestamp({date, time}) do
+    [format_date(date), format_time(time)]
     |> Enum.map(&IO.iodata_to_binary/1)
     |> Enum.join("T")
     |> Kernel.<>("Z")
@@ -79,4 +79,19 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
   defp format_severity(:warn), do: "WARNING"
   defp format_severity(:error), do: "ERROR"
   defp format_severity(nil), do: "DEFAULT"
+
+  defp format_time({hh, mi, ss, ms}) do
+    [pad2(hh), ?:, pad2(mi), ?:, pad2(ss), ?., pad3(ms)]
+  end
+
+  defp format_date({yy, mm, dd}) do
+    [Integer.to_string(yy), ?-, pad2(mm), ?-, pad2(dd)]
+  end
+
+  defp pad3(int) when int < 10, do: [?0, ?0, Integer.to_string(int)]
+  defp pad3(int) when int < 100, do: [?0, Integer.to_string(int)]
+  defp pad3(int), do: Integer.to_string(int)
+
+  defp pad2(int) when int < 10, do: [?0, Integer.to_string(int)]
+  defp pad2(int), do: Integer.to_string(int)
 end
