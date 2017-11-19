@@ -34,7 +34,7 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
         type: "elixir-application",
         labels: %{
           service: application,
-          version: Application.spec(application, :vsn)
+          version: IO.iodata_to_binary(Application.spec(application, :vsn))
         }
       }
     end
