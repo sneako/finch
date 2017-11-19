@@ -25,19 +25,31 @@ additional properties in `serviceLocation` and `metadata` objects:
 
   ```json
   {
-     "time":"2017-04-09T17:52:12.497Z",
-     "severity":"DEBUG",
+     "timestamp":"2017-11-19T18:13:01.111Z",
      "sourceLocation":{
-        "moduleName":"Elixir.LoggerJSONTest",
-        "line":62,
-        "functionName":"test metadata can be configured to :all/1",
-        "file":"/Users/andrew/Projects/logger_json/test/unit/logger_json_test.exs"
+        "line":28,
+        "function":"Elixir.LoggerJSON.Ecto.log/1",
+        "file":"/Users/andrew/Projects/logger_json/lib/logger_json/ecto.ex"
      },
-     "metadata":{
-        "user_id":11,
-        "dynamic_metadata":5
+     "severity":"DEBUG",
+     "resource":{
+        "type":"elixir-application",
+        "labels":{
+           "version":"1.0.0",
+           "service":"logger_json"
+        }
      },
-     "logMessage":"hello"
+     "jsonPayload":{
+        "metadata":{
+           "queue_time":0.1,
+           "query_time":2.1,
+           "duration":2.7,
+           "decode_time":0.5,
+           "connection_pid":null,
+           "application":"logger_json"
+        },
+        "message":"done"
+     }
   }
   ```
 
