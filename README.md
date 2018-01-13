@@ -69,7 +69,7 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
 
     def deps do
       [{:poison, "~> 3.1"},
-       {:logger_json, "~> 1.0.0"}]
+       {:logger_json, "~> 1.0.1"}]
     end
 
   2. Ensure `logger_json` and `:poison` is started before your application:
