@@ -81,6 +81,7 @@ defmodule LoggerJSON.PlugTest do
 
   test "logs message with values from headers" do
     request_id = Ecto.UUID.generate()
+
     conn =
       :get
       |> conn("/")
