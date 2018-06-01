@@ -39,15 +39,15 @@ defmodule LoggerJSON do
 
   ## Encoders support
 
-  You can replace default Poison encoder with other module that supports `encode!/1` function. This can be even used
+  You can replace default Jason encoder with other module that supports `encode!/1` function. This can be even used
   as custom formatter callback.
 
-  Popular Poison alternatives:
+  Popular Jason alternatives:
 
+   * [poison](https://hex.pm/packages/poison).
    * [exjsx](https://github.com/talentdeficit/exjsx).
    * [elixir-json](https://github.com/cblage/elixir-json) - native Elixir encoder implementation.
-
-  If your application is performance-critical, take look at [jiffy](https://github.com/davisp/jiffy).
+   * [jiffy](https://github.com/davisp/jiffy).
 
   ## Dynamic configuration
 
@@ -69,6 +69,7 @@ defmodule LoggerJSON do
   # Thus we need to detect JSON encoder to make sure that errors before application start are still logged.
   default_encoder =
     cond do
+      Code.ensure_loaded?(Jason) -> Jason
       Code.ensure_loaded?(Poison) -> Poison
       Code.ensure_loaded?(JSX) -> JSX
       Code.ensure_loaded?(JSON) -> JSON

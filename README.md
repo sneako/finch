@@ -65,23 +65,24 @@ name to `:formatter` config option. Example module can be found in `LoggerJSON.F
 
 It's [available on Hex](https://hex.pm/packages/logger_json), the package can be installed as:
 
-  1. Add `:logger_json` and `:poison` to your list of dependencies in `mix.exs`:
+  1. Add `:logger_json` and `:jason` to your list of dependencies in `mix.exs`:
 
     def deps do
-      [{:poison, "~> 3.1"},
+      [{:jason, "~> 1.0"},
        {:logger_json, "~> 1.0.1"}]
     end
 
-  2. Ensure `logger_json` and `:poison` is started before your application:
+  2. Ensure `logger_json` and `:jason` is started before your application:
 
     def application do
-      [extra_applications: [:poison, :logger_json]]
+      [extra_applications: [:jason, :logger_json]]
     end
 
-  3. Set a `:json_encoder` in your `config/config.exs`:
+  3. Set configuration in your `config/config.exs`:
 
     config :logger_json, :backend,
-      json_encoder: Poison
+      json_encoder: Jason,
+      metadata: :all
 
   4. Replace default Logger `:console` back-end with `LoggerJSON`:
 

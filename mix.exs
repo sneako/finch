@@ -1,7 +1,7 @@
 defmodule LoggerJSON.Mixfile do
   use Mix.Project
 
-  @version "1.0.1"
+  @version "1.1.0"
 
   def project do
     [
@@ -9,7 +9,7 @@ defmodule LoggerJSON.Mixfile do
       description: "Console Logger back-end, Plug and Ecto.LogEntry adapter that writes logs in JSON format.",
       package: package(),
       version: @version,
-      elixir: "~> 1.5",
+      elixir: "~> 1.6",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [] ++ Mix.compilers(),
       build_embedded: Mix.env() == :prod,
@@ -47,15 +47,14 @@ defmodule LoggerJSON.Mixfile do
   # Type "mix help deps" for more examples and options
   defp deps do
     [
-      {:poison, "~> 3.1", optional: true},
+      {:jason, "~> 1.0", optional: true},
+      # {:poison, "~> 3.1", optional: true},
       # {:exjsx, "~> 4.0", optional: true, override: true},
       # {:json, "~> 1.0", optional: true},
       {:ecto, "~> 2.1", optional: true},
       {:plug, "~> 1.0", optional: true},
       {:ex_doc, ">= 0.15.0", only: [:dev, :test]},
       {:excoveralls, ">= 0.5.0", only: [:dev, :test]},
-      {:dogma, ">= 0.1.12", only: [:dev, :test]},
-      {:credo, ">= 0.5.1", only: [:dev, :test]},
       {:dialyxir, "~> 0.5", only: [:dev], runtime: false}
     ]
   end
