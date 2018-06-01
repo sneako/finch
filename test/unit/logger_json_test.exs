@@ -130,23 +130,23 @@ defmodule LoggerJSONTest do
            end) == ""
   end
 
-  # This should be rewritten for custom IO handler implementation that proxies events to test pid
-  test "buffers events" do
-    Logger.configure_backend(LoggerJSON, max_buffer: 10)
-
-    fun = fn -> Logger.debug("hello") end
-
-    logs =
-      capture_log(fn ->
-        tasks = for _ <- 1..1000, do: Task.async(fun)
-        Enum.map(tasks, &Task.await/1)
-      end)
-
-    assert 1001 ==
-             logs
-             |> String.split("\n")
-             |> length()
-  end
+  # TODO: This flaky test should be rewritten for custom IO handler implementation that proxies events to test pid
+  # test "buffers events" do
+  #   Logger.configure_backend(LoggerJSON, max_buffer: 10)
+  #
+  #   fun = fn -> Logger.debug("hello") end
+  #
+  #   logs =
+  #     capture_log(fn ->
+  #       tasks = for _ <- 1..1000, do: Task.async(fun)
+  #       Enum.map(tasks, &Task.await/1)
+  #     end)
+  #
+  #   assert 1001 ==
+  #            logs
+  #            |> String.split("\n")
+  #            |> length()
+  # end
 
   # Sets metadata to :all for test purposes
   def on_init_cb(conf) do
