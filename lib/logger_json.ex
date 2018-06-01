@@ -285,9 +285,7 @@ defmodule LoggerJSON do
         apply(module, fun, [event]) <> "\n"
 
       json_encoder ->
-        event
-        |> json_encoder.encode!()
-        |> Kernel.<>("\n")
+        [json_encoder.encode_to_iodata!(event) | "\n"]
     end
   end
 
