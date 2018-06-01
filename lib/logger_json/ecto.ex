@@ -31,10 +31,9 @@ defmodule LoggerJSON.Ecto do
   end
 
   @doc """
-  Overwritten to use JSON
+  Overwritten to use JSON.
+
   Logs the given entry in the given level.
-  The logger call won't be removed at compile time as
-  custom level is given.
   """
   @spec log(entry :: Ecto.LogEntry.t(), level :: Logger.level()) :: Ecto.LogEntry.t()
   def log(entry, level) do
