@@ -104,7 +104,7 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
       ...
       loggers: [{LoggerJSON.Ecto, :log, [:info]}]
 
-  `Poison` can be replaced by any other compatible encoder, see "Encoders support" section.
+  `Jason` can be replaced by any other compatible encoder, see "Encoders support" section.
 
 ## Dynamic configuration
 
@@ -118,11 +118,12 @@ and list of arguments that is invoked when the endpoint starts.
 
 ## Encoders support
 
-You can replace default Poison encoder with other module that supports `encode!/1` function. This can be even used
+You can replace default Jason encoder with other module that supports `encode!/1` function. This can be even used
 as custom formatter callback.
 
-Popular Poison alternatives:
+Popular Jason alternatives:
 
+ * [poison](https://github.com/devinus/poison).
  * [exjsx](https://github.com/talentdeficit/exjsx).
  * [elixir-json](https://github.com/cblage/elixir-json) - native Elixir encoder implementation.
 
