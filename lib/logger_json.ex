@@ -296,22 +296,17 @@ defmodule LoggerJSON do
   end
 
   def take_metadata(metadata, keys) do
-    Enum.reduce(keys, %{}, fn key, acc ->
-      case Keyword.fetch(metadata, key) do
-        {:ok, val} ->
-          Map.merge(acc, %{key => val})
-
-        :error ->
-          acc
-      end
-    end)
+    Enum.reduce(keys, %{}, &append_metadata_key_to_acc(metadata, &1, &2))
   end
 
-  defp log_buffer(%{buffer_size: 0, buffer: []} = state), do: state
+  defp append_metadata_key_to_acc(metadata, key, acc) do
+    case Keyword.fetch(metadata, key) do
+      {:ok, val} ->
+        Map.put(acc, key, val)
 
-  defp log_buffer(state) do
-    %{device: device, buffer: buffer} = state
-    %{state | ref: async_io(device, buffer), buffer: [], buffer_size: 0, output: buffer}
+      :error ->
+        acc
+    end
   end
 
   defp handle_io_reply(:ok, %{ref: ref} = state) do
@@ -329,6 +324,13 @@ defmodule LoggerJSON do
 
   defp handle_io_reply({:error, error}, _) do
     raise "failure while logging console messages: " <> inspect(error)
+  end
+
+  defp log_buffer(%{buffer_size: 0, buffer: []} = state), do: state
+
+  defp log_buffer(state) do
+    %{device: device, buffer: buffer} = state
+    %{state | ref: async_io(device, buffer), buffer: [], buffer_size: 0, output: buffer}
   end
 
   defp retry_log(error, %{device: device, ref: ref, output: dirty} = state) do
