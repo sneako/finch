@@ -5,7 +5,7 @@ defmodule LoggerJSON.EctoTest do
 
   setup do
     on_exit(fn ->
-      :ok = Logger.configure_backend(LoggerJSON, device: :user, level: nil, metadata: [], json_encoder: Poison)
+      :ok = Logger.configure_backend(LoggerJSON, device: :user, level: nil, metadata: [], json_encoder: Jason)
     end)
 
     diff = :erlang.convert_time_unit(1, :micro_seconds, :native)
@@ -44,7 +44,7 @@ defmodule LoggerJSON.EctoTest do
           "queue_time" => 0.1
         }
       }
-    } = Poison.decode!(log)
+    } = Jason.decode!(log)
   end
 
   test "logs ecto queries with debug level", %{log_entry: entry} do
@@ -68,6 +68,6 @@ defmodule LoggerJSON.EctoTest do
           "queue_time" => 0.1
         }
       }
-    } = Poison.decode!(log)
+    } = Jason.decode!(log)
   end
 end

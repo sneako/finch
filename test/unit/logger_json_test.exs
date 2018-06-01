@@ -5,7 +5,7 @@ defmodule LoggerJSONTest do
 
   setup do
     on_exit(fn ->
-      :ok = Logger.configure_backend(LoggerJSON, device: :user, level: nil, metadata: [], json_encoder: Poison)
+      :ok = Logger.configure_backend(LoggerJSON, device: :user, level: nil, metadata: [], json_encoder: Jason)
     end)
   end
 
@@ -46,7 +46,7 @@ defmodule LoggerJSONTest do
       log =
         fn -> Logger.debug("hello") end
         |> capture_log()
-        |> Poison.decode!()
+        |> Jason.decode!()
 
       assert %{"jsonPayload" => %{"metadata" => %{"user_id" => 13}}} = log
     end
@@ -60,7 +60,7 @@ defmodule LoggerJSONTest do
       log =
         fn -> Logger.debug("hello") end
         |> capture_log()
-        |> Poison.decode!()
+        |> Jason.decode!()
 
       assert %{"jsonPayload" => %{"metadata" => %{"user_id" => 11}}} = log
       assert %{"jsonPayload" => %{"metadata" => %{"dynamic_metadata" => 5}}} = log
@@ -72,7 +72,7 @@ defmodule LoggerJSONTest do
       %{"jsonPayload" => %{"metadata" => meta}} =
         fn -> Logger.debug("hello") end
         |> capture_log()
-        |> Poison.decode!()
+        |> Jason.decode!()
 
       assert %{} == meta
     end
@@ -96,7 +96,7 @@ defmodule LoggerJSONTest do
       log =
         fn -> Logger.debug("hello") end
         |> capture_log()
-        |> Poison.decode!()
+        |> Jason.decode!()
 
       assert %{"jsonPayload" => %{"metadata" => %{"user_id" => 11}}} = log
     end
@@ -108,7 +108,7 @@ defmodule LoggerJSONTest do
     log =
       fn -> Logger.debug("hello") end
       |> capture_log()
-      |> Poison.decode!()
+      |> Jason.decode!()
 
     line = line + 3
     function = "Elixir.#{inspect(mod)}.#{name}/#{arity}"

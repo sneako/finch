@@ -17,7 +17,7 @@ defmodule LoggerJSON.PlugTest do
 
   setup do
     on_exit(fn ->
-      :ok = Logger.configure_backend(LoggerJSON, device: :user, level: nil, metadata: [], json_encoder: Poison)
+      :ok = Logger.configure_backend(LoggerJSON, device: :user, level: nil, metadata: [], json_encoder: Jason)
     end)
 
     Logger.configure_backend(LoggerJSON, device: :standard_error, metadata: :all)
@@ -48,7 +48,7 @@ defmodule LoggerJSON.PlugTest do
                  "system" => %{"hostname" => _, "pid" => _}
                }
              }
-           } = Poison.decode!(log)
+           } = Jason.decode!(log)
 
     conn = %{conn(:get, "/hello/world") | private: %{phoenix_controller: MyController, phoenix_action: :foo}}
 
@@ -76,7 +76,7 @@ defmodule LoggerJSON.PlugTest do
                  "system" => %{"hostname" => _, "pid" => _}
                }
              }
-           } = Poison.decode!(log)
+           } = Jason.decode!(log)
   end
 
   test "logs message with values from headers" do
@@ -114,7 +114,7 @@ defmodule LoggerJSON.PlugTest do
                  "system" => %{"hostname" => _, "pid" => _}
                }
              }
-           } = Poison.decode!(log)
+           } = Jason.decode!(log)
   end
 
   defp call(conn) do
