@@ -16,7 +16,5 @@ script:
   - "mix test --exclude pending --trace"
   # Submit code coverage report to Coveralls
   - "mix coveralls.travis"
-  # Run static code analysis
-  - "mix credo"
-  # Check code style
-  - "mix dogma"
+  # Ensure code is formatter
+  - "mix format --check-formatted --dry-run"
