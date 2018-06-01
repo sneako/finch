@@ -123,11 +123,10 @@ as custom formatter callback.
 
 Popular Jason alternatives:
 
- * [poison](https://github.com/devinus/poison).
- * [exjsx](https://github.com/talentdeficit/exjsx).
- * [elixir-json](https://github.com/cblage/elixir-json) - native Elixir encoder implementation.
-
-If your application is performance-critical, take look at [jiffy](https://github.com/davisp/jiffy).
+ * [poison](https://github.com/devinus/poison);
+ * [exjsx](https://github.com/talentdeficit/exjsx);
+ * [elixir-json](https://github.com/cblage/elixir-json);
+ * [jiffy](https://github.com/davisp/jiffy).
 
 ## Documentation
 
