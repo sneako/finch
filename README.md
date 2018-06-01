@@ -84,6 +84,10 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
       json_encoder: Jason,
       metadata: :all
 
+  Some integrations (for eg. Plug) uses `metadata` to log request
+  and response parameters. You can reduce log size by replacing `:all`
+  (which means log all) with a list of the ones that you actually need.
+
   4. Replace default Logger `:console` back-end with `LoggerJSON`:
 
     config :logger,
