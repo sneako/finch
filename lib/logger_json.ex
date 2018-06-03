@@ -59,22 +59,6 @@ defmodule LoggerJSON do
   """
   @behaviour :gen_event
 
-  # Logger application is started two times:
-  # 1. Before loading application. Configuration will be empty.
-  # 2. After main application is loaded. Logger will be reinitialized with application configuration.
-  # Thus we need to detect JSON encoder to make sure that errors before application start are still logged.
-  default_encoder =
-    cond do
-      Code.ensure_loaded?(Jason) -> Jason
-      Code.ensure_loaded?(Poison) -> Poison
-      Code.ensure_loaded?(JSX) -> JSX
-      Code.ensure_loaded?(JSON) -> JSON
-      Code.ensure_loaded?(:jiffy) -> {:jiffy, :encode}
-      true -> nil
-    end
-
-  @default_encoder default_encoder
-
   @ignored_metadata_keys ~w[ansi_color initial_call crash_reason]a
 
   defstruct metadata: nil,
@@ -218,7 +202,7 @@ defmodule LoggerJSON do
           config
       end
 
-    json_encoder = Keyword.get(config, :json_encoder, @default_encoder)
+    json_encoder = Keyword.get(config, :json_encoder, Jason)
     formatter = Keyword.get(config, :formatter, LoggerJSON.Formatters.GoogleCloudLogger)
     level = Keyword.get(config, :level)
     device = Keyword.get(config, :device, :user)

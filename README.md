@@ -97,8 +97,7 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
   1. Add `:logger_json` and `:jason` to your list of dependencies in `mix.exs`:
 
     def deps do
-      [{:jason, "~> 1.0"},
-       {:logger_json, "~> 1.0.1"}]
+      [{:logger_json, "~> 1.0.1"}]
     end
 
   2. Ensure `logger_json` and `:jason` is started before your application:
@@ -110,7 +109,6 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
   3. Set configuration in your `config/config.exs`:
 
     config :logger_json, :backend,
-      json_encoder: Jason,
       metadata: :all
 
   Some integrations (for eg. Plug) uses `metadata` to log request
@@ -133,8 +131,6 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
       ...
       loggers: [{LoggerJSON.Ecto, :log, [:info]}]
 
-  `Jason` can be replaced by any other compatible encoder, see "Encoders support" section.
-
 ## Dynamic configuration
 
 For dynamically configuring the endpoint, such as loading data
@@ -147,15 +143,8 @@ and list of arguments that is invoked when the endpoint starts.
 
 ## Encoders support
 
-You can replace default Jason encoder with other module that supports `encode!/1` function. This can be even used
-as custom formatter callback.
+You can replace default Jason encoder with other module that supports `encode_to_iodata!/1` function.
 
-Popular Jason alternatives:
-
- * [poison](https://github.com/devinus/poison);
- * [exjsx](https://github.com/talentdeficit/exjsx);
- * [elixir-json](https://github.com/cblage/elixir-json);
- * [jiffy](https://github.com/davisp/jiffy).
 
 ## Documentation
 

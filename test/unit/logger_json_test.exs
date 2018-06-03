@@ -33,6 +33,50 @@ defmodule LoggerJSONTest do
     end
   end
 
+  test "logs empty binary messages" do
+    Logger.configure_backend(LoggerJSON, metadata: :all)
+
+    log =
+      fn -> Logger.debug("") end
+      |> capture_log()
+      |> Jason.decode!()
+
+    assert %{"log" => ""} = log
+  end
+
+  test "logs binary messages" do
+    Logger.configure_backend(LoggerJSON, metadata: :all)
+
+    log =
+      fn -> Logger.debug("hello") end
+      |> capture_log()
+      |> Jason.decode!()
+
+    assert %{"log" => "hello"} = log
+  end
+
+  test "logs empty iodata messages" do
+    Logger.configure_backend(LoggerJSON, metadata: :all)
+
+    log =
+      fn -> Logger.debug([]) end
+      |> capture_log()
+      |> Jason.decode!()
+
+    assert %{"log" => ""} = log
+  end
+
+  test "logs iodata messages" do
+    Logger.configure_backend(LoggerJSON, metadata: :all)
+
+    log =
+      fn -> Logger.debug([?h, ?e, ?l, ?l, ?o]) end
+      |> capture_log()
+      |> Jason.decode!()
+
+    assert %{"log" => "hello"} = log
+  end
+
   test "does not start when there is no user" do
     :ok = Logger.remove_backend(LoggerJSON)
     user = Process.whereis(:user)
