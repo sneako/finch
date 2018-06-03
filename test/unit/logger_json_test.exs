@@ -77,6 +77,24 @@ defmodule LoggerJSONTest do
     assert %{"log" => "hello"} = log
   end
 
+  test "log message does not break escaping" do
+    Logger.configure_backend(LoggerJSON, metadata: :all)
+
+    log =
+      fn -> Logger.debug([?", ?h]) end
+      |> capture_log()
+      |> Jason.decode!()
+
+    assert %{"log" => "\"h"} = log
+
+    log =
+      fn -> Logger.debug("\"h") end
+      |> capture_log()
+      |> Jason.decode!()
+
+    assert %{"log" => "\"h"} = log
+  end
+
   test "does not start when there is no user" do
     :ok = Logger.remove_backend(LoggerJSON)
     user = Process.whereis(:user)

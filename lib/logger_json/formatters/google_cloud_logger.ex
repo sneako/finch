@@ -2,6 +2,8 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
   @moduledoc """
   Google Cloud Logger formatter.
   """
+  import Jason.Helpers, only: [json_map: 1]
+
   @behaviour LoggerJSON.Formatter
 
   @processed_metadata_keys ~w[pid file line function module application]a
@@ -53,18 +55,18 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
 
   defp format_application(md) do
     if application = Keyword.get(md, :application) do
-      application_version = IO.iodata_to_binary(Application.spec(application, :vsn))
+      application_version = Jason.Fragment.new([?", Application.spec(application, :vsn), ?"])
 
-      %{
+      json_map(
         name: application,
         version: application_version
-      }
+      )
     end
   end
 
   defp format_operation(md) do
     if request_id = Keyword.get(md, :request_id) do
-      %{id: request_id}
+      json_map(id: request_id)
     end
   end
 
@@ -72,10 +74,10 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
     if crash_reason = Keyword.get(md, :crash_reason) do
       initial_call = Keyword.get(md, :initial_call)
 
-      %{
+      json_map(
         initial_call: format_initial_call(initial_call),
         reason: format_crash_reason(crash_reason)
-      }
+      )
     end
   end
 
@@ -110,11 +112,11 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
     function = Keyword.get(metadata, :function)
     module = Keyword.get(metadata, :module)
 
-    %{
+    json_map(
       file: file,
       line: line,
       function: format_function(module, function)
-    }
+    )
   end
 
   defp format_function(nil, function), do: function
