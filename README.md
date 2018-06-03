@@ -143,8 +143,8 @@ and list of arguments that is invoked when the endpoint starts.
 
 ## Encoders support
 
-You can replace default Jason encoder with other module that supports `encode_to_iodata!/1` function.
-
+You can replace default Jason encoder with other module that supports `encode_to_iodata!/1` function and
+enconding fragments.
 
 ## Documentation
 
