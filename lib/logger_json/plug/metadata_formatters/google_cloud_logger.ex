@@ -5,7 +5,7 @@ defmodule LoggerJSON.Plug.MetadataFormatters.GoogleCloudLogger do
     * `httpRequest` - see [LogEntry#HttpRequest](https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#HttpRequest);
     * `client.api_version` - version of API that was requested by a client;
     * `phoenix.controller` - Phoenix controller that processed the request;
-    * `phoenix.action` - Phoenix action that processed the request;`
+    * `phoenix.action` - Phoenix action that processed the request;
     * `node.hostname` - node hostname;
     * `node.pid` - Erlang VM process identifier.
   """
