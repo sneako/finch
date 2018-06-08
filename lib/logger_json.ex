@@ -91,6 +91,37 @@ defmodule LoggerJSON do
             on_init: nil,
             formatter: nil
 
+  @doc """
+  Configures Logger log level at runtime by using value from environment variable.
+
+  By default, 'LOG_LEVEL' environment variable is used.
+  """
+  def configure_log_level_from_env!(env_name \\ "LOG_LEVEL") do
+    env_name
+    |> System.get_env()
+    |> configure_log_level!()
+  end
+
+  @doc """
+  Changes Logger log level at runtime.
+
+  Notice that settings this valie below `compile_time_purge_level` would not work,
+  because Logger calls would be already stripped at compile-time.
+  """
+  def configure_log_level!(nil),
+    do: :ok
+
+  def configure_log_level!(level) when level in ["debug", "info", "warn", "error"],
+    do: Logger.configure(level: String.to_atom(level))
+
+  def configure_log_level!(level) when is_atom(level),
+    do: Logger.configure(level: level)
+
+  def configure_log_level!(level) do
+    raise ArgumentError,
+          "LOG_LEVEL environment should have one of 'debug', 'info', 'warn', 'error' values, got: #{inspect(level)}"
+  end
+
   def init(__MODULE__) do
     config = get_env()
     device = Keyword.get(config, :device, :user)

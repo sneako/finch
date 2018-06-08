@@ -9,6 +9,30 @@ defmodule LoggerJSONTest do
     end)
   end
 
+  describe "configure_log_level!/1" do
+    test "tolerates nil values" do
+      assert :ok == LoggerJSON.configure_log_level!(nil)
+    end
+
+    test "raises on invalid LOG_LEVEL" do
+      assert_raise ArgumentError, fn ->
+        LoggerJSON.configure_log_level!("super_critical")
+      end
+
+      assert_raise ArgumentError, fn ->
+        LoggerJSON.configure_log_level!(1_337)
+      end
+    end
+
+    test "configures log level with valid string value" do
+      :ok = LoggerJSON.configure_log_level!("debug")
+    end
+
+    test "configures log level with valid atom value" do
+      :ok = LoggerJSON.configure_log_level!(:debug)
+    end
+  end
+
   test "does not start when there is no user" do
     :ok = Logger.remove_backend(LoggerJSON)
     user = Process.whereis(:user)
