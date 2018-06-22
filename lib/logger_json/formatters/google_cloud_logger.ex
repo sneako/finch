@@ -16,28 +16,24 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
         message: IO.iodata_to_binary(msg),
         metadata: format_metadata(md, md_keys)
       },
-      resource: format_resource(md),
+      labels: format_labels(md),
       sourceLocation: format_source_location(md)
     }
   end
 
-  defp format_resource(md) do
-    application = Keyword.get(md, :application)
-
-    if application do
+  defp format_labels(md) do
+    if application = Keyword.get(md, :application) do
       %{
         type: "elixir-application",
-        labels: %{
-          service: application,
-          version: IO.iodata_to_binary(Application.spec(application, :vsn))
-        }
+        application_name: application,
+        application_version: IO.iodata_to_binary(Application.spec(application, :vsn))
       }
     end
   end
 
   defp format_metadata(md, md_keys) do
     md
-    |> Keyword.drop([:pid, :file, :line, :function, :module, :ansi_color])
+    |> Keyword.drop([:pid, :file, :line, :function, :module, :ansi_color, :application])
     |> LoggerJSON.take_metadata(md_keys)
   end
 
@@ -53,7 +49,7 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
   # https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#LogEntrySourceLocation
   defp format_source_location(metadata) do
     file = Keyword.get(metadata, :file)
-    line = Keyword.get(metadata, :line)
+    line = Keyword.get(metadata, :line, 0)
     function = Keyword.get(metadata, :function)
     module = Keyword.get(metadata, :module)
 
