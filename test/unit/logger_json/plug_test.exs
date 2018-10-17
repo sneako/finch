@@ -34,7 +34,6 @@ defmodule LoggerJSON.PlugTest do
              "jsonPayload" => %{
                "message" => "",
                "metadata" => %{
-                 "application" => "logger_json",
                  "client" => %{"ip" => "127.0.0.1", "user_agent" => nil, "version" => nil},
                  "connection" => %{
                    "method" => "GET",
@@ -47,6 +46,9 @@ defmodule LoggerJSON.PlugTest do
                  "runtime" => %{},
                  "system" => %{"hostname" => _, "pid" => _}
                }
+             },
+             "labels" => %{
+               "application_name" => "logger_json"
              }
            } = Jason.decode!(log)
 
@@ -62,7 +64,6 @@ defmodule LoggerJSON.PlugTest do
              "jsonPayload" => %{
                "message" => "",
                "metadata" => %{
-                 "application" => "logger_json",
                  "client" => %{"ip" => "127.0.0.1", "user_agent" => nil, "version" => nil},
                  "connection" => %{
                    "method" => "GET",
@@ -75,6 +76,9 @@ defmodule LoggerJSON.PlugTest do
                  "runtime" => %{"controller" => "Elixir.MyController", "action" => "foo"},
                  "system" => %{"hostname" => _, "pid" => _}
                }
+             },
+             "labels" => %{
+               "application_name" => "logger_json"
              }
            } = Jason.decode!(log)
   end
@@ -100,7 +104,6 @@ defmodule LoggerJSON.PlugTest do
              "jsonPayload" => %{
                "message" => "",
                "metadata" => %{
-                 "application" => "logger_json",
                  "client" => %{"ip" => "127.0.0.10", "user_agent" => "chrome", "version" => "2017-01-01"},
                  "connection" => %{
                    "method" => "GET",
@@ -113,6 +116,9 @@ defmodule LoggerJSON.PlugTest do
                  "runtime" => %{},
                  "system" => %{"hostname" => _, "pid" => _}
                }
+             },
+             "labels" => %{
+               "application_name" => "logger_json"
              }
            } = Jason.decode!(log)
   end

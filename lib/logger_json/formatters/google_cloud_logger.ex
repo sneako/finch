@@ -33,8 +33,24 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
 
   defp format_metadata(md, md_keys) do
     md
-    |> Keyword.drop([:pid, :file, :line, :function, :module, :ansi_color, :application])
+    |> Keyword.drop([:pid, :file, :line, :function, :module, :ansi_color, :application, :crash_reason, :initial_call])
     |> LoggerJSON.take_metadata(md_keys)
+    |> maybe_put_initial_call(md[:initial_call])
+    |> maybe_put_crash_reason(md[:crash_reason])
+  end
+
+  defp maybe_put_initial_call(md, nil), do: md
+
+  defp maybe_put_initial_call(md, {module, fun, arity}) do
+    Map.put(md, :initial_call, "#{module}.#{fun}/#{arity}")
+  end
+
+  defp maybe_put_crash_reason(md, nil), do: md
+
+  defp maybe_put_crash_reason(md, {reason, stacktrace}) do
+    md
+    |> Map.put(:crash_reason, inspect(reason))
+    |> Map.put(:crash_reason_stacktrace, inspect(stacktrace))
   end
 
   # RFC3339 UTC "Zulu" format

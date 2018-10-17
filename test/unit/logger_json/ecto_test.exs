@@ -36,13 +36,14 @@ defmodule LoggerJSON.EctoTest do
       "jsonPayload" => %{
         "message" => "done",
         "metadata" => %{
-          "application" => "logger_json",
-          "connection_pid" => nil,
           "decode_time" => 0.5,
           "duration" => 2.7,
           "query_time" => 2.1,
           "queue_time" => 0.1
         }
+      },
+      "labels" => %{
+        "application_name" => "logger_json"
       }
     } = Jason.decode!(log)
   end
@@ -60,13 +61,14 @@ defmodule LoggerJSON.EctoTest do
       "jsonPayload" => %{
         "message" => "done",
         "metadata" => %{
-          "application" => "logger_json",
-          "connection_pid" => nil,
           "decode_time" => 0.5,
           "duration" => 2.7,
           "query_time" => 2.1,
           "queue_time" => 0.1
         }
+      },
+      "labels" => %{
+        "application_name" => "logger_json"
       }
     } = Jason.decode!(log)
   end
