@@ -4,6 +4,8 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
   """
   @behaviour LoggerJSON.Formatter
 
+  @processed_metadata_keys ~w[pid file line function module application]a
+
   @doc """
   Builds a map that corresponds to Google Cloud Logger
   [`LogEntry`](https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry) format.
@@ -23,18 +25,19 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
 
   defp format_labels(md) do
     if application = Keyword.get(md, :application) do
+      application_version = IO.iodata_to_binary(Application.spec(application, :vsn))
+
       %{
         type: "elixir-application",
         application_name: application,
-        application_version: IO.iodata_to_binary(Application.spec(application, :vsn))
+        application_version: application_version
       }
     end
   end
 
   defp format_metadata(md, md_keys) do
     md
-    |> Keyword.drop([:pid, :file, :line, :function, :module, :ansi_color, :application, :crash_reason, :initial_call])
-    |> LoggerJSON.take_metadata(md_keys)
+    |> LoggerJSON.take_metadata(md_keys, @processed_metadata_keys)
     |> maybe_put_initial_call(md[:initial_call])
     |> maybe_put_crash_reason(md[:crash_reason])
   end

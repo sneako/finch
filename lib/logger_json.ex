@@ -79,6 +79,8 @@ defmodule LoggerJSON do
 
   @default_encoder default_encoder
 
+  @ignored_metadata_keys ~w[ansi_color initial_call crash_reason]
+
   defstruct metadata: nil,
             level: nil,
             device: nil,
@@ -318,13 +320,17 @@ defmodule LoggerJSON do
     end
   end
 
-  def take_metadata(metadata, :all) do
+  # Drops keys that can not or should not be encoded to JSON
+  def take_metadata(metadata, keys_or_all, ignored_keys \\ [])
+
+  def take_metadata(metadata, :all, ignored_keys) do
     metadata
-    |> Keyword.drop([:pid, :file, :line, :function, :module, :crash_reason, :initial_call])
+    |> Keyword.drop(ignored_keys ++ @ignored_metadata_keys)
     |> Enum.into(%{})
   end
 
-  def take_metadata(metadata, keys) do
+  def take_metadata(metadata, keys, ignored_keys) do
+    metadata = Keyword.drop(metadata, ignored_keys ++ @ignored_metadata_keys)
     Enum.reduce(keys, %{}, &append_metadata_key_to_acc(metadata, &1, &2))
   end
 
