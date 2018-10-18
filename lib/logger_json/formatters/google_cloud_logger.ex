@@ -6,17 +6,34 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
 
   @processed_metadata_keys ~w[pid file line function module application]a
 
+  # Severity levels can be found in Google Cloud Logger docs:
+  # https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#LogSeverity
+  @severity_levels [{:debug, "DEBUG"}, {:info, "INFO"}, {:warn, "WARNING"}, {:error, "ERROR"}]
+
   @doc """
   Builds structured paylpad which is mapped to Google Cloud Logger
   [`LogEntry`](https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry) format.
 
   See: https://cloud.google.com/logging/docs/agent/configuration#special_fields_in_structured_payloads
   """
-  def format_event(level, msg, ts, md, md_keys) do
+  for {level, gcp_level} <- @severity_levels do
+    def format_event(unquote(level), msg, ts, md, md_keys) do
+      Map.merge(
+        %{
+          time: format_timestamp(ts),
+          severity: unquote(gcp_level),
+          log: IO.iodata_to_binary(msg)
+        },
+        format_metadata(md, md_keys)
+      )
+    end
+  end
+
+  def format_event(_level, msg, ts, md, md_keys) do
     Map.merge(
       %{
         time: format_timestamp(ts),
-        severity: format_severity(level),
+        severity: "DEFAULT",
         log: IO.iodata_to_binary(msg)
       },
       format_metadata(md, md_keys)
@@ -103,14 +120,6 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
   defp format_function(nil, function), do: function
   defp format_function(module, function), do: "#{module}.#{function}"
   defp format_function(module, function, arity), do: "#{module}.#{function}/#{arity}"
-
-  # Severity levels can be found in Google Cloud Logger docs:
-  # https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#LogSeverity
-  defp format_severity(:debug), do: "DEBUG"
-  defp format_severity(:info), do: "INFO"
-  defp format_severity(:warn), do: "WARNING"
-  defp format_severity(:error), do: "ERROR"
-  defp format_severity(nil), do: "DEFAULT"
 
   defp format_time({hh, mi, ss, ms}) do
     [pad2(hh), ?:, pad2(mi), ?:, pad2(ss), ?., pad3(ms)]

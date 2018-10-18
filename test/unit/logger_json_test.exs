@@ -154,6 +154,22 @@ defmodule LoggerJSONTest do
            end) == ""
   end
 
+  test "logs severity" do
+    log =
+      fn -> Logger.debug("hello") end
+      |> capture_log()
+      |> Jason.decode!()
+
+    assert %{"severity" => "DEBUG"} = log
+
+    log =
+      fn -> Logger.warn("hello") end
+      |> capture_log()
+      |> Jason.decode!()
+
+    assert %{"severity" => "WARNING"} = log
+  end
+
   test "logs crash reason when present" do
     Logger.configure_backend(LoggerJSON, metadata: [:crash_reason])
     Logger.metadata(crash_reason: {%RuntimeError{message: "oops"}, []})
