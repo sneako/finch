@@ -59,11 +59,7 @@ defmodule LoggerJSON.Plug.MetadataFormatters.GoogleCloudLogger do
   end
 
   defp node_metadata do
-    hostname =
-      case :inet.gethostname() do
-        {:ok, hostname} -> to_string(hostname)
-        _else -> nil
-      end
+    {:ok, hostname} = :inet.gethostname()
 
     vm_pid =
       case Integer.parse(System.get_pid()) do
@@ -71,6 +67,6 @@ defmodule LoggerJSON.Plug.MetadataFormatters.GoogleCloudLogger do
         _ -> nil
       end
 
-    [node: %{hostname: hostname, vm_pid: vm_pid}]
+    [node: %{hostname: to_string(hostname), vm_pid: vm_pid}]
   end
 end

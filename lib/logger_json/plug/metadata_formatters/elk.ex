@@ -54,11 +54,7 @@ defmodule LoggerJSON.Plug.MetadataFormatters.ELK do
   end
 
   defp node_metadata do
-    hostname =
-      case :inet.gethostname() do
-        {:ok, hostname} -> to_string(hostname)
-        _else -> nil
-      end
+    {:ok, hostname} = :inet.gethostname()
 
     vm_pid =
       case Integer.parse(System.get_pid()) do
@@ -66,6 +62,6 @@ defmodule LoggerJSON.Plug.MetadataFormatters.ELK do
         _ -> nil
       end
 
-    %{hostname: hostname, vm_pid: vm_pid}
+    %{hostname: to_string(hostname), vm_pid: vm_pid}
   end
 end
