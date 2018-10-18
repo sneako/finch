@@ -3,11 +3,15 @@ cache:
   directories:
   - deps
 elixir:
-  - 1.6.4
   - 1.7.3
 otp_release:
-  - 20.0
-  - 21.0
+  - 21.1
+matrix:
+  include:
+    - otp_release: 20.2
+      elixir: 1.6.4
+    - otp_release: 21.1
+      elixir: 1.7.3
 env:
   global:
     - MIX_ENV=test
