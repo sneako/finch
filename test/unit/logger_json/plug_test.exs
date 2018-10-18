@@ -23,7 +23,9 @@ defmodule LoggerJSON.PlugTest do
     Logger.configure_backend(LoggerJSON, device: :standard_error, metadata: :all)
   end
 
-  test "logs proper message" do
+  test "logs request information" do
+    Logger.metadata(request_id: "request_id")
+
     log =
       capture_io(:standard_error, fn ->
         call(conn(:get, "/"))
@@ -31,25 +33,18 @@ defmodule LoggerJSON.PlugTest do
       end)
 
     assert %{
-             "jsonPayload" => %{
-               "message" => "",
-               "metadata" => %{
-                 "client" => %{"ip" => "127.0.0.1", "user_agent" => nil, "version" => nil},
-                 "connection" => %{
-                   "method" => "GET",
-                   "request_id" => nil,
-                   "request_path" => "/",
-                   "status" => 200,
-                   "type" => "sent"
-                 },
-                 "latency" => _,
-                 "runtime" => %{},
-                 "system" => %{"hostname" => _, "pid" => _}
-               }
+             "log" => "",
+             "httpRequest" => %{
+               "latency" => "0s",
+               "referer" => nil,
+               "remoteIp" => "127.0.0.1",
+               "requestMethod" => "GET",
+               "requestUrl" => "http://www.example.com/",
+               "status" => 200,
+               "userAgent" => nil
              },
-             "labels" => %{
-               "application_name" => "logger_json"
-             }
+             "logging.googleapis.com/operation" => %{"id" => "request_id"},
+             "severity" => "INFO"
            } = Jason.decode!(log)
 
     conn = %{conn(:get, "/hello/world") | private: %{phoenix_controller: MyController, phoenix_action: :foo}}
@@ -61,29 +56,17 @@ defmodule LoggerJSON.PlugTest do
       end)
 
     assert %{
-             "jsonPayload" => %{
-               "message" => "",
-               "metadata" => %{
-                 "client" => %{"ip" => "127.0.0.1", "user_agent" => nil, "version" => nil},
-                 "connection" => %{
-                   "method" => "GET",
-                   "request_id" => nil,
-                   "request_path" => "/hello/world",
-                   "status" => 200,
-                   "type" => "sent"
-                 },
-                 "latency" => _,
-                 "runtime" => %{"controller" => "Elixir.MyController", "action" => "foo"},
-                 "system" => %{"hostname" => _, "pid" => _}
-               }
+             "httpRequest" => %{
+               "requestUrl" => "http://www.example.com/hello/world"
              },
-             "labels" => %{
-               "application_name" => "logger_json"
+             "phoenix" => %{
+               "action" => "foo",
+               "controller" => "Elixir.MyController"
              }
            } = Jason.decode!(log)
   end
 
-  test "logs message with values from headers" do
+  test "takes values from request headers" do
     request_id = Ecto.UUID.generate()
 
     conn =
@@ -91,6 +74,7 @@ defmodule LoggerJSON.PlugTest do
       |> conn("/")
       |> Plug.Conn.put_resp_header("x-request-id", request_id)
       |> Plug.Conn.put_req_header("user-agent", "chrome")
+      |> Plug.Conn.put_req_header("referer", "http://google.com")
       |> Plug.Conn.put_req_header("x-forwarded-for", "127.0.0.10")
       |> Plug.Conn.put_req_header("x-api-version", "2017-01-01")
 
@@ -101,24 +85,10 @@ defmodule LoggerJSON.PlugTest do
       end)
 
     assert %{
-             "jsonPayload" => %{
-               "message" => "",
-               "metadata" => %{
-                 "client" => %{"ip" => "127.0.0.10", "user_agent" => "chrome", "version" => "2017-01-01"},
-                 "connection" => %{
-                   "method" => "GET",
-                   "request_id" => ^request_id,
-                   "request_path" => "/",
-                   "status" => 200,
-                   "type" => "sent"
-                 },
-                 "latency" => _,
-                 "runtime" => %{},
-                 "system" => %{"hostname" => _, "pid" => _}
-               }
-             },
-             "labels" => %{
-               "application_name" => "logger_json"
+             "httpRequest" => %{
+               "referer" => "http://google.com",
+               "remoteIp" => "127.0.0.10",
+               "userAgent" => "chrome"
              }
            } = Jason.decode!(log)
   end
