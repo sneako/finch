@@ -1,14 +1,13 @@
 defmodule LoggerJSON.Ecto do
   @moduledoc """
-  Implements the behaviour of `Ecto.LogEntry` and sends query as string
+  Implements the behaviour of `Ecto.LogEntry` and sends query as a string
   to Logger with additional metadata:
 
-    * result - the query result as an `:ok` or `:error` tuple;
-    * query_time - the time spent executing the query in microseconds;
-    * decode_time - the time spent decoding the result in microseconds (it may be nil);
-    * queue_time - the time spent to check the connection out in microseconds (it may be nil);
+    * query.execution_time_ms - the time spent executing the query in microseconds;
+    * query.decode_time_ms - the time spent decoding the result in microseconds (it may be 0);
+    * query.queue_time_ms - the time spent to check the connection out in microseconds (it may be 0);
+    * query.duration_ms - time the query taken (sum of `query_time`, `decode_time` and `queue_time`);
     * connection_pid - the connection process that executed the query;
-    * caller_pid - the application process that executed the query;
     * ansi_color - the color that should be used when logging the entry.
 
   For more information see [LogEntry](https://github.com/elixir-ecto/ecto/blob/master/lib/ecto/log_entry.ex)
@@ -61,10 +60,12 @@ defmodule LoggerJSON.Ecto do
     queue_time = format_time(queue_time)
 
     metadata = [
-      query_time: query_time,
-      decode_time: decode_time,
-      queue_time: queue_time,
-      duration: Float.round(query_time + decode_time + queue_time, 3),
+      query: %{
+        execution_time_ms: query_time,
+        decode_time_ms: decode_time,
+        queue_time_ms: queue_time,
+        latency_ms: query_time + decode_time + queue_time
+      },
       connection_pid: connection_pid,
       ansi_color: ansi_color
     ]
@@ -72,6 +73,6 @@ defmodule LoggerJSON.Ecto do
     {query, metadata}
   end
 
-  defp format_time(nil), do: 0.0
-  defp format_time(time), do: div(System.convert_time_unit(time, :native, :micro_seconds), 100) / 10
+  defp format_time(nil), do: 0
+  defp format_time(time), do: System.convert_time_unit(time, :native, :microsecond)
 end

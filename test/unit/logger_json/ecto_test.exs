@@ -8,7 +8,7 @@ defmodule LoggerJSON.EctoTest do
       :ok = Logger.configure_backend(LoggerJSON, device: :user, level: nil, metadata: [], json_encoder: Jason)
     end)
 
-    diff = :erlang.convert_time_unit(1, :micro_seconds, :native)
+    diff = :erlang.convert_time_unit(1, :microsecond, :native)
 
     entry = %Ecto.LogEntry{
       query: fn -> "done" end,
@@ -32,20 +32,15 @@ defmodule LoggerJSON.EctoTest do
         Logger.flush()
       end)
 
-    %{
-      "jsonPayload" => %{
-        "message" => "done",
-        "metadata" => %{
-          "decode_time" => 0.5,
-          "duration" => 2.7,
-          "query_time" => 2.1,
-          "queue_time" => 0.1
-        }
-      },
-      "labels" => %{
-        "application_name" => "logger_json"
-      }
-    } = Jason.decode!(log)
+    assert %{
+             "log" => "done",
+             "query" => %{
+               "decode_time_ms" => 500,
+               "latency_ms" => 2700,
+               "execution_time_ms" => 2100,
+               "queue_time_ms" => 100
+             }
+           } = Jason.decode!(log)
   end
 
   test "logs ecto queries with debug level", %{log_entry: entry} do
@@ -57,19 +52,14 @@ defmodule LoggerJSON.EctoTest do
         Logger.flush()
       end)
 
-    %{
-      "jsonPayload" => %{
-        "message" => "done",
-        "metadata" => %{
-          "decode_time" => 0.5,
-          "duration" => 2.7,
-          "query_time" => 2.1,
-          "queue_time" => 0.1
-        }
-      },
-      "labels" => %{
-        "application_name" => "logger_json"
-      }
-    } = Jason.decode!(log)
+    assert %{
+             "log" => "done",
+             "query" => %{
+               "decode_time_ms" => 500,
+               "latency_ms" => 2700,
+               "execution_time_ms" => 2100,
+               "queue_time_ms" => 100
+             }
+           } = Jason.decode!(log)
   end
 end
