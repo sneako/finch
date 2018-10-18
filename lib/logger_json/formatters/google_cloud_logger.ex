@@ -7,53 +7,74 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
   @processed_metadata_keys ~w[pid file line function module application]a
 
   @doc """
-  Builds a map that corresponds to Google Cloud Logger
+  Builds structured paylpad which is mapped to Google Cloud Logger
   [`LogEntry`](https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry) format.
+
+  See: https://cloud.google.com/logging/docs/agent/configuration#special_fields_in_structured_payloads
   """
   def format_event(level, msg, ts, md, md_keys) do
-    %{
-      timestamp: format_timestamp(ts),
-      severity: format_severity(level),
-      jsonPayload: %{
-        message: IO.iodata_to_binary(msg),
-        metadata: format_metadata(md, md_keys)
+    Map.merge(
+      %{
+        time: format_timestamp(ts),
+        severity: format_severity(level),
+        log: IO.iodata_to_binary(msg)
       },
-      labels: format_labels(md),
-      sourceLocation: format_source_location(md)
-    }
+      format_metadata(md, md_keys)
+    )
   end
 
-  defp format_labels(md) do
+  defp format_metadata(md, md_keys) do
+    LoggerJSON.take_metadata(md, md_keys, @processed_metadata_keys)
+    |> maybe_put(:application, format_application(md))
+    |> maybe_put(:error, format_process_crash(md))
+    |> maybe_put(:"logging.googleapis.com/sourceLocation", format_source_location(md))
+    |> maybe_put(:"logging.googleapis.com/operation", format_operation(md))
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp format_application(md) do
     if application = Keyword.get(md, :application) do
       application_version = IO.iodata_to_binary(Application.spec(application, :vsn))
 
       %{
-        type: "elixir-application",
-        application_name: application,
-        application_version: application_version
+        name: application,
+        version: application_version
       }
     end
   end
 
-  defp format_metadata(md, md_keys) do
-    md
-    |> LoggerJSON.take_metadata(md_keys, @processed_metadata_keys)
-    |> maybe_put_initial_call(md[:initial_call])
-    |> maybe_put_crash_reason(md[:crash_reason])
+  defp format_operation(md) do
+    if request_id = Keyword.get(md, :request_id) do
+      %{id: request_id}
+    end
   end
 
-  defp maybe_put_initial_call(md, nil), do: md
+  defp format_process_crash(md) do
+    if crash_reason = Keyword.get(md, :crash_reason) do
+      initial_call = Keyword.get(md, :initial_call)
 
-  defp maybe_put_initial_call(md, {module, fun, arity}) do
-    Map.put(md, :initial_call, "#{module}.#{fun}/#{arity}")
+      %{
+        initial_call: format_initial_call(initial_call),
+        reason: format_crash_reason(crash_reason)
+      }
+    end
   end
 
-  defp maybe_put_crash_reason(md, nil), do: md
+  defp format_initial_call(nil), do: nil
+  defp format_initial_call({module, function, arity}), do: format_function(module, function, arity)
 
-  defp maybe_put_crash_reason(md, {reason, stacktrace}) do
-    md
-    |> Map.put(:crash_reason, inspect(reason))
-    |> Map.put(:crash_reason_stacktrace, inspect(stacktrace))
+  defp format_crash_reason({:throw, reason}) do
+    Exception.format(:throw, reason)
+  end
+
+  defp format_crash_reason({:exit, reason}) do
+    Exception.format(:exit, reason)
+  end
+
+  defp format_crash_reason({%{} = exception, stacktrace}) do
+    Exception.format(:error, exception, stacktrace)
   end
 
   # RFC3339 UTC "Zulu" format
@@ -80,7 +101,8 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
   end
 
   defp format_function(nil, function), do: function
-  defp format_function(module, function), do: to_string(module) <> "." <> to_string(function)
+  defp format_function(module, function), do: "#{module}.#{function}"
+  defp format_function(module, function, arity), do: "#{module}.#{function}/#{arity}"
 
   # Severity levels can be found in Google Cloud Logger docs:
   # https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#LogSeverity

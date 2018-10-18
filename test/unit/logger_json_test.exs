@@ -72,7 +72,7 @@ defmodule LoggerJSONTest do
         |> capture_log()
         |> Jason.decode!()
 
-      assert %{"jsonPayload" => %{"metadata" => %{"user_id" => 13}}} = log
+      assert %{"user_id" => 13} = log
     end
 
     test "can be configured to :all" do
@@ -86,19 +86,19 @@ defmodule LoggerJSONTest do
         |> capture_log()
         |> Jason.decode!()
 
-      assert %{"jsonPayload" => %{"metadata" => %{"user_id" => 11}}} = log
-      assert %{"jsonPayload" => %{"metadata" => %{"dynamic_metadata" => 5}}} = log
+      assert %{"user_id" => 11} = log
+      assert %{"dynamic_metadata" => 5} = log
     end
 
     test "can be empty" do
       Logger.configure_backend(LoggerJSON, metadata: [])
 
-      %{"jsonPayload" => %{"metadata" => meta}} =
+      log =
         fn -> Logger.debug("hello") end
         |> capture_log()
         |> Jason.decode!()
 
-      assert %{} == meta
+      assert %{"log" => "hello"} = log
     end
   end
 
@@ -122,7 +122,7 @@ defmodule LoggerJSONTest do
         |> capture_log()
         |> Jason.decode!()
 
-      assert %{"jsonPayload" => %{"metadata" => %{"user_id" => 11}}} = log
+      assert %{"user_id" => 11} = log
     end
   end
 
@@ -138,7 +138,7 @@ defmodule LoggerJSONTest do
     function = "Elixir.#{inspect(mod)}.#{name}/#{arity}"
 
     assert %{
-             "sourceLocation" => %{
+             "logging.googleapis.com/sourceLocation" => %{
                "file" => ^file,
                "line" => ^line,
                "function" => ^function
@@ -162,38 +162,20 @@ defmodule LoggerJSONTest do
       capture_log(fn -> Logger.debug("hello") end)
       |> Jason.decode!()
 
-    assert log["jsonPayload"]["metadata"]["crash_reason"] == "%RuntimeError{message: \"oops\"}"
-    assert log["jsonPayload"]["metadata"]["crash_reason_stacktrace"] == "[]"
+    assert is_nil(log["error"]["initial_call"])
+    assert log["error"]["reason"] == "** (RuntimeError) oops"
   end
 
   test "logs initial call when present" do
     Logger.configure_backend(LoggerJSON, metadata: [:initial_call])
-    Logger.metadata(initial_call: {Foo, :bar, 3})
+    Logger.metadata(crash_reason: {%RuntimeError{message: "oops"}, []}, initial_call: {Foo, :bar, 3})
 
     log =
       capture_log(fn -> Logger.debug("hello") end)
       |> Jason.decode!()
 
-    assert log["jsonPayload"]["metadata"]["initial_call"] == "Elixir.Foo.bar/3"
+    assert log["error"]["initial_call"] == "Elixir.Foo.bar/3"
   end
-
-  # TODO: This flaky test should be rewritten for custom IO handler implementation that proxies events to test pid
-  # test "buffers events" do
-  #   Logger.configure_backend(LoggerJSON, max_buffer: 10)
-  #
-  #   fun = fn -> Logger.debug("hello") end
-  #
-  #   logs =
-  #     capture_log(fn ->
-  #       tasks = for _ <- 1..1000, do: Task.async(fun)
-  #       Enum.map(tasks, &Task.await/1)
-  #     end)
-  #
-  #   assert 1001 ==
-  #            logs
-  #            |> String.split("\n")
-  #            |> length()
-  # end
 
   # Sets metadata to :all for test purposes
   def on_init_cb(conf) do

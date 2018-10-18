@@ -79,7 +79,7 @@ defmodule LoggerJSON do
 
   @default_encoder default_encoder
 
-  @ignored_metadata_keys ~w[ansi_color initial_call crash_reason]
+  @ignored_metadata_keys ~w[ansi_color initial_call crash_reason]a
 
   defstruct metadata: nil,
             level: nil,
