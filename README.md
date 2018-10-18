@@ -19,37 +19,66 @@ After adding this back-end you may also be interested in [redirecting otp and sa
 
 ## Log Format
 
-By default, output JSON is compatible with
-[Google Cloud Logger format](https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine) with
-additional properties in `serviceLocation` and `metadata` objects:
+By-default, generated JSON is compatible with
+[Google Cloud Logger LogEntry](https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry) format:
 
   ```json
   {
-     "timestamp":"2017-11-19T18:13:01.111Z",
-     "sourceLocation":{
-        "line":28,
-        "function":"Elixir.LoggerJSON.Ecto.log/1",
-        "file":"/Users/andrew/Projects/logger_json/lib/logger_json/ecto.ex"
-     },
-     "severity":"DEBUG",
-     "resource":{
-        "type":"elixir-application",
-        "labels":{
-           "version":"1.0.0",
-           "service":"logger_json"
-        }
-     },
-     "jsonPayload":{
-        "metadata":{
-           "queue_time":0.1,
-           "query_time":2.1,
-           "duration":2.7,
-           "decode_time":0.5,
-           "connection_pid":null,
-           "application":"logger_json"
-        },
-        "message":"done"
-     }
+    "log":"hello",
+    "logging.googleapis.com/sourceLocation":{
+      "file":"/os/logger_json/test/unit/logger_json_test.exs",
+      "function":"Elixir.LoggerJSONTest.test metadata can be configured/1",
+      "line":71
+    },
+    "severity":"DEBUG",
+    "time":"2018-10-19T01:10:49.582Z",
+    "user_id":13
+  }
+  ```
+
+  Log entry in Google Cloud Logger would looks something like this:
+
+
+  ```json
+  {
+    "httpRequest":{
+      "latency":"0.350s",
+      "remoteIp":"::ffff:10.142.0.2",
+      "requestMethod":"GET",
+      "requestUrl":"http://10.16.0.70/",
+      "status":200,
+      "userAgent":"kube-probe/1.10+"
+    },
+    "insertId":"1g64u74fgmqqft",
+    "jsonPayload":{
+      "log":"",
+      "phoenix":{
+        "action":"index",
+        "controller":"Elixir.MyApp.Web.PageController",
+      },
+      "request_id":"2lfbl1r3m81c40e5v40004c2",
+      "vm":{
+        "hostname":"myapp-web-66979fc-vbk4q",
+        "pid":1,
+      }
+    },
+    "logName":"projects/hammer-staging/logs/stdout",
+    "metadata":{
+      "systemLabels":{},
+      "userLabels":{}
+    },
+    "operation":{
+      "id":"2lfbl1r3m81c40e5v40004c2"
+    },
+    "receiveTimestamp":"2018-10-18T14:33:35.515253723Z",
+    "resource":{},
+    "severity":"INFO",
+    "sourceLocation":{
+      "file":"iex",
+      "function":"Elixir.LoggerJSON.Plug.call/2",
+      "line":"36"
+    },
+    "timestamp":"2018-10-18T14:33:33.263Z"
   }
   ```
 

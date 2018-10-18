@@ -8,24 +8,20 @@ defmodule LoggerJSON do
   ## Log Format
 
   By-default, generated JSON is compatible with
-  [Google Cloud Logger format](https://cloud.google.com/logging/docs/reference/v1beta3/rest/v1beta3/LogLine) with
-  additional properties in `serviceLocation` and `metadata` objects:
+  [Google Cloud Logger LogEntry](https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry)
+  format:
 
     ```json
     {
-       "time":"2017-04-09T17:52:12.497Z",
-       "severity":"DEBUG",
-       "sourceLocation":{
-          "moduleName":"Elixir.LoggerJSONTest",
-          "line":62,
-          "functionName":"test metadata can be configured to :all/1",
-          "file":"/Users/andrew/Projects/logger_json/test/unit/logger_json_test.exs"
-       },
-       "metadata":{
-          "user_id":11,
-          "dynamic_metadata":5
-       },
-       "logMessage":"hello"
+      "log":"hello",
+      "logging.googleapis.com/sourceLocation":{
+        "file":"/os/logger_json/test/unit/logger_json_test.exs",
+        "function":"Elixir.LoggerJSONTest.test metadata can be configured/1",
+        "line":71
+      },
+      "severity":"DEBUG",
+      "time":"2018-10-19T01:10:49.582Z",
+      "user_id":13
     }
     ```
 
