@@ -35,7 +35,7 @@ defmodule LoggerJSON.PlugTest do
     assert %{
              "log" => "",
              "httpRequest" => %{
-               "latency" => "0s",
+               "latency" => latency,
                "referer" => nil,
                "remoteIp" => "127.0.0.1",
                "requestMethod" => "GET",
@@ -46,6 +46,9 @@ defmodule LoggerJSON.PlugTest do
              "logging.googleapis.com/operation" => %{"id" => "request_id"},
              "severity" => "INFO"
            } = Jason.decode!(log)
+
+    assert {latency_number, "s"} = Float.parse(latency)
+    assert latency_number > 0
 
     conn = %{conn(:get, "/hello/world") | private: %{phoenix_controller: MyController, phoenix_action: :foo}}
 

@@ -34,7 +34,7 @@ defmodule LoggerJSON.Plug.MetadataFormatters.GoogleCloudLogger do
   end
 
   defp native_to_seconds(native) do
-    round(System.convert_time_unit(native, :native, :microsecond) / 10000) * 10000
+    Float.round(System.convert_time_unit(native, :native, :microsecond) / 10000, 9)
   end
 
   defp request_url(%{request_path: "/"} = conn), do: "#{conn.scheme}://#{conn.host}/"
