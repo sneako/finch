@@ -35,10 +35,10 @@ defmodule LoggerJSON.EctoTest do
     assert %{
              "log" => "done",
              "query" => %{
-               "decode_time_ms" => 500,
-               "latency_ms" => 2700,
-               "execution_time_ms" => 2100,
-               "queue_time_ms" => 100
+               "decode_time_μs" => 500,
+               "latency_μs" => 2700,
+               "execution_time_μs" => 2100,
+               "queue_time_μs" => 100
              }
            } = Jason.decode!(log)
   end
@@ -55,10 +55,10 @@ defmodule LoggerJSON.EctoTest do
     assert %{
              "log" => "done",
              "query" => %{
-               "decode_time_ms" => 500,
-               "latency_ms" => 2700,
-               "execution_time_ms" => 2100,
-               "queue_time_ms" => 100
+               "decode_time_μs" => 500,
+               "latency_μs" => 2700,
+               "execution_time_μs" => 2100,
+               "queue_time_μs" => 100
              }
            } = Jason.decode!(log)
   end

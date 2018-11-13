@@ -14,13 +14,13 @@ defmodule LoggerJSON.Plug.MetadataFormatters.ELK do
     * `node.pid` - Erlang VM process identifier;
     * `phoenix.controller` - Phoenix controller that processed the request;
     * `phoenix.action` - Phoenix action that processed the request;
-    * `latency_ms` - time in microseconds taken to process the request.
+    * `latency_μs` - time in microseconds taken to process the request.
   """
   import Jason.Helpers, only: [json_map: 1]
 
   @doc false
   def build_metadata(conn, latency, client_version_header) do
-    latency_ms = System.convert_time_unit(latency, :native, :microsecond)
+    latency_μs = System.convert_time_unit(latency, :native, :microsecond)
 
     [
       connection:
@@ -37,7 +37,7 @@ defmodule LoggerJSON.Plug.MetadataFormatters.ELK do
           api_version: LoggerJSON.Plug.get_header(conn, client_version_header)
         ),
       node: node_metadata(),
-      latency_ms: latency_ms
+      latency_μs: latency_μs
     ] ++ phoenix_metadata(conn)
   end
 

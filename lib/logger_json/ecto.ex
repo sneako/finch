@@ -3,10 +3,10 @@ defmodule LoggerJSON.Ecto do
   Implements the behaviour of `Ecto.LogEntry` and sends query as a string
   to Logger with additional metadata:
 
-    * query.execution_time_ms - the time spent executing the query in microseconds;
-    * query.decode_time_ms - the time spent decoding the result in microseconds (it may be 0);
-    * query.queue_time_ms - the time spent to check the connection out in microseconds (it may be 0);
-    * query.duration_ms - time the query taken (sum of `query_time`, `decode_time` and `queue_time`);
+    * query.execution_time_μs - the time spent executing the query in microseconds;
+    * query.decode_time_μs - the time spent decoding the result in microseconds (it may be 0);
+    * query.queue_time_μs - the time spent to check the connection out in microseconds (it may be 0);
+    * query.duration_μs - time the query taken (sum of `query_time`, `decode_time` and `queue_time`);
     * connection_pid - the connection process that executed the query;
     * ansi_color - the color that should be used when logging the entry.
 
@@ -61,10 +61,10 @@ defmodule LoggerJSON.Ecto do
 
     metadata = [
       query: %{
-        execution_time_ms: query_time,
-        decode_time_ms: decode_time,
-        queue_time_ms: queue_time,
-        latency_ms: query_time + decode_time + queue_time
+        execution_time_μs: query_time,
+        decode_time_μs: decode_time,
+        queue_time_μs: queue_time,
+        latency_μs: query_time + decode_time + queue_time
       },
       connection_pid: connection_pid,
       ansi_color: ansi_color
