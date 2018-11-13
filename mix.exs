@@ -1,7 +1,7 @@
 defmodule LoggerJSON.Mixfile do
   use Mix.Project
 
-  @version "2.1.0"
+  @version "3.0.0"
 
   def project do
     [
@@ -50,7 +50,7 @@ defmodule LoggerJSON.Mixfile do
   defp deps do
     [
       {:jason, "~> 1.0"},
-      {:ecto, "~> 2.1", optional: true},
+      {:ecto, "~> 2.1 or ~> 3.0", optional: true},
       {:plug, "~> 1.0", optional: true},
       {:ex_doc, ">= 0.15.0", only: [:dev, :test]},
       {:excoveralls, ">= 0.5.0", only: [:dev, :test]},
