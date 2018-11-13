@@ -11,9 +11,11 @@ defmodule LoggerJSON.Plug.MetadataFormatters.GoogleCloudLogger do
   """
   import Jason.Helpers, only: [json_map: 1]
 
+  @nanoseconds_in_second System.convert_time_unit(1, :seconds, :nanoseconds)
+
   @doc false
   def build_metadata(conn, latency, client_version_header) do
-    latency_second = native_to_seconds(latency)
+    latency_seconds = native_to_seconds(latency)
 
     [
       httpRequest:
@@ -24,7 +26,7 @@ defmodule LoggerJSON.Plug.MetadataFormatters.GoogleCloudLogger do
           userAgent: LoggerJSON.Plug.get_header(conn, "user-agent"),
           remoteIp: remote_ip(conn),
           referer: LoggerJSON.Plug.get_header(conn, "referer"),
-          latency: "#{latency_second}s"
+          latency: latency_seconds
         )
     ] ++ client_metadata(conn, client_version_header) ++ phoenix_metadata(conn) ++ node_metadata()
   end
@@ -34,7 +36,8 @@ defmodule LoggerJSON.Plug.MetadataFormatters.GoogleCloudLogger do
   end
 
   defp native_to_seconds(native) do
-    Float.round(System.convert_time_unit(native, :native, :microsecond) / 10000, 9)
+    seconds = System.convert_time_unit(native, :native, :nanoseconds) / @nanoseconds_in_second
+    :erlang.float_to_binary(seconds, [{:decimals, 8}, :compact]) <> "s"
   end
 
   defp request_url(%{request_path: "/"} = conn), do: "#{conn.scheme}://#{conn.host}/"
