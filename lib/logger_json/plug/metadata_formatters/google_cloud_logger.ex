@@ -12,7 +12,7 @@ if Code.ensure_loaded?(Plug) do
     """
     import Jason.Helpers, only: [json_map: 1]
 
-    @nanoseconds_in_second System.convert_time_unit(1, :seconds, :nanoseconds)
+    @nanoseconds_in_second System.convert_time_unit(1, :second, :nanosecond)
 
     @doc false
     def build_metadata(conn, latency, client_version_header) do
