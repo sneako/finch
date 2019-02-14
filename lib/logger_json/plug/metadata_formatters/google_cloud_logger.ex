@@ -37,7 +37,7 @@ if Code.ensure_loaded?(Plug) do
     end
 
     defp native_to_seconds(native) do
-      seconds = System.convert_time_unit(native, :native, :nanoseconds) / @nanoseconds_in_second
+      seconds = System.convert_time_unit(native, :native, :nanosecond) / @nanoseconds_in_second
       :erlang.float_to_binary(seconds, [{:decimals, 8}, :compact]) <> "s"
     end
 
