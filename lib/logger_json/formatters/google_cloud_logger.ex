@@ -84,6 +84,10 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
     Exception.format(:error, exception, stacktrace)
   end
 
+  defp format_crash_reason(other) do
+    inspect(other)
+  end
+
   # RFC3339 UTC "Zulu" format
   defp format_timestamp({date, time}) do
     [format_date(date), format_time(time)]

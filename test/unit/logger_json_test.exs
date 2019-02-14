@@ -244,6 +244,18 @@ defmodule LoggerJSONTest do
     assert log["error"]["reason"] == "** (RuntimeError) oops"
   end
 
+  test "logs erlang style crash reasons" do
+    Logger.configure_backend(LoggerJSON, metadata: [:crash_reason])
+    Logger.metadata(crash_reason: {:socket_closed_unexpectedly, []})
+
+    log =
+      capture_log(fn -> Logger.debug("hello") end)
+      |> Jason.decode!()
+
+    assert is_nil(log["error"]["initial_call"])
+    assert log["error"]["reason"] == "{:socket_closed_unexpectedly, []}"
+  end
+
   test "logs initial call when present" do
     Logger.configure_backend(LoggerJSON, metadata: [:initial_call])
     Logger.metadata(crash_reason: {%RuntimeError{message: "oops"}, []}, initial_call: {Foo, :bar, 3})
