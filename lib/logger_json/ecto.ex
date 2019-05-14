@@ -52,9 +52,9 @@ if Code.ensure_loaded?(Ecto) do
            decode_time: decode_time,
            queue_time: queue_time
          }) do
-      query_time = format_time(query_time)
-      decode_time = format_time(decode_time)
-      queue_time = format_time(queue_time)
+      query_time = format_time(query_time, :native)
+      decode_time = format_time(decode_time, :native)
+      queue_time = format_time(queue_time, :native)
 
       metadata = [
         query: %{
@@ -68,7 +68,39 @@ if Code.ensure_loaded?(Ecto) do
       {query, metadata}
     end
 
-    defp format_time(nil), do: 0
-    defp format_time(time), do: System.convert_time_unit(time, :native, :microsecond)
+    @spec telemetry_logging_handler(
+            event_name :: [atom()],
+            query_time :: %{
+              query_time: non_neg_integer(),
+              queue_time: non_neg_integer(),
+              total_time: non_neg_integer()
+            },
+            log_entry :: Ecto.LogEntry.t(),
+            level :: Logger.level()
+          ) :: :ok
+    def telemetry_logging_handler(
+          _event_name,
+          %{query_time: query_time, queue_time: queue_time, total_time: total_time},
+          %{query: query, repo: repo},
+          level
+        ) do
+      query_time = format_time(query_time, :nanosecond)
+      queue_time = format_time(queue_time, :nanosecond)
+      latency = format_time(total_time, :nanosecond)
+
+      metadata = [
+        query: %{
+          repo: inspect(repo),
+          execution_time_μs: query_time,
+          queue_time_μs: queue_time,
+          latency_μs: latency
+        }
+      ]
+
+      Logger.log(level, query, metadata)
+    end
+
+    defp format_time(nil, _unit), do: 0
+    defp format_time(time, unit), do: System.convert_time_unit(time, unit, :microsecond)
   end
 end

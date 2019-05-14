@@ -62,4 +62,46 @@ defmodule LoggerJSON.EctoTest do
              }
            } = Jason.decode!(log)
   end
+
+  test "logs ecto queries received via telemetry event" do
+    Logger.configure_backend(LoggerJSON, device: :standard_error, metadata: :all)
+
+    log =
+      capture_io(:standard_error, fn ->
+        LoggerJSON.Ecto.telemetry_logging_handler(
+          [:repo, :query],
+          %{query_time: 2_930_000, queue_time: 106_000, total_time: 3_036_000},
+          %{
+            params: [],
+            query: "begin",
+            repo: Repo,
+            result:
+              {:ok,
+               %{
+                 columns: nil,
+                 command: :savepoint,
+                 connection_id: 26925,
+                 messages: [],
+                 num_rows: nil,
+                 rows: nil
+               }},
+            source: nil,
+            type: :ecto_sql_query
+          },
+          :info
+        )
+
+        Logger.flush()
+      end)
+
+    assert %{
+             "log" => "begin",
+             "query" => %{
+               "latency_μs" => 3036,
+               "execution_time_μs" => 2930,
+               "queue_time_μs" => 106,
+               "repo" => "Repo"
+             }
+           } = Jason.decode!(log)
+  end
 end
