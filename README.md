@@ -85,10 +85,10 @@ By-default, generated JSON is compatible with
 You can change this structure by implementing `LoggerJSON.Formatter` behaviour and passing module
 name to `:formatter` config option. Example module can be found in `LoggerJSON.Formatters.GoogleCloudLogger`.
 
-  ```elixir
-  config :logger_json, :backend,
-    formatter: MyFormatterImplementation
-  ```
+```ex
+config :logger_json, :backend,
+  formatter: MyFormatterImplementation
+```
 
 ## Installation
 
@@ -96,20 +96,26 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
 
   1. Add `:logger_json` and `:jason` to your list of dependencies in `mix.exs`:
 
-    def deps do
-      [{:logger_json, "~> 3.0"}]
-    end
+  ```ex
+  def deps do
+    [{:logger_json, "~> 3.0"}]
+  end
+  ```
 
   2. Ensure `logger_json` and `:jason` is started before your application:
 
-    def application do
-      [extra_applications: [:jason, :logger_json]]
-    end
+  ```ex
+  def application do
+    [extra_applications: [:jason, :logger_json]]
+  end
+  ```
 
   3. Set configuration in your `config/config.exs`:
 
-    config :logger_json, :backend,
-      metadata: :all
+  ```ex
+  config :logger_json, :backend,
+    metadata: :all
+  ```
 
   Some integrations (for eg. Plug) uses `metadata` to log request
   and response parameters. You can reduce log size by replacing `:all`
@@ -117,19 +123,25 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
 
   4. Replace default Logger `:console` back-end with `LoggerJSON`:
 
-    config :logger,
-      backends: [LoggerJSON]
+  ```ex
+  config :logger,
+    backends: [LoggerJSON]
+  ```
 
   5. Optionally. Log requests and responses by replacing a `Plug.Logger` in your endpoint with a:
 
-    plug LoggerJSON.Plug
+  ```ex
+  plug LoggerJSON.Plug
+  ```
 
   6. Optionally. Log Ecto queries via Plug:
 
-    config :my_app, MyApp.Repo,
-      adapter: Ecto.Adapters.Postgres,
-      ...
-      loggers: [{LoggerJSON.Ecto, :log, [:info]}]
+  ```ex
+  config :my_app, MyApp.Repo,
+    adapter: Ecto.Adapters.Postgres,
+    ...
+    loggers: [{LoggerJSON.Ecto, :log, [:info]}]
+  ```
 
 ## Dynamic configuration
 
@@ -138,8 +150,10 @@ from environment variables or configuration files, LoggerJSON provides
 an `:on_init` option that allows developers to set a module, function
 and list of arguments that is invoked when the endpoint starts.
 
-    config :logger_json, :backend,
-      on_init: {YourApp.Logger, :load_from_system_env, []}
+```ex
+config :logger_json, :backend,
+  on_init: {YourApp.Logger, :load_from_system_env, []}
+```
 
 ## Encoders support
 
