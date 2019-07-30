@@ -13,7 +13,7 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
   @severity_levels [{:debug, "DEBUG"}, {:info, "INFO"}, {:warn, "WARNING"}, {:error, "ERROR"}]
 
   @doc """
-  Builds structured paylpad which is mapped to Google Cloud Logger
+  Builds structured payload which is mapped to Google Cloud Logger
   [`LogEntry`](https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry) format.
 
   See: https://cloud.google.com/logging/docs/agent/configuration#special_fields_in_structured_payloads
