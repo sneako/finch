@@ -7,6 +7,8 @@ JSON console back-end for Elixir Logger.
 It can be used as drop-in replacement for default `:console` Logger back-end in cases where you use
 use Google Cloud Logger or other JSON-based log collectors.
 
+Minimum supported Erlang/OTP version is 20.
+
 ## Motivation
 
 [We](https://github.com/Nebo15) deploy our applications as dockerized containers in Google Container Engine (Kubernetes cluster), in this case all your logs will go to `stdout` and log solution on top of Kubernetes should collect and persist it elsewhere.
