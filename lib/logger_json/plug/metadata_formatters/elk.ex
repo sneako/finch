@@ -22,24 +22,29 @@ if Code.ensure_loaded?(Plug) do
     @doc false
     def build_metadata(conn, latency, client_version_header) do
       latency_μs = System.convert_time_unit(latency, :native, :microsecond)
+      user_agent = LoggerJSON.Plug.get_header(conn, "user-agent")
+      ip = remote_ip(conn)
+      api_version = LoggerJSON.Plug.get_header(conn, client_version_header)
+      {hostname, vm_pid} = node_metadata()
 
-      [
-        connection:
-          json_map(
-            type: connection_type(conn),
-            method: conn.method,
-            request_path: conn.request_path,
-            status: conn.status
-          ),
-        client:
-          json_map(
-            user_agent: LoggerJSON.Plug.get_header(conn, "user-agent"),
-            ip: remote_ip(conn),
-            api_version: LoggerJSON.Plug.get_header(conn, client_version_header)
-          ),
-        node: node_metadata(),
-        latency_μs: latency_μs
-      ] ++ phoenix_metadata(conn)
+      phoenix_metadata(conn) ++
+        [
+          connection:
+            json_map(
+              type: connection_type(conn),
+              method: conn.method,
+              request_path: conn.request_path,
+              status: conn.status
+            ),
+          client:
+            json_map(
+              user_agent: user_agent,
+              ip: ip,
+              api_version: api_version
+            ),
+          node: json_map(hostname: to_string(hostname), vm_pid: vm_pid),
+          latency_μs: latency_μs
+        ]
     end
 
     defp connection_type(%{state: :set_chunked}), do: "chunked"
@@ -66,7 +71,7 @@ if Code.ensure_loaded?(Plug) do
           _ -> nil
         end
 
-      json_map(hostname: to_string(hostname), vm_pid: vm_pid)
+      {hostname, vm_pid}
     end
   end
 end
