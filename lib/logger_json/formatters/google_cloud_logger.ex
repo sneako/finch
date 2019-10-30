@@ -10,7 +10,13 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
 
   # Severity levels can be found in Google Cloud Logger docs:
   # https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#LogSeverity
-  @severity_levels [{:debug, "DEBUG"}, {:info, "INFO"}, {:warn, "WARNING"}, {:error, "ERROR"}]
+  @severity_levels [
+    {:debug, "DEBUG"},
+    {:info, "INFO"},
+    {:warning, "WARNING"},
+    {:warn, "WARNING"},
+    {:error, "ERROR"}
+  ]
 
   @doc """
   Builds structured payload which is mapped to Google Cloud Logger
