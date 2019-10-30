@@ -1,7 +1,6 @@
 {
   "skip_files": [
-    "test/*",
-    "/lib/logger_json/tasks.ex"
+    "test/*"
   ],
   "custom_stop_words": [
     "field",
