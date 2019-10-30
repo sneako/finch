@@ -17,16 +17,22 @@ if Code.ensure_loaded?(Plug) do
     @doc false
     def build_metadata(conn, latency, client_version_header) do
       latency_seconds = native_to_seconds(latency)
+      request_method = conn.method
+      request_url = request_url(conn)
+      status = conn.status
+      user_agent = LoggerJSON.Plug.get_header(conn, "user-agent")
+      remote_ip = remote_ip(conn)
+      referer = LoggerJSON.Plug.get_header(conn, "referer")
 
       [
         httpRequest:
           json_map(
-            requestMethod: conn.method,
-            requestUrl: request_url(conn),
-            status: conn.status,
-            userAgent: LoggerJSON.Plug.get_header(conn, "user-agent"),
-            remoteIp: remote_ip(conn),
-            referer: LoggerJSON.Plug.get_header(conn, "referer"),
+            requestMethod: request_method,
+            requestUrl: request_url,
+            status: status,
+            userAgent: user_agent,
+            remoteIp: remote_ip,
+            referer: referer,
             latency: latency_seconds
           )
       ] ++ client_metadata(conn, client_version_header) ++ phoenix_metadata(conn) ++ node_metadata()

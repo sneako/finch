@@ -90,10 +90,8 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
 
   # RFC3339 UTC "Zulu" format
   defp format_timestamp({date, time}) do
-    [format_date(date), format_time(time)]
-    |> Enum.map(&IO.iodata_to_binary/1)
-    |> Enum.join("T")
-    |> Kernel.<>("Z")
+    [format_date(date), ?T, format_time(time), ?Z]
+    |> IO.iodata_to_binary()
   end
 
   # Description can be found in Google Cloud Logger docs;
