@@ -73,25 +73,23 @@ if Code.ensure_loaded?(Ecto) do
             query_time :: %{
               query_time: non_neg_integer(),
               queue_time: non_neg_integer(),
+              decode_time: non_neg_integer(),
               total_time: non_neg_integer()
             },
             log_entry :: Ecto.LogEntry.t(),
             level :: Logger.level()
           ) :: :ok
-    def telemetry_logging_handler(
-          _event_name,
-          %{query_time: query_time, queue_time: queue_time, total_time: total_time},
-          %{query: query, repo: repo},
-          level
-        ) do
-      query_time = format_time(query_time, :nanosecond)
-      queue_time = format_time(queue_time, :nanosecond)
-      latency = format_time(total_time, :nanosecond)
+    def telemetry_logging_handler(_event_name, time, %{query: query, repo: repo}, level) do
+      query_time = Map.get(time, :query_time) |> format_time(:nanosecond)
+      queue_time = Map.get(time, :queue_time) |> format_time(:nanosecond)
+      decode_time = Map.get(time, :decode_time) |> format_time(:nanosecond)
+      latency = Map.get(time, :total_time) |> format_time(:nanosecond)
 
       metadata = [
         query: %{
           repo: inspect(repo),
           execution_time_μs: query_time,
+          decode_time_μs: decode_time,
           queue_time_μs: queue_time,
           latency_μs: latency
         }
