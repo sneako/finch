@@ -23,19 +23,23 @@ if Code.ensure_loaded?(Plug) do
       user_agent = LoggerJSON.Plug.get_header(conn, "user-agent")
       remote_ip = remote_ip(conn)
       referer = LoggerJSON.Plug.get_header(conn, "referer")
+      {hostname, vm_pid} = node_metadata()
 
-      [
-        httpRequest:
-          json_map(
-            requestMethod: request_method,
-            requestUrl: request_url,
-            status: status,
-            userAgent: user_agent,
-            remoteIp: remote_ip,
-            referer: referer,
-            latency: latency_seconds
-          )
-      ] ++ client_metadata(conn, client_version_header) ++ phoenix_metadata(conn) ++ node_metadata()
+      client_metadata(conn, client_version_header) ++
+        phoenix_metadata(conn) ++
+        [
+          httpRequest:
+            json_map(
+              requestMethod: request_method,
+              requestUrl: request_url,
+              status: status,
+              userAgent: user_agent,
+              remoteIp: remote_ip,
+              referer: referer,
+              latency: latency_seconds
+            ),
+          node: json_map(hostname: to_string(hostname), vm_pid: vm_pid)
+        ]
     end
 
     defp native_to_seconds(nil) do
@@ -79,7 +83,7 @@ if Code.ensure_loaded?(Plug) do
           _ -> nil
         end
 
-      [node: json_map(hostname: to_string(hostname), vm_pid: vm_pid)]
+      {hostname, vm_pid}
     end
   end
 end
