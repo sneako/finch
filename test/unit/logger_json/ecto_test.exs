@@ -33,7 +33,7 @@ defmodule LoggerJSON.EctoTest do
       end)
 
     assert %{
-             "log" => "done",
+             "message" => "done",
              "query" => %{
                "decode_time_μs" => 500,
                "latency_μs" => 2700,
@@ -53,7 +53,7 @@ defmodule LoggerJSON.EctoTest do
       end)
 
     assert %{
-             "log" => "done",
+             "message" => "done",
              "query" => %{
                "decode_time_μs" => 500,
                "latency_μs" => 2700,
@@ -95,7 +95,7 @@ defmodule LoggerJSON.EctoTest do
       end)
 
     assert %{
-             "log" => "begin",
+             "message" => "begin",
              "query" => %{
                "latency_μs" => 3036,
                "execution_time_μs" => 2930,

@@ -30,7 +30,7 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
         %{
           time: format_timestamp(ts),
           severity: unquote(gcp_level),
-          log: IO.iodata_to_binary(msg)
+          message: IO.iodata_to_binary(msg)
         },
         format_metadata(md, md_keys)
       )
@@ -42,7 +42,7 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
       %{
         time: format_timestamp(ts),
         severity: "DEFAULT",
-        log: IO.iodata_to_binary(msg)
+        message: IO.iodata_to_binary(msg)
       },
       format_metadata(md, md_keys)
     )

@@ -33,7 +33,7 @@ defmodule LoggerJSON.PlugTest do
       end)
 
     assert %{
-             "log" => "",
+             "message" => "",
              "httpRequest" => %{
                "latency" => latency,
                "referer" => nil,

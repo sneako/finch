@@ -41,7 +41,7 @@ defmodule LoggerJSONTest do
       |> capture_log()
       |> Jason.decode!()
 
-    assert %{"log" => ""} = log
+    assert %{"message" => ""} = log
   end
 
   test "logs binary messages" do
@@ -52,7 +52,7 @@ defmodule LoggerJSONTest do
       |> capture_log()
       |> Jason.decode!()
 
-    assert %{"log" => "hello"} = log
+    assert %{"message" => "hello"} = log
   end
 
   test "logs empty iodata messages" do
@@ -63,7 +63,7 @@ defmodule LoggerJSONTest do
       |> capture_log()
       |> Jason.decode!()
 
-    assert %{"log" => ""} = log
+    assert %{"message" => ""} = log
   end
 
   test "logs iodata messages" do
@@ -74,7 +74,7 @@ defmodule LoggerJSONTest do
       |> capture_log()
       |> Jason.decode!()
 
-    assert %{"log" => "hello"} = log
+    assert %{"message" => "hello"} = log
   end
 
   test "log message does not break escaping" do
@@ -85,14 +85,14 @@ defmodule LoggerJSONTest do
       |> capture_log()
       |> Jason.decode!()
 
-    assert %{"log" => "\"h"} = log
+    assert %{"message" => "\"h"} = log
 
     log =
       fn -> Logger.debug("\"h") end
       |> capture_log()
       |> Jason.decode!()
 
-    assert %{"log" => "\"h"} = log
+    assert %{"message" => "\"h"} = log
   end
 
   test "does not start when there is no user" do
@@ -160,7 +160,7 @@ defmodule LoggerJSONTest do
         |> capture_log()
         |> Jason.decode!()
 
-      assert %{"log" => "hello"} = log
+      assert %{"message" => "hello"} = log
     end
   end
 
