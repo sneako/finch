@@ -1,5 +1,6 @@
 %{
   "castore": {:hex, :castore, "0.1.3", "61d720c168d8e3a7d96f188f73d50d7ec79aa619cdabf0acd3782b01ff3a9f10", [:mix], [], "hexpm"},
   "mint": {:hex, :mint, "0.4.0", "b93a10192957624ed4a8b8641eff1819019c36487bdf49e2b505afd2cc9b7911", [:mix], [{:castore, "~> 0.1.0", [hex: :castore, repo: "hexpm", optional: true]}], "hexpm"},
+  "nimble_pool": {:git, "https://github.com/plataformatec/nimble_pool.git", "77dad3c0b208a9c197cdfa36c30e6375b89b9ad4", []},
   "sbroker": {:hex, :sbroker, "1.0.0", "28ff1b5e58887c5098539f236307b36fe1d3edaa2acff9d6a3d17c2dcafebbd0", [:rebar3], [], "hexpm"},
 }

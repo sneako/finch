@@ -1,6 +1,6 @@
 # Finch
 
-**TODO: Add description**
+WIP HTTP Client using Mint.
 
 ## Installation
 

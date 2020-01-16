@@ -14,6 +14,7 @@ defmodule Finch.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
+      mod: {Finch.Application, []},
       extra_applications: [:logger]
     ]
   end
@@ -23,7 +24,7 @@ defmodule Finch.MixProject do
     [
       {:mint, "~> 0.4.0"},
       {:castore, "~> 0.1.3"},
-      {:sbroker, "~> 1.0"},
+      {:nimble_pool, github: "plataformatec/nimble_pool"},
     ]
   end
 end

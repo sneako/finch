@@ -1,39 +1,58 @@
 defmodule Finch do
   @moduledoc """
-  Documentation for Finch.
+  Finch
   """
+  alias Finch.Pool
+  alias Finch.PoolManager
 
-  alias Finch.Broker
+  @atom_methods [
+    :get,
+    :post,
+    :put,
+    :patch,
+    :delete,
+    :head,
+    :options
+  ]
+  @methods [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "HEAD",
+    "OPTIONS"
+  ]
+  @atom_to_method Enum.zip(@atom_methods, @methods) |> Enum.into(%{})
 
-  @doc """
-  Hello world.
-
-  ## Examples
-
-      iex> Finch.hello()
-      :world
-
-  """
-  def hello do
-    :world
+  def request(method, url, headers, body, opts) do
+    {scheme, host, port, path} = parse_url(url)
+    req = %{
+      method: build_method(method),
+      path: path || "/",
+      headers: headers,
+      body: body
+    }
+    |> IO.inspect(label: "Req")
+    pool = PoolManager.get_pool({scheme, host, port})
+    Pool.request(pool, req, opts)
   end
 
-  def perform(params \\ %{}) do
-    case :sbroker.ask(Broker, {self(), {:fetch, params}}) do
-      {:go, ref, worker, _, _queue_time} ->
-        monitor = Process.monitor(worker)
+  defp build_method(method) when method in @methods, do: method
+  defp build_method(method) when is_atom(method) do
+    @atom_to_method[method]
+  end
 
-        receive do
-          {^ref, result} ->
-            Process.demonitor(monitor, [:flush])
-            result
+  defp parse_url(url) do
+    uri = URI.parse(url)
 
-          {:DOWN, ^monitor, _, _, reason} ->
-            exit({reason, {__MODULE__, params}})
-        end
+    {normalize_scheme(uri.scheme), uri.host, uri.port, uri.path}
+  end
 
-      {:drop, _time} ->
-        {:error, :overload}
+  defp normalize_scheme(scheme) do
+    case scheme do
+      "https" -> :https
+      "http" -> :http
     end
   end
 end
