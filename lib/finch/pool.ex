@@ -67,10 +67,13 @@ defmodule Finch.Pool do
     parent = self()
 
     async = fn ->
-      # TODO: Add back-off
-      {:ok, conn} = Mint.HTTP.connect(scheme, host, port, [])
-      {:ok, conn} = Mint.HTTP.controlling_process(conn, parent)
-      conn
+      case Mint.HTTP.connect(scheme, host, port, []) do
+        {:ok, conn} ->
+          {:ok, conn} = Mint.HTTP.controlling_process(conn, parent)
+          conn
+
+        {:
+      end
     end
 
     {:async, async}
