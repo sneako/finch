@@ -2,6 +2,8 @@ defmodule Finch.Pool do
   @moduledoc false
   @behaviour NimblePool
 
+  alias Finch.Conn
+
   defp via_tuple(host) do
     {:via, Registry, {Finch.PoolRegistry, host}}
   end
@@ -13,8 +15,8 @@ defmodule Finch.Pool do
     }
   end
 
-  def start_link({scheme, host, port}) do
-    opts = [worker: {__MODULE__, {scheme, host, port}}, name: via_tuple(host)]
+  def start_link(shp) do
+    opts = [worker: {__MODULE__, shp}, name: via_tuple(shp)]
     NimblePool.start_link(opts)
   end
 
@@ -24,42 +26,16 @@ defmodule Finch.Pool do
 
     NimblePool.checkout!(pool, :checkout, fn {conn, pool} ->
       try do
-        {kind, conn, result_or_error} =
-          with {:ok, conn, ref} <- Mint.HTTP.request(conn, req.method, req.path, req.headers, req.body) do
-            receive_response([], conn, ref, %{}, receive_timeout)
-          end
-
-        {:ok, conn} = Mint.HTTP.controlling_process(conn, pool)
-        {{kind, result_or_error}, conn}
+        conn = Conn.connect(conn)
+        result = Conn.request(conn, req, receive_timeout)
+        {:ok, conn} = Conn.transfer(conn, pool)
+        {result, conn}
       catch
         kind, reason ->
-          _ = Mint.HTTP.close(conn)
+          _ = Conn.close(conn)
           :erlang.raise(kind, reason, __STACKTRACE__)
       end
     end, pool_timeout)
-  end
-
-  defp receive_response([], conn, ref, response, timeout) do
-    {:ok, conn, entries} = Mint.HTTP.recv(conn, 0, timeout)
-    receive_response(entries, conn, ref, response, timeout)
-  end
-
-  defp receive_response([entry | entries], conn, ref, response, timeout) do
-    case entry do
-      {kind, ^ref, value} when kind in [:status, :headers] ->
-        response = Map.put(response, kind, value)
-        receive_response(entries, conn, ref, response, timeout)
-
-      {:data, ^ref, data} ->
-        response = Map.update(response, :data, data, &(&1 <> data))
-        receive_response(entries, conn, ref, response, timeout)
-
-      {:done, ^ref} ->
-        {:ok, conn, response}
-
-      {:error, ^ref, error} ->
-        {:error, conn, error}
-    end
   end
 
   @impl NimblePool
@@ -67,10 +43,7 @@ defmodule Finch.Pool do
     parent = self()
 
     async = fn ->
-      # TODO: Add back-off
-      {:ok, conn} = Mint.HTTP.connect(scheme, host, port, [])
-      {:ok, conn} = Mint.HTTP.controlling_process(conn, parent)
-      conn
+      Conn.connect(Conn.new(scheme, host, port, [], parent))
     end
 
     {:async, async}
@@ -80,29 +53,29 @@ defmodule Finch.Pool do
   # Transfer the conn to the caller.
   # If we lost the connection, then we remove it to try again.
   def handle_checkout(:checkout, {pid, _}, conn) do
-    with {:ok, conn} <- Mint.HTTP.set_mode(conn, :passive),
-         {:ok, conn} <- Mint.HTTP.controlling_process(conn, pid) do
-      {:ok, {conn, self()}, conn}
-    else
-      _ -> {:remove, :closed}
+    case Conn.transfer(conn, pid) do
+      {:ok, conn} ->
+        {:ok, {conn, self()}, conn}
+
+      _ ->
+        {:remove, :closed}
     end
   end
 
   @impl NimblePool
-  # We got it back.
   def handle_checkin(conn, _from, _old_conn) do
-    case Mint.HTTP.set_mode(conn, :active) do
+    case Conn.set_mode(conn, :active) do
       {:ok, conn} -> {:ok, conn}
       {:error, _} -> {:remove, :closed}
     end
   end
 
   @impl NimblePool
-  # If it is closed, drop it.
   def handle_info(message, conn) do
-    case Mint.HTTP.stream(conn, message) do
+    case Conn.stream(conn, message) do
       {:ok, _, _} -> {:ok, conn}
       {:error, _, _, _} -> {:remove, :closed}
+      {:error, _} -> {:remove, :closed}
       :unknown -> {:ok, conn}
     end
   end
@@ -111,6 +84,6 @@ defmodule Finch.Pool do
   # On terminate, effectively close it.
   # This will succeed even if it was already closed or if we don't own it.
   def terminate(_reason, conn) do
-    Mint.HTTP.close(conn)
+    Conn.close(conn)
   end
 end
