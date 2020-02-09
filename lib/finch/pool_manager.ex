@@ -9,10 +9,11 @@ defmodule Finch.PoolManager do
     Supervisor.start_link(__MODULE__, init_args, name: __MODULE__)
   end
 
-  def get_pool(host) do
-    case lookup_pool(host) do
+  def get_pool(scheme, host, port) do
+    key = {scheme, host, port}
+    case lookup_pool(key) do
       :none ->
-        case start_pool(host) do
+        case start_pool(key) do
           {:ok, pid} ->
             pid
 
@@ -25,8 +26,8 @@ defmodule Finch.PoolManager do
     end
   end
 
-  def lookup_pool(host) do
-    case Registry.lookup(PoolRegistry, host) do
+  def lookup_pool(key) do
+    case Registry.lookup(PoolRegistry, key) do
       [] ->
         :none
 
@@ -35,8 +36,8 @@ defmodule Finch.PoolManager do
     end
   end
 
-  def start_pool(host) do
-    DynamicSupervisor.start_child(PoolSup, {Finch.Pool, host})
+  def start_pool(key) do
+    DynamicSupervisor.start_child(PoolSup, {Finch.Pool, key})
   end
 
   def init(_) do
