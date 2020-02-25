@@ -18,6 +18,7 @@ if Code.ensure_loaded?(Plug) do
     def build_metadata(conn, latency, client_version_header) do
       latency_seconds = native_to_seconds(latency)
       request_method = conn.method
+      request_path = conn.request_path
       request_url = request_url(conn)
       status = conn.status
       user_agent = LoggerJSON.Plug.get_header(conn, "user-agent")
@@ -31,6 +32,7 @@ if Code.ensure_loaded?(Plug) do
           httpRequest:
             json_map(
               requestMethod: request_method,
+              requestPath: request_path,
               requestUrl: request_url,
               status: status,
               userAgent: user_agent,

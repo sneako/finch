@@ -47,6 +47,7 @@ By-default, generated JSON is compatible with
       "latency":"0.350s",
       "remoteIp":"::ffff:10.142.0.2",
       "requestMethod":"GET",
+      "requestPath":"/",
       "requestUrl":"http://10.16.0.70/",
       "status":200,
       "userAgent":"kube-probe/1.10+"
