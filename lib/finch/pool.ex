@@ -16,7 +16,8 @@ defmodule Finch.Pool do
   end
 
   def start_link(shp) do
-    opts = [worker: {__MODULE__, shp}, name: via_tuple(shp)]
+    pool_size = Application.get_env(:finch, :pool_size, 10)
+    opts = [worker: {__MODULE__, shp}, name: via_tuple(shp), pool_size: pool_size]
     NimblePool.start_link(opts)
   end
 
