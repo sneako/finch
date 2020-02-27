@@ -59,7 +59,7 @@ defmodule LoggerJSON do
   """
   @behaviour :gen_event
 
-  @ignored_metadata_keys ~w[ansi_color initial_call crash_reason]a
+  @ignored_metadata_keys ~w[ansi_color initial_call crash_reason pid gl mfa report_cb]a
 
   defstruct metadata: nil,
             level: nil,
