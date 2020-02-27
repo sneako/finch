@@ -2,7 +2,6 @@ defmodule Finch do
   @moduledoc """
   Finch
   """
-  alias Finch.Conn
   alias Finch.Pool
   alias Finch.PoolManager
 
