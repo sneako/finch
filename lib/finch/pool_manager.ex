@@ -11,6 +11,7 @@ defmodule Finch.PoolManager do
 
   def get_pool(scheme, host, port) do
     key = {scheme, host, port}
+
     case lookup_pool(key) do
       :none ->
         case start_pool(key) do
@@ -33,17 +34,27 @@ defmodule Finch.PoolManager do
 
       [{pid, _}] ->
         {:ok, pid}
+
+      [_ | _] = pids ->
+        {:ok,
+         pids
+         |> Enum.random()
+         |> elem(0)}
     end
   end
 
   def start_pool(key) do
-    DynamicSupervisor.start_child(PoolSup, {Finch.Pool, key})
+    pool_count = Application.get_env(:finch, :pool_count, 1)
+    for i <- 1..pool_count do
+      DynamicSupervisor.start_child(PoolSup, {Finch.Pool, {key, i}})
+    end
+    |> Enum.random()
   end
 
   def init(_) do
     children = [
       {DynamicSupervisor, name: PoolSup, strategy: :one_for_one},
-      {Registry, [keys: :unique, name: PoolRegistry]},
+      {Registry, [keys: :duplicate, name: PoolRegistry]}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

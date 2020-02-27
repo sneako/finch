@@ -4,9 +4,9 @@ defmodule Finch.Pool do
 
   alias Finch.Conn
 
-  defp via_tuple(host) do
-    {:via, Registry, {Finch.PoolRegistry, host}}
-  end
+  # defp via_tuple(host) do
+  #   {:via, Registry, {Finch.PoolRegistry, host}}
+  # end
 
   def child_spec(opts) do
     %{
@@ -15,9 +15,10 @@ defmodule Finch.Pool do
     }
   end
 
-  def start_link(shp) do
+  def start_link({shp, i}) do
     pool_size = Application.get_env(:finch, :pool_size, 10)
-    opts = [worker: {__MODULE__, shp}, name: via_tuple(shp), pool_size: pool_size]
+    name = [__MODULE__] ++ Tuple.to_list(shp) ++ [i] |> Enum.join(".") |> String.to_atom()
+    opts = [worker: {__MODULE__, shp}, name: name, pool_size: pool_size]
     NimblePool.start_link(opts)
   end
 
