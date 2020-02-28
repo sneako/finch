@@ -4,10 +4,6 @@ defmodule Finch.Pool do
 
   alias Finch.Conn
 
-  # defp via_tuple(host) do
-  #   {:via, Registry, {Finch.PoolRegistry, host}}
-  # end
-
   def child_spec(opts) do
     %{
       id: __MODULE__,
@@ -18,7 +14,7 @@ defmodule Finch.Pool do
   def start_link({shp, i}) do
     pool_size = Application.get_env(:finch, :pool_size, 10)
     name = [__MODULE__] ++ Tuple.to_list(shp) ++ [i] |> Enum.join(".") |> String.to_atom()
-    opts = [worker: {__MODULE__, shp}, name: name, pool_size: pool_size]
+    opts = [worker: {__MODULE__, shp}, name: name, pool_size: pool_size, init_func: &init_func/1]
     NimblePool.start_link(opts)
   end
 
@@ -87,5 +83,11 @@ defmodule Finch.Pool do
   # This will succeed even if it was already closed or if we don't own it.
   def terminate(_reason, conn) do
     Conn.close(conn)
+    :ok
+  end
+
+  defp init_func(state) do
+    Registry.register(Finch.PoolRegistry, state.arg, [])
+    state
   end
 end

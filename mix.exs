@@ -24,7 +24,7 @@ defmodule Finch.MixProject do
     [
       {:mint, "~> 1.0"},
       {:castore, "~> 0.1.3"},
-      {:nimble_pool, github: "plataformatec/nimble_pool"},
+      {:nimble_pool, github: "sneako/nimble_pool", branch: "custom-init"},
     ]
   end
 end
