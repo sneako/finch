@@ -62,8 +62,9 @@ defmodule Finch.Conn do
   end
 
   defp receive_response([], mint, ref, response, timeout) do
-    {:ok, mint, entries} = HTTP.recv(mint, 0, timeout)
-    receive_response(entries, mint, ref, response, timeout)
+    with  {:ok, mint, entries} <- HTTP.recv(mint, 0, timeout) do
+      receive_response(entries, mint, ref, response, timeout)
+    end
   end
 
   defp receive_response([entry | entries], mint, ref, response, timeout) do
