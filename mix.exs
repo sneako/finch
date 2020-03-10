@@ -22,9 +22,13 @@ defmodule Finch.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:mint, "~> 0.4.0"},
+      {:mint, "~> 1.0"},
       {:castore, "~> 0.1.3"},
       {:nimble_pool, github: "plataformatec/nimble_pool"},
+      {:cowboy, "~> 2.0"},
+      {:plug_cowboy, "~> 2.0"},
+
+      {:x509, "~> 0.8", only: [:dev, :test]},
     ]
   end
 end

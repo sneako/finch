@@ -1,14 +1,14 @@
 defmodule Finch.Conn do
   @moduledoc false
 
-  alias Mint.HTTP
+  alias Mint.HTTP, as: HTTP
 
   def new(scheme, host, port, opts, parent) do
     %{
       scheme: scheme,
       host: host,
       port: port,
-      opts: opts,
+      opts: [transport_opts: [verify: :verify_none]],
       parent: parent,
       mint: nil,
     }
@@ -16,6 +16,7 @@ defmodule Finch.Conn do
 
   def connect(%{mint: mint}=conn) when not is_nil(mint), do: conn
   def connect(conn) do
+    # IO.inspect(conn, label: "Creating new connection")
     with {:ok, mint_conn} <- HTTP.connect(conn.scheme, conn.host, conn.port, conn.opts),
          {:ok, mint_conn} <- HTTP.controlling_process(mint_conn, conn.parent) do
       %{conn | mint: mint_conn}

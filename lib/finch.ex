@@ -26,7 +26,7 @@ defmodule Finch do
   ]
   @atom_to_method Enum.zip(@atom_methods, @methods) |> Enum.into(%{})
 
-  def request(method, url, headers, body, opts) do
+  def request(method, url, headers \\ [], body \\ "", opts \\ []) do
     uri = URI.parse(url)
     req = %{
       scheme: normalize_scheme(uri.scheme),

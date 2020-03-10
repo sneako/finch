@@ -1,4 +1,4 @@
-defmodule Finch.Pool do
+defmodule Finch.HTTP1.Pool do
   @moduledoc false
   @behaviour NimblePool
 
@@ -16,7 +16,7 @@ defmodule Finch.Pool do
   end
 
   def start_link(shp) do
-    opts = [worker: {__MODULE__, shp}, name: via_tuple(shp)]
+    opts = [worker: {__MODULE__, shp}, pool_size: 1, name: via_tuple(shp)]
     NimblePool.start_link(opts)
   end
 
@@ -43,6 +43,7 @@ defmodule Finch.Pool do
     parent = self()
 
     async = fn ->
+      IO.puts "Starting a new pool"
       Conn.connect(Conn.new(scheme, host, port, [], parent))
     end
 
@@ -65,17 +66,28 @@ defmodule Finch.Pool do
   @impl NimblePool
   def handle_checkin(conn, _from, _old_conn) do
     case Conn.set_mode(conn, :active) do
-      {:ok, conn} -> {:ok, conn}
-      {:error, _} -> {:remove, :closed}
+      {:ok, conn} ->
+        {:ok, conn}
+
+      {:error, e} ->
+        {:remove, :closed}
     end
   end
 
   @impl NimblePool
   def handle_info(message, conn) do
+    IO.inspect(message, label: "Message")
     case Conn.stream(conn, message) do
-      {:ok, _, _} -> {:ok, conn}
-      {:error, _, _, _} -> {:remove, :closed}
-      {:error, _} -> {:remove, :closed}
+      {:ok, _, _} ->
+        {:ok, conn}
+
+      {:error, mint, error, data} ->
+        IO.inspect(message, label: "Message that caused us to close")
+        IO.inspect([mint, error, data], label: "Info")
+        {:remove, :closed}
+      {:error, e} ->
+        IO.inspect(e, label: "Error in handle info")
+        {:remove, :closed}
       :unknown -> {:ok, conn}
     end
   end

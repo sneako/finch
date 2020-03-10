@@ -4,7 +4,7 @@ defmodule Finch.Application do
 
   def start(_, _) do
     children = [
-      Finch.PoolManager
+      Finch.PoolManager,
     ]
 
     opts = [strategy: :one_for_one, name: Finch.Supervisor]
