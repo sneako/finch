@@ -11,7 +11,6 @@ defmodule Finch.MixProject do
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
   def application do
     [
       mod: {Finch.Application, []},
@@ -19,12 +18,12 @@ defmodule Finch.MixProject do
     ]
   end
 
-  # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
       {:mint, "~> 1.0"},
-      {:castore, "~> 0.1.3"},
+      {:castore, "~> 0.1.5"},
       {:nimble_pool, github: "plataformatec/nimble_pool"},
+      {:httparrot, "~> 1.2", only: [:test, :dev]}
     ]
   end
 end

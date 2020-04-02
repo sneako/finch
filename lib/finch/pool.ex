@@ -2,11 +2,7 @@ defmodule Finch.Pool do
   @moduledoc false
   @behaviour NimblePool
 
-  alias Finch.Conn
-
-  defp via_tuple(host) do
-    {:via, Registry, {Finch.PoolRegistry, host}}
-  end
+  alias Finch.{Conn, PoolRegistry}
 
   def child_spec(opts) do
     %{
@@ -16,7 +12,9 @@ defmodule Finch.Pool do
   end
 
   def start_link(shp) do
-    opts = [worker: {__MODULE__, shp}, name: via_tuple(shp)]
+    # TODO avoid application env
+    pool_size = Application.get_env(:finch, :pool_size, 10)
+    opts = [worker: {__MODULE__, shp}, pool_size: pool_size]
     NimblePool.start_link(opts)
   end
 
@@ -25,17 +23,31 @@ defmodule Finch.Pool do
     receive_timeout = Keyword.get(opts, :receive_timeout, 15000)
 
     NimblePool.checkout!(pool, :checkout, fn {conn, pool} ->
+      # do we need this try catch?
       try do
         conn = Conn.connect(conn)
-        result = Conn.request(conn, req, receive_timeout)
-        {:ok, conn} = Conn.transfer(conn, pool)
-        {result, conn}
+        with {:ok, conn, response} <- Conn.request(conn, req, receive_timeout),
+             {:ok, conn} <- Conn.transfer(conn, pool) do
+          {{:ok, response}, conn}
+        else
+          {:error, conn, error} ->
+            {{:error, error}, conn}
+
+          {:error, error} ->
+            {{:error, error}, conn}
+        end
       catch
         kind, reason ->
           _ = Conn.close(conn)
           :erlang.raise(kind, reason, __STACKTRACE__)
       end
     end, pool_timeout)
+  end
+
+  @impl NimblePool
+  def init_pool({_, arg, _}) do
+    {:ok, _} = Registry.register(PoolRegistry, arg, [])
+    :ok
   end
 
   @impl NimblePool
@@ -54,11 +66,8 @@ defmodule Finch.Pool do
   # If we lost the connection, then we remove it to try again.
   def handle_checkout(:checkout, {pid, _}, conn) do
     case Conn.transfer(conn, pid) do
-      {:ok, conn} ->
-        {:ok, {conn, self()}, conn}
-
-      _ ->
-        {:remove, :closed}
+      {:ok, conn} -> {:ok, {conn, self()}, conn}
+      _ -> {:remove, :closed}
     end
   end
 
@@ -85,5 +94,6 @@ defmodule Finch.Pool do
   # This will succeed even if it was already closed or if we don't own it.
   def terminate(_reason, conn) do
     Conn.close(conn)
+    :ok
   end
 end
