@@ -41,7 +41,7 @@ The other formatter that comes with LoggerJSON is `LoggerJSON.Formatters.GoogleC
 
   ```json
   {
-    "log":"hello",
+    "message":"hello",
     "logging.googleapis.com/sourceLocation":{
       "file":"/os/logger_json/test/unit/logger_json_test.exs",
       "function":"Elixir.LoggerJSONGoogleTest.test metadata can be configured/1",
@@ -68,7 +68,7 @@ The other formatter that comes with LoggerJSON is `LoggerJSON.Formatters.GoogleC
     },
     "insertId":"1g64u74fgmqqft",
     "jsonPayload":{
-      "log":"",
+      "message":"",
       "phoenix":{
         "action":"index",
         "controller":"Elixir.MyApp.Web.PageController",
