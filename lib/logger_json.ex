@@ -7,23 +7,7 @@ defmodule LoggerJSON do
 
   ## Log Format
 
-  By-default, generated JSON is compatible with
-  [Google Cloud Logger LogEntry](https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry)
-  format:
-
-    ```json
-    {
-      "log":"hello",
-      "logging.googleapis.com/sourceLocation":{
-        "file":"/os/logger_json/test/unit/logger_json_test.exs",
-        "function":"Elixir.LoggerJSONGoogleTest.test metadata can be configured/1",
-        "line":71
-      },
-      "severity":"DEBUG",
-      "time":"2018-10-19T01:10:49.582Z",
-      "user_id":13
-    }
-    ```
+  LoggerJSON provides two JSON formatters out of the box.
 
   You can change this structure by implementing `LoggerJSON.Formatter` behaviour and passing module
   name to `:formatter` config option. Example implementations can be found in `LoggerJSON.Formatters.GoogleCloudLogger`

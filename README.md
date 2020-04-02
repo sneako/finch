@@ -26,7 +26,14 @@ LoggerJSON provides two JSON formatters out of the box (see below for implementi
 The `LoggerJSON.Formatters.BasicLogger` formatter provides a generic JSON formatted message with no vendor specific entries in the payload. A sample log entry from `LoggerJSON.Formatters.BasicLogger` looks like the following:
 
 ```json
-
+{
+  "time": "2020-04-02T11:59:06.710Z",
+  "severity": "debug",
+  "message": "hello",
+  "metadata": {
+    "user_id": 13
+  }
+}
 ```
 
 The other formatter that comes with LoggerJSON is `LoggerJSON.Formatters.GoogleCloudLogger` and generates JSON that is compatible with the
@@ -108,7 +115,7 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
 
   ```ex
   def deps do
-    [{:logger_json, "~> 3.0"}]
+    [{:logger_json, "~> 4.0"}]
   end
   ```
 
