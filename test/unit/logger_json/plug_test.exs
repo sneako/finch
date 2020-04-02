@@ -1,5 +1,5 @@
 defmodule LoggerJSON.PlugTest do
-  use Logger.Case
+  use Logger.Case, async: false
   use Plug.Test
   import ExUnit.CaptureIO
   require Logger
@@ -16,11 +16,16 @@ defmodule LoggerJSON.PlugTest do
   end
 
   setup do
-    on_exit(fn ->
-      :ok = Logger.configure_backend(LoggerJSON, device: :user, level: nil, metadata: [], json_encoder: Jason)
-    end)
-
-    Logger.configure_backend(LoggerJSON, device: :standard_error, metadata: :all)
+    :ok =
+      Logger.configure_backend(
+        LoggerJSON,
+        device: :standard_error,
+        level: nil,
+        metadata: :all,
+        json_encoder: Jason,
+        on_init: :disabled,
+        formatter: LoggerJSON.Formatters.GoogleCloudLogger
+      )
   end
 
   test "logs request information" do

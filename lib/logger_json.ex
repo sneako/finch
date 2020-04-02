@@ -16,7 +16,7 @@ defmodule LoggerJSON do
       "log":"hello",
       "logging.googleapis.com/sourceLocation":{
         "file":"/os/logger_json/test/unit/logger_json_test.exs",
-        "function":"Elixir.LoggerJSONTest.test metadata can be configured/1",
+        "function":"Elixir.LoggerJSONGoogleTest.test metadata can be configured/1",
         "line":71
       },
       "severity":"DEBUG",
@@ -26,7 +26,8 @@ defmodule LoggerJSON do
     ```
 
   You can change this structure by implementing `LoggerJSON.Formatter` behaviour and passing module
-  name to `:formatter` config option. Example module can be found in `LoggerJSON.Formatters.GoogleCloudLogger`.
+  name to `:formatter` config option. Example implementations can be found in `LoggerJSON.Formatters.GoogleCloudLogger`
+  and `LoggerJSON.Formatters.BasicLogger`.
 
     ```elixir
     config :logger_json, :backend,
@@ -50,7 +51,9 @@ defmodule LoggerJSON do
   For dynamically configuring the endpoint, such as loading data
   from environment variables or configuration files, LoggerJSON provides
   an `:on_init` option that allows developers to set a module, function
-  and list of arguments that is invoked when the endpoint starts.
+  and list of arguments that is invoked when the endpoint starts. If you
+  would like to disable the `:on_init` callback function dynamically, you
+  can pass in `:disabled` and no callback function will be called.
 
     ```elixir
     config :logger_json, :backend,
@@ -121,6 +124,7 @@ defmodule LoggerJSON do
   def handle_call({:configure, options}, state) do
     config = configure_merge(get_env(), options)
     put_env(config)
+
     {:ok, :ok, init(config, state)}
   end
 
@@ -193,6 +197,9 @@ defmodule LoggerJSON do
           {:ok, conf} = apply(mod, fun, [config | args])
           conf
 
+        {:ok, :disabled} ->
+          config
+
         {:ok, other} ->
           raise ArgumentError,
                 "invalid :on_init option for :logger_json application. " <>
@@ -203,7 +210,7 @@ defmodule LoggerJSON do
       end
 
     json_encoder = Keyword.get(config, :json_encoder, Jason)
-    formatter = Keyword.get(config, :formatter, LoggerJSON.Formatters.GoogleCloudLogger)
+    formatter = Keyword.get(config, :formatter, LoggerJSON.Formatters.BasicLogger)
     level = Keyword.get(config, :level)
     device = Keyword.get(config, :device, :user)
     max_buffer = Keyword.get(config, :max_buffer, 32)

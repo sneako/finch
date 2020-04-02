@@ -1,12 +1,20 @@
-defmodule LoggerJSONTest do
-  use Logger.Case
+defmodule LoggerJSONGoogleTest do
+  use Logger.Case, async: false
   import ExUnit.CaptureIO
   require Logger
+  alias LoggerJSON.Formatters.GoogleCloudLogger
 
   setup do
-    on_exit(fn ->
-      :ok = Logger.configure_backend(LoggerJSON, device: :user, level: nil, metadata: [], json_encoder: Jason)
-    end)
+    :ok =
+      Logger.configure_backend(
+        LoggerJSON,
+        device: :user,
+        level: nil,
+        metadata: [],
+        json_encoder: Jason,
+        on_init: :disabled,
+        formatter: GoogleCloudLogger
+      )
   end
 
   describe "configure_log_level!/1" do
@@ -126,7 +134,6 @@ defmodule LoggerJSONTest do
                Logger.debug("hello")
              end) =~ "hello"
 
-      Logger.metadata(user_id: 11)
       Logger.metadata(user_id: 13)
 
       log =
@@ -175,7 +182,7 @@ defmodule LoggerJSONTest do
     end
 
     test "is triggered" do
-      Logger.configure_backend(LoggerJSON, metadata: [], on_init: {LoggerJSONTest, :on_init_cb, []})
+      Logger.configure_backend(LoggerJSON, metadata: [], on_init: {LoggerJSONGoogleTest, :on_init_cb, []})
 
       Logger.metadata(user_id: 11)
 

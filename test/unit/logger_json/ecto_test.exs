@@ -1,12 +1,19 @@
 defmodule LoggerJSON.EctoTest do
-  use Logger.Case
+  use Logger.Case, async: false
   import ExUnit.CaptureIO
   require Logger
 
   setup do
-    on_exit(fn ->
-      :ok = Logger.configure_backend(LoggerJSON, device: :user, level: nil, metadata: [], json_encoder: Jason)
-    end)
+    :ok =
+      Logger.configure_backend(
+        LoggerJSON,
+        device: :user,
+        level: nil,
+        metadata: [],
+        json_encoder: Jason,
+        on_init: :disabled,
+        formatter: LoggerJSON.Formatters.GoogleCloudLogger
+      )
 
     diff = :erlang.convert_time_unit(1, :microsecond, :native)
 

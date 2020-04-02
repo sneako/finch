@@ -2,7 +2,8 @@ defmodule LoggerJSON.Formatter do
   @moduledoc """
   Behaviour that should be implemented by log formatters.
 
-  Example implementation can be found in `LoggerJSON.Formatters.GoogleCloudLogger`.
+  Example implementations can be found in `LoggerJSON.Formatters.GoogleCloudLogger` and
+  `LoggerJSON.Formatters.BasicLogger`.
   """
 
   @doc """

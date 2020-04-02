@@ -21,7 +21,15 @@ After adding this back-end you may also be interested in [redirecting otp and sa
 
 ## Log Format
 
-By-default, generated JSON is compatible with
+LoggerJSON provides two JSON formatters out of the box (see below for implementing your own custom formatter).
+
+The `LoggerJSON.Formatters.BasicLogger` formatter provides a generic JSON formatted message with no vendor specific entries in the payload. A sample log entry from `LoggerJSON.Formatters.BasicLogger` looks like the following:
+
+```json
+
+```
+
+The other formatter that comes with LoggerJSON is `LoggerJSON.Formatters.GoogleCloudLogger` and generates JSON that is compatible with the
 [Google Cloud Logger LogEntry](https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry) format:
 
   ```json
@@ -29,7 +37,7 @@ By-default, generated JSON is compatible with
     "log":"hello",
     "logging.googleapis.com/sourceLocation":{
       "file":"/os/logger_json/test/unit/logger_json_test.exs",
-      "function":"Elixir.LoggerJSONTest.test metadata can be configured/1",
+      "function":"Elixir.LoggerJSONGoogleTest.test metadata can be configured/1",
       "line":71
     },
     "severity":"DEBUG",
@@ -39,7 +47,6 @@ By-default, generated JSON is compatible with
   ```
 
   Log entry in Google Cloud Logger would looks something like this:
-
 
   ```json
   {
