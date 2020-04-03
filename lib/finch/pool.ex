@@ -23,23 +23,17 @@ defmodule Finch.Pool do
     receive_timeout = Keyword.get(opts, :receive_timeout, 15000)
 
     NimblePool.checkout!(pool, :checkout, fn {conn, pool} ->
-      # do we need this try catch?
-      try do
-        conn = Conn.connect(conn)
-        with {:ok, conn, response} <- Conn.request(conn, req, receive_timeout),
-             {:ok, conn} <- Conn.transfer(conn, pool) do
-          {{:ok, response}, conn}
-        else
-          {:error, conn, error} ->
-            {{:error, error}, conn}
+      conn = Conn.connect(conn)
 
-          {:error, error} ->
-            {{:error, error}, conn}
-        end
-      catch
-        kind, reason ->
-          _ = Conn.close(conn)
-          :erlang.raise(kind, reason, __STACKTRACE__)
+      with {:ok, conn, response} <- Conn.request(conn, req, receive_timeout),
+           {:ok, conn} <- Conn.transfer(conn, pool) do
+        {{:ok, response}, conn}
+      else
+        {:error, conn, error} ->
+          {{:error, error}, conn}
+
+        {:error, error} ->
+          {{:error, error}, conn}
       end
     end, pool_timeout)
   end
