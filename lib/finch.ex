@@ -1,12 +1,8 @@
 defmodule Finch do
   @moduledoc """
-  Finch
+  Start Finch in your supervision tree, passing a `:name` is required:
 
-  Create your Finch HTTP Client like so:
-
-      defmodule MyFinch do
-        use Finch
-      end
+      {Finch, name: MyFinch}
 
   For HTTP/1 connections, Finch allows you to configure how many pools and their size,
   for any {scheme, host, port} combination at compile time.
@@ -16,32 +12,15 @@ defmodule Finch do
 
   Here is an example of what that might look like:
 
-      defmodule MyConfiguredFinch do
-        use Finch, pools: %{
-          :default => %{size: 10, count: 1},
-          {:https, "hex.pm", 443} => %{size: 20, count: 4}
-        }
-      end
-  """
-  defmacro __using__(opts) do
-    quote do
-      @config %{
-        name: __MODULE__,
-        pool_sup_name: :"#{__MODULE__}.PoolSup",
-        pool_reg_name: :"#{__MODULE__}.PoolRegistry",
-        pools: Keyword.get(unquote(opts), :pools, %{})
+      {Finch, name: MyFinch, pools: %{
+         :default => %{size: 10, count: 1},
+         {:https, "hex.pm", 443} => %{size: 20, count: 4}
       }
 
-      def start_link do
-        name = :"#{__MODULE__}.PoolManager"
-        Finch.PoolManager.start_link(name, @config)
-      end
+  And then you can use it by passing the name to the request function:
 
-      def request(method, url, headers, body, opts) do
-        Finch.request(@config, method, url, headers, body, opts)
-      end
-    end
-  end
+      Finch.request(MyFinch, ...)
+  """
 
   alias Finch.Pool
   alias Finch.PoolManager
@@ -66,8 +45,22 @@ defmodule Finch do
   ]
   @atom_to_method Enum.zip(@atom_methods, @methods) |> Enum.into(%{})
 
-  def request(config, method, url, headers, body, opts) do
+  def start_link(opts) do
+    name = Keyword.fetch!(opts, :name)
+
+    config = %{
+      registry_name: name,
+      manager_name: pool_manager_name(name),
+      supervisor_name: pool_supervisor_name(name),
+      pools: Keyword.get(opts, :pools, %{})
+    }
+
+    Finch.PoolManager.start_link(config)
+  end
+
+  def request(name, method, url, headers, body, opts \\ []) do
     uri = URI.parse(url)
+
     req = %{
       scheme: normalize_scheme(uri.scheme),
       host: uri.host,
@@ -77,11 +70,13 @@ defmodule Finch do
       headers: headers,
       body: body
     }
-    pool = PoolManager.get_pool(config, req.scheme, req.host, req.port)
+
+    pool = PoolManager.get_pool(name, req.scheme, req.host, req.port)
     Pool.request(pool, req, opts)
   end
 
   defp build_method(method) when method in @methods, do: method
+
   defp build_method(method) when is_atom(method) do
     @atom_to_method[method]
   end
@@ -92,4 +87,7 @@ defmodule Finch do
       "http" -> :http
     end
   end
+
+  defp pool_manager_name(name), do: :"#{name}.PoolManager"
+  defp pool_supervisor_name(name), do: :"#{name}.PoolSup"
 end

@@ -2,15 +2,16 @@ defmodule Finch.PoolManager do
   @moduledoc false
   use Supervisor
 
-  def start_link(name, config) do
-    Supervisor.start_link(__MODULE__, config, name: name)
+  def start_link(config) do
+    Supervisor.start_link(__MODULE__, config, name: config.manager_name)
   end
 
-  def get_pool(%{pool_reg_name: registry} = config, scheme, host, port) do
+  def get_pool(registry_name, scheme, host, port) do
     key = {scheme, host, port}
-    case lookup_pool(registry, key) do
+
+    case lookup_pool(registry_name, key) do
       :none ->
-        case start_pools(config, key) do
+        case start_pools(registry_name, key) do
           {:ok, pid} ->
             pid
 
@@ -32,25 +33,28 @@ defmodule Finch.PoolManager do
         {:ok, pid}
 
       pids ->
+        # TODO implement alternative strategies
         {pid, _} = Enum.random(pids)
         {:ok, pid}
     end
   end
 
-  def start_pools(%{pool_reg_name: registry, pool_sup_name: supervisor} = config, key) do
-    {count, size} = pool_config(config, key)
-    pool_args = {key, registry, size}
+  def start_pools(registry_name, key) do
+    with {:ok, config} = Registry.meta(registry_name, :config) do
+      {count, size} = pool_config(config, key)
+      pool_args = {key, config.registry_name, size}
 
-    Enum.map(1..count, fn _ ->
-      DynamicSupervisor.start_child(supervisor, {Finch.Pool, pool_args})
-    end)
-    |> hd()
+      Enum.map(1..count, fn _ ->
+        DynamicSupervisor.start_child(config.supervisor_name, {Finch.Pool, pool_args})
+      end)
+      |> hd()
+    end
   end
 
-  def init(%{pool_reg_name: registry, pool_sup_name: supervisor}) do
+  def init(config) do
     children = [
-      {DynamicSupervisor, name: supervisor, strategy: :one_for_one},
-      {Registry, [keys: :duplicate, name: registry]},
+      {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
+      {Registry, [keys: :duplicate, name: config.registry_name, meta: [config: config]]}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

@@ -2,16 +2,12 @@ defmodule FinchTest do
   use ExUnit.Case
   doctest Finch
 
-  defmodule MyFinch do
-    use Finch
-  end
-
   describe "get" do
     test "basic example" do
-      {:ok, _} = MyFinch.start_link()
+      {:ok, _} = Finch.start_link(name: MyFinch)
 
-      assert {:ok, _response} = MyFinch.request("GET", url(), [], "", [])
-      assert {:ok, _response} = MyFinch.request("GET", url(), [], "", [])
+      assert {:ok, _response} = Finch.request(MyFinch, "GET", url(), [], "")
+      assert {:ok, _response} = Finch.request(MyFinch, "GET", url(), [], "")
     end
   end
 

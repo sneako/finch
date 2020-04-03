@@ -22,7 +22,7 @@ defmodule Finch.MixProject do
       {:mint, "~> 1.0"},
       {:castore, "~> 0.1.5"},
       {:nimble_pool, github: "plataformatec/nimble_pool"},
-      {:httparrot, "~> 1.2", only: [:test, :dev]}
+      {:httparrot, "~> 1.2", only: :test}
     ]
   end
 end
