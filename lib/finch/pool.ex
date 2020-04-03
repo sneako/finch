@@ -7,7 +7,7 @@ defmodule Finch.Pool do
   def child_spec(opts) do
     %{
       id: __MODULE__,
-      start: {__MODULE__, :start_link, [opts]},
+      start: {__MODULE__, :start_link, [opts]}
     }
   end
 
@@ -20,20 +20,25 @@ defmodule Finch.Pool do
     pool_timeout = Keyword.get(opts, :pool_timeout, 5000)
     receive_timeout = Keyword.get(opts, :receive_timeout, 15000)
 
-    NimblePool.checkout!(pool, :checkout, fn {conn, pool} ->
-      conn = Conn.connect(conn)
+    NimblePool.checkout!(
+      pool,
+      :checkout,
+      fn {conn, pool} ->
+        conn = Conn.connect(conn)
 
-      with {:ok, conn, response} <- Conn.request(conn, req, receive_timeout),
-           {:ok, conn} <- Conn.transfer(conn, pool) do
-        {{:ok, response}, conn}
-      else
-        {:error, conn, error} ->
-          {{:error, error}, conn}
+        with {:ok, conn, response} <- Conn.request(conn, req, receive_timeout),
+             {:ok, conn} <- Conn.transfer(conn, pool) do
+          {{:ok, response}, conn}
+        else
+          {:error, conn, error} ->
+            {{:error, error}, conn}
 
-        {:error, error} ->
-          {{:error, error}, conn}
-      end
-    end, pool_timeout)
+          {:error, error} ->
+            {{:error, error}, conn}
+        end
+      end,
+      pool_timeout
+    )
   end
 
   @impl NimblePool

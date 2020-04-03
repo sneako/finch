@@ -40,15 +40,14 @@ defmodule Finch.PoolManager do
   end
 
   def start_pools(registry_name, key) do
-    with {:ok, config} = Registry.meta(registry_name, :config) do
-      {count, size} = pool_config(config, key)
-      pool_args = {key, config.registry_name, size}
+    {:ok, config} = Registry.meta(registry_name, :config)
+    {count, size} = pool_config(config, key)
+    pool_args = {key, config.registry_name, size}
 
-      Enum.map(1..count, fn _ ->
-        DynamicSupervisor.start_child(config.supervisor_name, {Finch.Pool, pool_args})
-      end)
-      |> hd()
-    end
+    Enum.map(1..count, fn _ ->
+      DynamicSupervisor.start_child(config.supervisor_name, {Finch.Pool, pool_args})
+    end)
+    |> hd()
   end
 
   def init(config) do
