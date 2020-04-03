@@ -2,7 +2,7 @@ defmodule Finch.Pool do
   @moduledoc false
   @behaviour NimblePool
 
-  alias Finch.{Conn, PoolRegistry}
+  alias Finch.Conn
 
   def child_spec(opts) do
     %{
@@ -11,10 +11,8 @@ defmodule Finch.Pool do
     }
   end
 
-  def start_link(shp) do
-    # TODO avoid application env
-    pool_size = Application.get_env(:finch, :pool_size, 10)
-    opts = [worker: {__MODULE__, shp}, pool_size: pool_size]
+  def start_link({shp, registry_name, pool_size}) do
+    opts = [worker: {__MODULE__, {registry_name, shp}}, pool_size: pool_size]
     NimblePool.start_link(opts)
   end
 
@@ -39,13 +37,13 @@ defmodule Finch.Pool do
   end
 
   @impl NimblePool
-  def init_pool({_, arg, _}) do
-    {:ok, _} = Registry.register(PoolRegistry, arg, [])
+  def init_pool({_, {registry, shp}, _}) do
+    {:ok, _} = Registry.register(registry, shp, [])
     :ok
   end
 
   @impl NimblePool
-  def init({scheme, host, port}) do
+  def init({_, {scheme, host, port}}) do
     parent = self()
 
     async = fn ->

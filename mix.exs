@@ -13,7 +13,6 @@ defmodule Finch.MixProject do
 
   def application do
     [
-      mod: {Finch.Application, []},
       extra_applications: [:logger]
     ]
   end
