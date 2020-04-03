@@ -7,6 +7,6 @@
   "httparrot": {:hex, :httparrot, "1.2.0", "5ca2cb7aa936e8f418051b615fb8ec419ec7f29e792ae9fb698393e82513457b", [:mix], [{:con_cache, "~> 0.13.0", [hex: :con_cache, repo: "hexpm", optional: false]}, {:cowboy, "~> 2.5.0", [hex: :cowboy, repo: "hexpm", optional: false]}, {:exjsx, "~> 3.0 or ~> 4.0", [hex: :exjsx, repo: "hexpm", optional: false]}], "hexpm", "d781adf243a302c4837b647bd9d48c1bc9e3f9419ec0b2f37aede81725586176"},
   "jsx": {:hex, :jsx, "2.8.3", "a05252d381885240744d955fbe3cf810504eb2567164824e19303ea59eef62cf", [:mix, :rebar3], [], "hexpm", "fc3499fed7a726995aa659143a248534adc754ebd16ccd437cd93b649a95091f"},
   "mint": {:hex, :mint, "1.0.0", "ca5ab33497ba2bdcc42f6cdd3927420a6159116be87c8173658e93c8746703da", [:mix], [{:castore, "~> 0.1.0", [hex: :castore, repo: "hexpm", optional: true]}], "hexpm", "b8943ef1e630879538dd6620bfc189d4d75fab3ad39f3fe9c50539879f7efd84"},
-  "nimble_pool": {:git, "https://github.com/plataformatec/nimble_pool.git", "bffb9f14e291ff61ebe6011758e6919b3025b7f7", []},
+  "nimble_pool": {:git, "https://github.com/plataformatec/nimble_pool.git", "62e387ad5c1fd0286b73cd37745d540b51a9472c", []},
   "ranch": {:hex, :ranch, "1.6.2", "6db93c78f411ee033dbb18ba8234c5574883acb9a75af0fb90a9b82ea46afa00", [:rebar3], [], "hexpm", "0b65d1de7f1ebe96feb57803c8d698f7776b663ba10b6dcff34527e4a4f8ff43"},
 }
