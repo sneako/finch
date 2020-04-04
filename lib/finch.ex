@@ -112,7 +112,7 @@ defmodule Finch do
     end
   end
 
-  defp supervisor_name(name), do: :"#{name}.Sup"
+  defp supervisor_name(name), do: :"#{name}.Supervisor"
   defp manager_name(name), do: :"#{name}.PoolManager"
-  defp pool_supervisor_name(name), do: :"#{name}.PoolSup"
+  defp pool_supervisor_name(name), do: :"#{name}.PoolSupervisor"
 end
