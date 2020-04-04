@@ -1,25 +1,38 @@
 defmodule Finch do
   @moduledoc """
-  Start Finch in your supervision tree, passing a `:name` is required:
+  An HTTP client with a focus on performance.
 
-      {Finch, name: MyFinch}
+  ## Usage
+  In order to use Finch, you must start it and provide a `:name`
 
-  For HTTP/1 connections, Finch allows you to configure how many pools and their size,
-  for any {scheme, host, port} combination at compile time.
+  ```
+  Finch.start_link(name: MyFinch)
+  ```
 
-  You can also configure a `:default` pool size and pool count that will be used for any
-  {scheme, host, port} you did not already configure.
+  Once you have started Finch, you can use the client you have started,
+  by passing the name of your client as the first argument of `Finch.request/3,4,5`.
 
-  Here is an example of what that might look like:
+  ```
+  Finch.request(MyFinch, :get, "https://hex.pm")
+  ```
 
-      {Finch, name: MyFinch, pools: %{
-         :default => %{size: 10, count: 1},
-         {:https, "hex.pm", 443} => %{size: 20, count: 4}
-      }
+  When using HTTP/1, Finch will parse the passed in url into a `{scheme, host, port}`
+  tuple, and maintain one or more connection pools for each `{scheme, host, port}` you
+  interact with.
 
-  And then you can use it by passing the name to the request function:
+  You can also configure different a pool size and count to be used for specific
+  `{scheme, host, port}`s that are known before starting Finch.
 
-      Finch.request(MyFinch, ...)
+  ```
+  Finch.start_link(name: MyConfiguredFinch, pools: %{
+    :default => %{size: 10, count: 4},
+    {:https, "hex.pm", 443} => %{size: 32, count: 8}
+  })
+  ```
+
+  Pools will be started for each configured `{scheme, host, port}` when Finch is started,
+  but for any unconfigured `{scheme, host, port}`, the pool will be started the first time
+  it is requested.
   """
 
   alias Finch.Pool
@@ -58,7 +71,7 @@ defmodule Finch do
     Finch.PoolManager.start_link(config)
   end
 
-  def request(name, method, url, headers, body, opts \\ []) do
+  def request(name, method, url, headers \\ [], body \\ "", opts \\ []) do
     uri = URI.parse(url)
 
     req = %{
