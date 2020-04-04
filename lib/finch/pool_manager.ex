@@ -6,6 +6,7 @@ defmodule Finch.PoolManager do
     GenServer.start_link(__MODULE__, config, name: config.manager_name)
   end
 
+  @impl true
   def init(config) do
     Enum.each(config.pools, fn
       {:default, _} -> :ok
@@ -19,18 +20,10 @@ defmodule Finch.PoolManager do
   def get_pool(registry_name, scheme, host, port) do
     key = {scheme, host, port}
 
-    case lookup_pool(registry_name, key) do
-      :none ->
-        case start_pools(registry_name, key) do
-          {:ok, pid} ->
-            pid
-
-          {:error, {:already_started, pid}} ->
-            pid
-        end
-
-      {:ok, pid} ->
-        pid
+    with pool when is_pid(pool) <- lookup_pool(registry_name, key) do
+      pool
+    else
+      :none -> start_pools(registry_name, key)
     end
   end
 
@@ -40,12 +33,12 @@ defmodule Finch.PoolManager do
         :none
 
       [{pid, _}] ->
-        {:ok, pid}
+        pid
 
       pids ->
         # TODO implement alternative strategies
         {pid, _} = Enum.random(pids)
-        {:ok, pid}
+        pid
     end
   end
 
@@ -54,6 +47,7 @@ defmodule Finch.PoolManager do
     GenServer.call(config.manager_name, {:start_pools, shp})
   end
 
+  @impl true
   def handle_call({:start_pools, shp}, _from, state) do
     reply = do_start_pools(shp, state)
     {:reply, reply, state}
@@ -73,7 +67,7 @@ defmodule Finch.PoolManager do
   defp pool_config(%{pools: config}, shp) do
     case Map.get(config, shp, config[:default]) do
       nil -> {1, 10}
-      %{count: count, size: size} -> {count, size}
+      %{size: size} = config -> {Map.get(config, :count, 1), size}
     end
   end
 end

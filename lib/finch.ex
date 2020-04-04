@@ -20,12 +20,13 @@ defmodule Finch do
   tuple, and maintain one or more connection pools for each `{scheme, host, port}` you
   interact with.
 
-  You can also configure different a pool size and count to be used for specific
-  `{scheme, host, port}`s that are known before starting Finch.
+  You can also configure a pool size and count to be used for each specific
+  `{scheme, host, port}`s that are known before starting Finch. When configuring
+  pools, the `:size` is required. The `:count` will default to 1.
 
   ```
   Finch.start_link(name: MyConfiguredFinch, pools: %{
-    :default => %{size: 10, count: 4},
+    :default => %{size: 10},
     {:https, "hex.pm", 443} => %{size: 32, count: 8}
   })
   ```
@@ -72,7 +73,7 @@ defmodule Finch do
     Supervisor.start_link(__MODULE__, config, name: supervisor_name(name))
   end
 
-@impl true
+  @impl true
   def init(config) do
     children = [
       {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
@@ -80,7 +81,7 @@ defmodule Finch do
       {PoolManager, config}
     ]
 
-    Supervisor.init(children, strategy: :one_for_one)
+    Supervisor.init(children, strategy: :one_for_all)
   end
 
   def request(name, method, url, headers \\ [], body \\ "", opts \\ []) do
