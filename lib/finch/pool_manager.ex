@@ -1,18 +1,19 @@
 defmodule Finch.PoolManager do
   @moduledoc false
-  use Supervisor
+  use GenServer
 
   def start_link(config) do
-    Supervisor.start_link(__MODULE__, config, name: config.manager_name)
+    GenServer.start_link(__MODULE__, config, name: config.manager_name)
   end
 
   def init(config) do
-    children = [
-      {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
-      {Registry, [keys: :duplicate, name: config.registry_name, meta: [config: config]]}
-    ]
+    Enum.each(config.pools, fn
+      {:default, _} -> :ok
+      {shp, _} -> do_start_pools(shp, config)
+      _ -> :ok
+    end)
 
-    Supervisor.init(children, strategy: :one_for_one)
+    {:ok, config}
   end
 
   def get_pool(registry_name, scheme, host, port) do
@@ -48,10 +49,19 @@ defmodule Finch.PoolManager do
     end
   end
 
-  def start_pools(registry_name, key) do
+  def start_pools(registry_name, shp) do
     {:ok, config} = Registry.meta(registry_name, :config)
-    {count, size} = pool_config(config, key)
-    pool_args = {key, registry_name, size}
+    GenServer.call(config.manager_name, {:start_pools, shp})
+  end
+
+  def handle_call({:start_pools, shp}, _from, state) do
+    reply = do_start_pools(shp, state)
+    {:reply, reply, state}
+  end
+
+  defp do_start_pools(shp, config) do
+    {count, size} = pool_config(config, shp)
+    pool_args = {shp, config.registry_name, size}
 
     Enum.map(1..count, fn _ ->
       DynamicSupervisor.start_child(config.supervisor_name, {Finch.Pool, pool_args})

@@ -36,6 +36,8 @@ defmodule Finch do
   """
   alias Finch.{Pool, PoolManager}
 
+  use Supervisor
+
   @atom_methods [
     :get,
     :post,
@@ -62,20 +64,22 @@ defmodule Finch do
 
     config = %{
       registry_name: name,
-      manager_name: pool_manager_name(name),
+      manager_name: manager_name(name),
       supervisor_name: pool_supervisor_name(name),
       pools: pools
     }
 
-    {:ok, finch} = PoolManager.start_link(config)
+    Supervisor.start_link(__MODULE__, config, name: supervisor_name(name))
+  end
 
-    Enum.each(pools, fn
-      {:default, _} -> :ok
-      {shp, _} -> PoolManager.start_pools(name, shp)
-      _ -> :ok
-    end)
+  def init(config) do
+    children = [
+      {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
+      {Registry, [keys: :duplicate, name: config.registry_name, meta: [config: config]]},
+      {PoolManager, config}
+    ]
 
-    {:ok, finch}
+    Supervisor.init(children, strategy: :one_for_one)
   end
 
   def request(name, method, url, headers \\ [], body \\ "", opts \\ []) do
@@ -108,6 +112,7 @@ defmodule Finch do
     end
   end
 
-  defp pool_manager_name(name), do: :"#{name}.PoolManager"
+  defp supervisor_name(name), do: :"#{name}.Sup"
+  defp manager_name(name), do: :"#{name}.PoolManager"
   defp pool_supervisor_name(name), do: :"#{name}.PoolSup"
 end
