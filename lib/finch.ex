@@ -84,7 +84,7 @@ defmodule Finch do
     Supervisor.init(children, strategy: :one_for_all)
   end
 
-  def request(name, method, url, headers \\ [], body \\ "", opts \\ []) do
+  def request(name, method, url, headers \\ [], body \\ nil, opts \\ []) do
     uri = URI.parse(url)
 
     req = %{
