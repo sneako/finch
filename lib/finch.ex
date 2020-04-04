@@ -3,14 +3,14 @@ defmodule Finch do
   An HTTP client with a focus on performance.
 
   ## Usage
-  In order to use Finch, you must start it and provide a `:name`
+  In order to use Finch, you must start it and provide a `:name`.
 
   ```
   Finch.start_link(name: MyFinch)
   ```
 
   Once you have started Finch, you can use the client you have started,
-  by passing the name of your client as the first argument of `Finch.request/3,4,5`.
+  by passing the name of your client as the first argument of `Finch.request/3,4,5`:
 
   ```
   Finch.request(MyFinch, :get, "https://hex.pm")
@@ -34,9 +34,7 @@ defmodule Finch do
   but for any unconfigured `{scheme, host, port}`, the pool will be started the first time
   it is requested.
   """
-
-  alias Finch.Pool
-  alias Finch.PoolManager
+  alias Finch.{Pool, PoolManager}
 
   @atom_methods [
     :get,
@@ -60,15 +58,24 @@ defmodule Finch do
 
   def start_link(opts) do
     name = Keyword.fetch!(opts, :name)
+    pools = Keyword.get(opts, :pools, %{})
 
     config = %{
       registry_name: name,
       manager_name: pool_manager_name(name),
       supervisor_name: pool_supervisor_name(name),
-      pools: Keyword.get(opts, :pools, %{})
+      pools: pools
     }
 
-    Finch.PoolManager.start_link(config)
+    {:ok, finch} = PoolManager.start_link(config)
+
+    Enum.each(pools, fn
+      {:default, _} -> :ok
+      {shp, _} -> PoolManager.start_pools(name, shp)
+      _ -> :ok
+    end)
+
+    {:ok, finch}
   end
 
   def request(name, method, url, headers \\ [], body \\ "", opts \\ []) do
