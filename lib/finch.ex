@@ -72,6 +72,7 @@ defmodule Finch do
     Supervisor.start_link(__MODULE__, config, name: supervisor_name(name))
   end
 
+@impl true
   def init(config) do
     children = [
       {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
