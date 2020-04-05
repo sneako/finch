@@ -8,7 +8,8 @@ defmodule FinchTest do
 
   describe "start_link/1" do
     test "raises if :name is not provided" do
-      assert_raise(ArgumentError, fn -> Finch.start_link([]) end)
+      error = assert_raise(ArgumentError, fn -> Finch.start_link([]) end)
+      assert error.message =~ "must supply a name"
     end
   end
 
