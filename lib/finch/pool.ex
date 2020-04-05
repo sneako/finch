@@ -16,9 +16,9 @@ defmodule Finch.Pool do
     NimblePool.start_link(opts)
   end
 
-  def request(pool, req, opts \\ []) do
-    pool_timeout = Keyword.get(opts, :pool_timeout, 5000)
-    receive_timeout = Keyword.get(opts, :receive_timeout, 15000)
+  def request(pool, req, opts) do
+    pool_timeout = Keyword.get(opts, :pool_timeout, 5_000)
+    receive_timeout = Keyword.get(opts, :receive_timeout, 15_000)
 
     NimblePool.checkout!(
       pool,

@@ -60,7 +60,7 @@ defmodule Finch do
   @atom_to_method Enum.zip(@atom_methods, @methods) |> Enum.into(%{})
 
   def start_link(opts) do
-    name = Keyword.fetch!(opts, :name)
+    name = Keyword.get(opts, :name) || raise ArgumentError, "must supply a name"
     pools = Keyword.get(opts, :pools, %{})
 
     config = %{

@@ -57,7 +57,8 @@ defmodule Finch.Conn do
     with {:ok, mint, ref} <- HTTP.request(conn.mint, req.method, req.path, req.headers, req.body) do
       receive_response([], %{conn | mint: mint}, ref, %{}, receive_timeout)
     else
-      {:error, mint, error} -> {:error, %{conn | mint: mint}, error}
+      {:error, mint, error} ->
+        {:error, %{conn | mint: mint}, error}
     end
   end
 
