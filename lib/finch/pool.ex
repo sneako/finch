@@ -4,42 +4,51 @@ defmodule Finch.Pool do
 
   alias Finch.Conn
 
-  defp via_tuple(host) do
-    {:via, Registry, {Finch.PoolRegistry, host}}
-  end
-
   def child_spec(opts) do
     %{
       id: __MODULE__,
-      start: {__MODULE__, :start_link, [opts]},
+      start: {__MODULE__, :start_link, [opts]}
     }
   end
 
-  def start_link(shp) do
-    opts = [worker: {__MODULE__, shp}, name: via_tuple(shp)]
+  def start_link({shp, registry_name, pool_size}) do
+    opts = [worker: {__MODULE__, {registry_name, shp}}, pool_size: pool_size]
     NimblePool.start_link(opts)
   end
 
-  def request(pool, req, opts \\ []) do
-    pool_timeout = Keyword.get(opts, :pool_timeout, 5000)
-    receive_timeout = Keyword.get(opts, :receive_timeout, 15000)
+  def request(pool, req, opts) do
+    pool_timeout = Keyword.get(opts, :pool_timeout, 5_000)
+    receive_timeout = Keyword.get(opts, :receive_timeout, 15_000)
 
-    NimblePool.checkout!(pool, :checkout, fn {conn, pool} ->
-      try do
+    NimblePool.checkout!(
+      pool,
+      :checkout,
+      fn {conn, pool} ->
         conn = Conn.connect(conn)
-        result = Conn.request(conn, req, receive_timeout)
-        {:ok, conn} = Conn.transfer(conn, pool)
-        {result, conn}
-      catch
-        kind, reason ->
-          _ = Conn.close(conn)
-          :erlang.raise(kind, reason, __STACKTRACE__)
-      end
-    end, pool_timeout)
+
+        with {:ok, conn, response} <- Conn.request(conn, req, receive_timeout),
+             {:ok, conn} <- Conn.transfer(conn, pool) do
+          {{:ok, response}, conn}
+        else
+          {:error, conn, error} ->
+            {{:error, error}, conn}
+
+          {:error, error} ->
+            {{:error, error}, conn}
+        end
+      end,
+      pool_timeout
+    )
   end
 
   @impl NimblePool
-  def init({scheme, host, port}) do
+  def init_pool({_, {registry, shp}, _}) do
+    {:ok, _} = Registry.register(registry, shp, [])
+    :ok
+  end
+
+  @impl NimblePool
+  def init({_, {scheme, host, port}}) do
     parent = self()
 
     async = fn ->
@@ -54,11 +63,8 @@ defmodule Finch.Pool do
   # If we lost the connection, then we remove it to try again.
   def handle_checkout(:checkout, {pid, _}, conn) do
     case Conn.transfer(conn, pid) do
-      {:ok, conn} ->
-        {:ok, {conn, self()}, conn}
-
-      _ ->
-        {:remove, :closed}
+      {:ok, conn} -> {:ok, {conn, self()}, conn}
+      _ -> {:remove, :closed}
     end
   end
 
@@ -85,5 +91,6 @@ defmodule Finch.Pool do
   # This will succeed even if it was already closed or if we don't own it.
   def terminate(_reason, conn) do
     Conn.close(conn)
+    :ok
   end
 end
