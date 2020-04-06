@@ -3,6 +3,8 @@ defmodule Finch.Conn do
 
   alias Mint.HTTP
 
+  require Logger
+
   def new(scheme, host, port, opts, parent) do
     %{
       scheme: scheme,
@@ -22,7 +24,8 @@ defmodule Finch.Conn do
          {:ok, mint} <- HTTP.controlling_process(mint, conn.parent) do
       %{conn | mint: mint}
     else
-      _ ->
+      error ->
+        Logger.error(fn -> "Connection Error: #{inspect error}" end)
         conn
     end
   end
@@ -32,7 +35,9 @@ defmodule Finch.Conn do
   def set_mode(conn, mode) when mode in [:active, :passive] do
     case HTTP.set_mode(conn.mint, mode) do
       {:ok, mint} -> {:ok, %{conn | mint: mint}}
-      _ -> {:error, "Connection is dead"}
+      error ->
+        Logger.error(fn -> "Error setting mode: #{inspect error}" end)
+        {:error, "Connection is dead"}
     end
   end
 
@@ -48,6 +53,10 @@ defmodule Finch.Conn do
     with {:ok, mint} <- HTTP.set_mode(conn.mint, :passive),
          {:ok, mint} <- HTTP.controlling_process(mint, pid) do
       {:ok, %{conn | mint: mint}}
+    else
+      error ->
+        Logger.error(fn -> "Could not transfer connection: #{inspect error}" end)
+        error
     end
   end
 
@@ -58,6 +67,7 @@ defmodule Finch.Conn do
       receive_response([], %{conn | mint: mint}, ref, %{}, receive_timeout)
     else
       {:error, mint, error} ->
+        Logger.error(fn -> "Request error: #{inspect error}" end)
         {:error, %{conn | mint: mint}, error}
     end
   end
@@ -74,6 +84,7 @@ defmodule Finch.Conn do
       receive_response(entries, %{conn | mint: mint}, ref, response, timeout)
     else
       {:error, mint, error, _responses} ->
+        Logger.error(fn -> "error receiving response: #{inspect error}" end)
         {:error, %{conn | mint: mint}, error}
     end
   end
@@ -92,6 +103,7 @@ defmodule Finch.Conn do
         {:ok, conn, response}
 
       {:error, ^ref, error} ->
+        Logger.error(fn -> "error processing response: #{inspect error}" end)
         {:error, conn, error}
     end
   end

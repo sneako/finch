@@ -4,6 +4,8 @@ defmodule Finch.Pool do
 
   alias Finch.Conn
 
+  require Logger
+
   def child_spec(opts) do
     %{
       id: __MODULE__,
@@ -64,7 +66,9 @@ defmodule Finch.Pool do
   def handle_checkout(:checkout, {pid, _}, conn) do
     case Conn.transfer(conn, pid) do
       {:ok, conn} -> {:ok, {conn, self()}, conn}
-      _ -> {:remove, :closed}
+      error ->
+        Logger.error(fn -> "failed to checkout connection: #{inspect error}" end)
+        {:remove, :closed}
     end
   end
 
@@ -72,7 +76,9 @@ defmodule Finch.Pool do
   def handle_checkin(conn, _from, _old_conn) do
     case Conn.set_mode(conn, :active) do
       {:ok, conn} -> {:ok, conn}
-      {:error, _} -> {:remove, :closed}
+      {:error, _} ->
+        Logger.error(fn -> "Removing connection after checkin" end)
+        {:remove, :closed}
     end
   end
 
@@ -80,8 +86,12 @@ defmodule Finch.Pool do
   def handle_info(message, conn) do
     case Conn.stream(conn, message) do
       {:ok, _, _} -> {:ok, conn}
-      {:error, _, _, _} -> {:remove, :closed}
-      {:error, _} -> {:remove, :closed}
+      {:error, _, _, _} ->
+        Logger.error("Error handling stream")
+        {:remove, :closed}
+      {:error, _} ->
+        Logger.error("Error handling stream")
+        {:remove, :closed}
       :unknown -> {:ok, conn}
     end
   end
