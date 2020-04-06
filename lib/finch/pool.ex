@@ -86,11 +86,11 @@ defmodule Finch.Pool do
   def handle_info(message, conn) do
     case Conn.stream(conn, message) do
       {:ok, _, _} -> {:ok, conn}
-      {:error, _, _, _} ->
-        Logger.error("Error handling stream")
+      {:error, _, error, _} ->
+        Logger.error("Error handling stream: #{inspect error}")
         {:remove, :closed}
-      {:error, _} ->
-        Logger.error("Error handling stream")
+      {:error, error} ->
+        Logger.error("Error handling stream: #{inspect error}")
         {:remove, :closed}
       :unknown -> {:ok, conn}
     end
