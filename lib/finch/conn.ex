@@ -27,6 +27,7 @@ defmodule Finch.Conn do
     end
   end
 
+  def open?(%{mint: nil}), do: false
   def open?(%{mint: mint}), do: HTTP.open?(mint)
 
   def set_mode(%{mint: nil}, _), do: {:error, "Connection is dead"}
