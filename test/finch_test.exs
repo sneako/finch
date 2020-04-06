@@ -99,7 +99,7 @@ defmodule FinchTest do
         |> Plug.Conn.send_resp(200, "OK")
       end)
 
-      assert {:ok, %{status: 200, headers: headers}} =
+      assert {:ok, %{status: 200, data: "OK"}} =
                Finch.request(
                  MyFinch,
                  :get,

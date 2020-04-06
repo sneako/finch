@@ -27,9 +27,13 @@ defmodule Finch.Pool do
         conn = Conn.connect(conn)
 
         with {:ok, conn, response} <- Conn.request(conn, req, receive_timeout),
+             {true, _} <- {Conn.open?(conn), response},
              {:ok, conn} <- Conn.transfer(conn, pool) do
           {{:ok, response}, conn}
         else
+          {false, response} ->
+            {{:ok, response}, conn}
+
           {:error, conn, error} ->
             {{:error, error}, conn}
 
