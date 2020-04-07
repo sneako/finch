@@ -90,6 +90,24 @@ defmodule FinchTest do
                end)
     end
 
+    test "properly handles connection: close", %{bypass: bypass} do
+      start_supervised({Finch, name: MyFinch})
+
+      Bypass.expect(bypass, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_header("connection", "close")
+        |> Plug.Conn.send_resp(200, "OK")
+      end)
+
+      assert {:ok, %{status: 200, data: "OK"}} =
+               Finch.request(
+                 MyFinch,
+                 :get,
+                 endpoint(bypass),
+                 [{"connection", "keep-alive"}]
+               )
+    end
+
     test "returns error when request times out", %{bypass: bypass} do
       start_supervised({Finch, name: MyFinch})
 
