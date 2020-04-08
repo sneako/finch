@@ -1,6 +1,7 @@
 defmodule Finch.Conn do
   @moduledoc false
 
+  alias Finch.Response
   alias Mint.HTTP
 
   def new(scheme, host, port, opts, parent) do
@@ -61,7 +62,7 @@ defmodule Finch.Conn do
 
     case HTTP.request(conn.mint, req.method, full_path, req.headers, req.body) do
       {:ok, mint, ref} ->
-        receive_response([], %{conn | mint: mint}, ref, %{}, receive_timeout)
+        receive_response([], %{conn | mint: mint}, ref, %Response{}, receive_timeout)
 
       {:error, mint, error} ->
         {:error, %{conn | mint: mint}, error}
@@ -90,12 +91,16 @@ defmodule Finch.Conn do
 
   defp receive_response([entry | entries], conn, ref, response, timeout) do
     case entry do
-      {kind, ^ref, value} when kind in [:status, :headers] ->
-        response = Map.put(response, kind, value)
+      {:status, ^ref, value} ->
+        response = %{response | status: value}
+        receive_response(entries, conn, ref, response, timeout)
+
+      {:headers, ^ref, value} ->
+        response = %{response | headers: value}
         receive_response(entries, conn, ref, response, timeout)
 
       {:data, ^ref, data} ->
-        response = Map.update(response, :data, data, &(&1 <> data))
+        response = append_data_chunk(response, data)
         receive_response(entries, conn, ref, response, timeout)
 
       {:done, ^ref} ->
@@ -104,5 +109,13 @@ defmodule Finch.Conn do
       {:error, ^ref, error} ->
         {:error, conn, error}
     end
+  end
+
+  defp append_data_chunk(%Response{body: nil} = response, data_chunk) do
+    %{response | body: data_chunk}
+  end
+
+  defp append_data_chunk(%Response{body: body} = response, data_chunk) when is_binary(body) do
+    %{response | body: body <> data_chunk}
   end
 end

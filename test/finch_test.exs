@@ -2,6 +2,8 @@ defmodule FinchTest do
   use ExUnit.Case, async: true
   doctest Finch
 
+  alias Finch.Response
+
   setup do
     {:ok, bypass: Bypass.open()}
   end
@@ -18,21 +20,21 @@ defmodule FinchTest do
       start_supervised({Finch, name: MyFinch})
       expect_any(bypass)
 
-      {:ok, _response} = Finch.request(MyFinch, :get, endpoint(bypass), [], "")
+      {:ok, %Response{}} = Finch.request(MyFinch, :get, endpoint(bypass), [], "")
       assert [_pool] = get_pools(MyFinch, shp(bypass))
 
-      {:ok, _response} = Finch.request(MyFinch, :get, endpoint(bypass), [], "")
+      {:ok, %Response{}} = Finch.request(MyFinch, :get, endpoint(bypass), [], "")
     end
 
     test "default can be configured", %{bypass: bypass} do
       {:ok, _} = Finch.start_link(name: MyFinch, pools: %{default: %{count: 5, size: 5}})
       expect_any(bypass)
 
-      {:ok, _response} = Finch.request(MyFinch, "GET", endpoint(bypass), [], "")
+      {:ok, %Response{}} = Finch.request(MyFinch, "GET", endpoint(bypass), [], "")
       pools = get_pools(MyFinch, shp(bypass))
       assert length(pools) == 5
 
-      {:ok, _response} = Finch.request(MyFinch, "GET", endpoint(bypass), [], "")
+      {:ok, %Response{}} = Finch.request(MyFinch, "GET", endpoint(bypass), [], "")
     end
 
     test "specific scheme, host, port combos can be configurated independently and pools will be started automatically",
@@ -89,7 +91,7 @@ defmodule FinchTest do
         |> Plug.Conn.send_resp(200, response_body)
       end)
 
-      assert {:ok, %{status: 200, headers: headers, data: ^response_body}} =
+      assert {:ok, %Response{status: 200, headers: headers, body: ^response_body}} =
                Finch.request(
                  MyFinch,
                  :post,
@@ -114,7 +116,7 @@ defmodule FinchTest do
         |> Plug.Conn.send_resp(200, "OK")
       end)
 
-      assert {:ok, %{status: 200, data: "OK"}} =
+      assert {:ok, %Response{status: 200, body: "OK"}} =
                Finch.request(
                  MyFinch,
                  :get,
@@ -136,7 +138,7 @@ defmodule FinchTest do
       assert {:error, %{reason: :timeout}} =
                Finch.request(MyFinch, :get, endpoint(bypass), [], nil, receive_timeout: timeout)
 
-      assert {:ok, _} =
+      assert {:ok, %Response{}} =
                Finch.request(MyFinch, :get, endpoint(bypass), [], nil,
                  receive_timeout: timeout * 2
                )
@@ -147,7 +149,7 @@ defmodule FinchTest do
       expect_any(bypass)
 
       timeout = 100
-      {:ok, _} = Finch.request(MyFinch, :get, endpoint(bypass))
+      {:ok, %Response{}} = Finch.request(MyFinch, :get, endpoint(bypass))
 
       Bypass.down(bypass)
 
@@ -159,7 +161,7 @@ defmodule FinchTest do
       end
 
       Bypass.up(bypass)
-      assert {:ok, _} = Finch.request(MyFinch, :get, endpoint(bypass))
+      assert {:ok, %Response{}} = Finch.request(MyFinch, :get, endpoint(bypass))
     end
   end
 
