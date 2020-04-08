@@ -22,7 +22,8 @@ defmodule Finch.MixProject do
       {:mint, "~> 1.0"},
       {:castore, "~> 0.1.5"},
       {:nimble_pool, github: "plataformatec/nimble_pool"},
-      {:bypass, "~> 1.0", only: :test}
+      {:credo, "~> 1.3", only: [:dev, :test]},
+      {:bypass, "~> 1.0", only: :test},
     ]
   end
 end

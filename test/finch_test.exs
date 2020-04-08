@@ -152,9 +152,9 @@ defmodule FinchTest do
     Registry.lookup(name, shp)
   end
 
-  defp endpoint(_bypass = %{port: port}, path \\ "/"), do: "http://localhost:#{port}#{path}"
+  defp endpoint(%{port: port}, path \\ "/"), do: "http://localhost:#{port}#{path}"
 
-  defp shp(_bypass = %{port: port}), do: {:http, "localhost", port}
+  defp shp(%{port: port}), do: {:http, "localhost", port}
 
   defp expect_any(bypass) do
     Bypass.expect(bypass, fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)

@@ -57,9 +57,10 @@ defmodule Finch.Conn do
   def request(%{mint: nil} = conn, _, _), do: {:error, conn, "Could not connect"}
 
   def request(conn, req, receive_timeout) do
-    with {:ok, mint, ref} <- HTTP.request(conn.mint, req.method, req.path, req.headers, req.body) do
-      receive_response([], %{conn | mint: mint}, ref, %{}, receive_timeout)
-    else
+    case HTTP.request(conn.mint, req.method, req.path, req.headers, req.body) do
+      {:ok, mint, ref} ->
+        receive_response([], %{conn | mint: mint}, ref, %{}, receive_timeout)
+
       {:error, mint, error} ->
         {:error, %{conn | mint: mint}, error}
     end
@@ -73,9 +74,10 @@ defmodule Finch.Conn do
   end
 
   defp receive_response([], conn, ref, response, timeout) do
-    with {:ok, mint, entries} <- HTTP.recv(conn.mint, 0, timeout) do
-      receive_response(entries, %{conn | mint: mint}, ref, response, timeout)
-    else
+    case HTTP.recv(conn.mint, 0, timeout) do
+      {:ok, mint, entries} ->
+        receive_response(entries, %{conn | mint: mint}, ref, response, timeout)
+
       {:error, mint, error, _responses} ->
         {:error, %{conn | mint: mint}, error}
     end

@@ -20,10 +20,12 @@ defmodule Finch.PoolManager do
   def get_pool(registry_name, scheme, host, port) do
     key = {scheme, host, port}
 
-    with pool when is_pid(pool) <- lookup_pool(registry_name, key) do
-      pool
-    else
-      :none -> start_pools(registry_name, key)
+    case lookup_pool(registry_name, key) do
+      pool when is_pid(pool) ->
+        pool
+
+      :none ->
+        start_pools(registry_name, key)
     end
   end
 
