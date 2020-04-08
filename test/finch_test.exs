@@ -58,15 +58,30 @@ defmodule FinchTest do
   end
 
   describe "request/5" do
-    test "successful post request", %{bypass: bypass} do
+    test "successful get request, with query string", %{bypass: bypass} do
+      start_supervised({Finch, name: MyFinch})
+      query_string = "query=value"
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        assert conn.query_string == query_string
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      assert {:ok, %{status: 200}} =
+               Finch.request(MyFinch, :get, endpoint(bypass, "?" <> query_string))
+    end
+
+    test "successful post request, with body and query string", %{bypass: bypass} do
       start_supervised({Finch, name: MyFinch})
 
       req_body = "{\"response\":\"please\"}"
       response_body = "{\"right\":\"here\"}"
       header_key = "content-type"
       header_val = "application/json"
+      query_string = "query=value"
 
       Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert conn.query_string == query_string
         assert {:ok, ^req_body, conn} = Plug.Conn.read_body(conn)
 
         conn
@@ -78,7 +93,7 @@ defmodule FinchTest do
                Finch.request(
                  MyFinch,
                  :post,
-                 endpoint(bypass),
+                 endpoint(bypass, "?" <> query_string),
                  [{header_key, header_val}],
                  req_body
                )

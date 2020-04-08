@@ -110,7 +110,8 @@ defmodule Finch do
       method: build_method(method),
       path: uri.path || "/",
       headers: headers,
-      body: body
+      body: body,
+      query: uri.query
     }
 
     pool = PoolManager.get_pool(name, req.scheme, req.host, req.port)

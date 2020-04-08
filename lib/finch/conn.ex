@@ -57,7 +57,9 @@ defmodule Finch.Conn do
   def request(%{mint: nil} = conn, _, _), do: {:error, conn, "Could not connect"}
 
   def request(conn, req, receive_timeout) do
-    case HTTP.request(conn.mint, req.method, req.path, req.headers, req.body) do
+    full_path = request_path(req)
+
+    case HTTP.request(conn.mint, req.method, full_path, req.headers, req.body) do
       {:ok, mint, ref} ->
         receive_response([], %{conn | mint: mint}, ref, %{}, receive_timeout)
 
@@ -72,6 +74,9 @@ defmodule Finch.Conn do
     {:ok, mint} = HTTP.close(conn.mint)
     %{conn | mint: mint}
   end
+
+  defp request_path(%{path: path, query: nil}), do: path
+  defp request_path(%{path: path, query: query}), do: "#{path}?#{query}"
 
   defp receive_response([], conn, ref, response, timeout) do
     case HTTP.recv(conn.mint, 0, timeout) do
