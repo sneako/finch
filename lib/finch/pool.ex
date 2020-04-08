@@ -32,9 +32,6 @@ defmodule Finch.Pool do
 
           {:error, conn, error} ->
             {{:error, error}, conn}
-
-          {:error, error} ->
-            {{:error, error}, conn}
         end
       end,
       pool_timeout
