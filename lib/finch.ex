@@ -16,7 +16,7 @@ defmodule Finch do
   Or, in rare cases, dynamically:
 
   ```elixir
-  Finch.start_link(name: MyFinch}
+  Finch.start_link(name: MyFinch)
   ```
 
   Once you have started Finch, you can use the client you have started,
@@ -31,16 +31,16 @@ defmodule Finch do
   interact with.
 
   You can also configure a pool size and count to be used for each specific
-  `{scheme, host, port}`s that are known before starting Finch. When configuring
-  pools, the `:size` is required. The `:count` will default to 1.
+  `{scheme, host, port}`s that are known before starting Finch. See `Finch.start_link/1` for
+  configuration options.
 
   ```elixir
   children = [
     {Finch,
      name: MyConfiguredFinch, 
      pools: %{
-       :default => %{size: 10},
-       {:https, "hex.pm", 443} => %{size: 32, count: 8}
+       :default => [size: 10],
+       {:https, "hex.pm", 443} => [size: 32, count: 8, backoff: [initial: 1, max: 30_000]]
      }}
   ]
   ```
@@ -80,14 +80,44 @@ defmodule Finch do
   ]
   @atom_to_method Enum.zip(@atom_methods, @methods) |> Enum.into(%{})
 
+  @default_pool_size 10
+  @default_pool_count 1
+  @default_backoff_initial 1
+  @default_backoff_max :timer.minutes(1)
+
+  @doc """
+  ## Options:
+    * `:name` - The name of your Finch instance. This field is required.
+
+    * `:pools` - Configuration for your pools. You can provide a `:default` catch-all
+    configuration for any non specfied {scheme, host, port}, or configuration for any
+    specific {scheme, host, port}. See "Pool Configuration Options" below.
+
+  ### Pool Configuration Options
+    * `:size` - Number of connections to maintain in each pool.
+    The default value is `#{@default_pool_size}`.
+
+    * `:count` - Number of pools to start The default value is `#{@default_pool_count}`.
+
+    * `:backoff` - Failed connection attempts will be retried using an exponential backoff with jitter.
+    Backoff configuration should include the following keys:
+
+      * `:initial` - Backoff will begin at this value, and increase exponentially.
+      The default value is `#{@default_backoff_initial}`.
+
+      * `:max` - Backoff will be capped to this value.
+      The default value is `#{@default_backoff_max}`.
+  """
   def start_link(opts) do
     name = Keyword.get(opts, :name) || raise ArgumentError, "must supply a name"
-    pools = Keyword.get(opts, :pools, %{})
+    pools = Keyword.get(opts, :pools, []) |> pool_options!()
+    {default_pool_config, pools} = Map.pop(pools, :default)
 
     config = %{
       registry_name: name,
       manager_name: manager_name(name),
       supervisor_name: pool_supervisor_name(name),
+      default_pool_config: default_pool_config,
       pools: pools
     }
 
@@ -134,6 +164,56 @@ defmodule Finch do
       "https" -> :https
       "http" -> :http
     end
+  end
+
+  def pool_options!(pools) do
+    Enum.reduce(pools, %{default: default_pool_options()}, fn {destination, opts}, acc ->
+      case cast_pool_opts(opts) do
+        {:ok, validated} ->
+          Map.put(acc, destination, validated)
+
+        {:error, reason} ->
+          raise ArgumentError, "got invalid configuration for pool #{destination}! #{reason}"
+      end
+    end)
+  end
+
+  defp cast_pool_opts(opts) do
+    with {:ok, size} <- validate_pool_size(opts),
+         {:ok, count} <- validate_pool_count(opts),
+         {:ok, backoff} <- validate_backoff(opts[:backoff]) do
+      {:ok, %{size: size, count: count, backoff: backoff, conn_opts: []}}
+    end
+  end
+
+  defp validate_pool_size(opts) do
+    opts |> Keyword.get(:size, @default_pool_size) |> validate_pos_integer()
+  end
+
+  defp validate_pool_count(opts) do
+    opts |> Keyword.get(:count, @default_pool_size) |> validate_pos_integer()
+  end
+
+  defp validate_backoff(nil) do
+    {:ok, %{initial: @default_backoff_initial, max: @default_backoff_max}}
+  end
+
+  defp validate_backoff(opts) do
+    init = Keyword.get(opts, :initial, @default_backoff_initial)
+    max = Keyword.get(opts, :initial, @default_backoff_max)
+
+    with {:ok, init} <- validate_pos_integer(init),
+         {:ok, max} <- validate_pos_integer(max) do
+      {:ok, %{initial: init, max: max}}
+    end
+  end
+
+  defp validate_pos_integer(val) when is_integer(val) and val > 0, do: {:ok, val}
+  defp validate_pos_integer(val), do: {:error, "expected a positive integer, got #{inspect(val)}"}
+
+  defp default_pool_options do
+    backoff = %{initial: @default_backoff_initial, max: @default_backoff_max}
+    %{size: @default_pool_size, count: @default_pool_count, backoff: backoff, conn_opts: []}
   end
 
   defp supervisor_name(name), do: :"#{name}.Supervisor"

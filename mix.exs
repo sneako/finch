@@ -23,10 +23,12 @@ defmodule Finch.MixProject do
       {:castore, "~> 0.1.5"},
       {:nimble_pool, github: "dashbitco/nimble_pool"},
       {:telemetry, "~> 0.4"},
+      {:backoff, "~> 1.1"},
 
+      {:ex_doc, "~> 0.21", only: :dev, runtime: false},
       {:credo, "~> 1.3", only: [:dev, :test]},
-      {:bypass, "~> 1.0", only: :test},
-      {:ex_doc, "~> 0.19", only: [:dev, :test]}
+      {:ex_doc, "~> 0.19", only: [:dev, :test]},
+      {:bypass, "~> 1.0", only: :test}
     ]
   end
 end

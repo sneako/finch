@@ -20,21 +20,33 @@ defmodule FinchTest do
       start_supervised({Finch, name: MyFinch})
       expect_any(bypass)
 
-      {:ok, %Response{}} = Finch.request(MyFinch, :get, endpoint(bypass), [], "")
+      {:ok, %Response{}} = Finch.request(MyFinch, :get, endpoint(bypass))
       assert [_pool] = get_pools(MyFinch, shp(bypass))
 
-      {:ok, %Response{}} = Finch.request(MyFinch, :get, endpoint(bypass), [], "")
+      {:ok, %Response{}} = Finch.request(MyFinch, :get, endpoint(bypass))
     end
 
     test "default can be configured", %{bypass: bypass} do
-      {:ok, _} = Finch.start_link(name: MyFinch, pools: %{default: %{count: 5, size: 5}})
+      {:ok, _} =
+        Finch.start_link(
+          name: MyFinch,
+          pools: %{default: [count: 5, size: 5, backoff: [size: 2, count: 4]]}
+        )
+
       expect_any(bypass)
 
-      {:ok, %Response{}} = Finch.request(MyFinch, "GET", endpoint(bypass), [], "")
+      {:ok, %Response{}} = Finch.request(MyFinch, "GET", endpoint(bypass))
       pools = get_pools(MyFinch, shp(bypass))
       assert length(pools) == 5
+    end
 
-      {:ok, %Response{}} = Finch.request(MyFinch, "GET", endpoint(bypass), [], "")
+    test "raises when invalid configuration is provided" do
+      error =
+        assert_raise(ArgumentError, fn ->
+          Finch.start_link(name: MyFinch, pools: %{default: [count: :dog]})
+        end)
+
+      assert error.message =~ "got invalid configuration"
     end
 
     test "specific scheme, host, port combos can be configurated independently and pools will be started automatically",
@@ -46,8 +58,8 @@ defmodule FinchTest do
         {Finch,
          name: MyFinch,
          pools: %{
-           shp(bypass) => %{count: 5, size: 5},
-           shp(other_bypass) => %{count: 10, size: 10}
+           shp(bypass) => [count: 5, size: 5],
+           shp(other_bypass) => [count: 10, size: 10]
          }}
       )
 
@@ -65,7 +77,7 @@ defmodule FinchTest do
         {Finch,
          name: MyFinch,
          pools: %{
-           default: %{count: 5, size: 5}
+           default: [count: 5, size: 5]
          }}
       )
 
