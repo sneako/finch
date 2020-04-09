@@ -51,7 +51,12 @@ defmodule Finch.PoolManager do
 
   @impl true
   def handle_call({:start_pools, shp}, _from, state) do
-    reply = do_start_pools(shp, state)
+    reply =
+      case lookup_pool(state.registry_name, shp) do
+        :none -> do_start_pools(shp, state)
+        pid -> pid
+      end
+
     {:reply, reply, state}
   end
 

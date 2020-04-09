@@ -57,6 +57,27 @@ defmodule FinchTest do
       # no pool has been started for this unconfigured shp
       assert get_pools(MyFinch, shp(default_bypass)) |> length() == 0
     end
+
+    test "impossible to accidentally start multiple pools when they are dynamically started", %{
+      bypass: bypass
+    } do
+      start_supervised(
+        {Finch,
+         name: MyFinch,
+         pools: %{
+           default: %{count: 5, size: 5}
+         }}
+      )
+
+      expect_any(bypass)
+
+      Task.async_stream(1..50, fn _ -> Finch.request(MyFinch, :get, endpoint(bypass)) end,
+        max_concurrency: 50
+      )
+      |> Stream.run()
+
+      assert get_pools(MyFinch, shp(bypass)) |> length() == 5
+    end
   end
 
   describe "request/5" do
