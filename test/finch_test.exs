@@ -71,7 +71,9 @@ defmodule FinchTest do
 
       expect_any(bypass)
 
-      Task.async_stream(1..10, fn _ -> Finch.request(MyFinch, :get, endpoint(bypass)) end)
+      Task.async_stream(1..50, fn _ -> Finch.request(MyFinch, :get, endpoint(bypass)) end,
+        max_concurrency: 50
+      )
       |> Stream.run()
 
       assert get_pools(MyFinch, shp(bypass)) |> length() == 5
