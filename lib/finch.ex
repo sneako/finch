@@ -49,6 +49,11 @@ defmodule Finch do
   For any unconfigured `{scheme, host, port}`, the pool will be started the first time
   it is requested. Note pools are not automatically terminated if they are unused, so
   Finch is best suited when you are requesting a known list of static hosts.
+
+  ## Telemetry
+
+  Finch uses Telemetry to provide instrumentation. See the `Finch.Telemetry`
+  module for details on specific events.
   """
 
   alias Finch.{Pool, PoolManager}

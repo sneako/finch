@@ -3,6 +3,7 @@ defmodule Finch.Pool do
   @behaviour NimblePool
 
   alias Finch.Conn
+  alias Finch.Telemetry
 
   def child_spec(opts) do
     %{
@@ -20,22 +21,32 @@ defmodule Finch.Pool do
     pool_timeout = Keyword.get(opts, :pool_timeout, 5_000)
     receive_timeout = Keyword.get(opts, :receive_timeout, 15_000)
 
-    NimblePool.checkout!(
-      pool,
-      :checkout,
-      fn {conn, pool} ->
-        conn = Conn.connect(conn)
+    metadata = %{pool: pool}
+    start_time = Telemetry.start(:queue, metadata)
 
-        case Conn.request(conn, req, receive_timeout) do
-          {:ok, conn, response} ->
-            {{:ok, response}, transfer_conn(conn, pool)}
+    try do
+      NimblePool.checkout!(
+        pool,
+        :checkout,
+        fn {conn, pool} ->
+          Telemetry.stop(:queue, start_time, metadata)
+          conn = Conn.connect(conn)
 
-          {:error, conn, error} ->
-            {{:error, error}, conn}
-        end
-      end,
-      pool_timeout
-    )
+          case Conn.request(conn, req, receive_timeout) do
+            {:ok, conn, response} ->
+              {{:ok, response}, transfer_conn(conn, pool)}
+
+            {:error, conn, error} ->
+              {{:error, error}, conn}
+          end
+        end,
+        pool_timeout
+      )
+    catch
+      :exit, data ->
+        Telemetry.exception(:queue, start_time, :exit, data, System.stacktrace(), metadata)
+        exit(data)
+    end
   end
 
   @impl NimblePool
