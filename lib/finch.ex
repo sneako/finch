@@ -80,12 +80,40 @@ defmodule Finch do
   ]
   @atom_to_method Enum.zip(@atom_methods, @methods) |> Enum.into(%{})
 
-  @default_pool_size 10
-  @default_pool_count 1
-  @default_backoff_initial 1
-  @default_backoff_max :timer.minutes(1)
+  @pool_config_schema [
+    size: [
+      type: :pos_integer,
+      doc: "Number of connections to maintain in each pool.",
+      default: 10
+    ],
+    count: [
+      type: :pos_integer,
+      doc: "Number of pools to start.",
+      default: 1
+    ],
+    backoff: [
+      type: :non_empty_keyword_list,
+      default: [initial: 1, max: :timer.minutes(1)],
+      doc:
+        "Failed connection attempts will be retried using an exponential backoff with jitter. Values are in milliseconds.",
+      keys: [
+        initial: [
+          type: :pos_integer,
+          doc: "Backoff will begin at this value, and increase exponentially.",
+          default: 1
+        ],
+        max: [
+          type: :pos_integer,
+          doc: "Backoff will be capped to this value.",
+          default: :timer.minutes(1)
+        ]
+      ]
+    ]
+  ]
 
   @doc """
+  Start an instance of Finch.
+
   ## Options:
     * `:name` - The name of your Finch instance. This field is required.
 
@@ -94,19 +122,7 @@ defmodule Finch do
     specific {scheme, host, port}. See "Pool Configuration Options" below.
 
   ### Pool Configuration Options
-    * `:size` - Number of connections to maintain in each pool.
-    The default value is `#{@default_pool_size}`.
-
-    * `:count` - Number of pools to start The default value is `#{@default_pool_count}`.
-
-    * `:backoff` - Failed connection attempts will be retried using an exponential backoff with jitter.
-    Backoff configuration should include the following keys:
-
-      * `:initial` - Backoff will begin at this value, and increase exponentially.
-      The default value is `#{@default_backoff_initial}`.
-
-      * `:max` - Backoff will be capped to this value.
-      The default value is `#{@default_backoff_max}`.
+  #{NimbleOptions.docs(@pool_config_schema)}
   """
   def start_link(opts) do
     name = Keyword.get(opts, :name) || raise ArgumentError, "must supply a name"
@@ -166,8 +182,10 @@ defmodule Finch do
     end
   end
 
-  def pool_options!(pools) do
-    Enum.reduce(pools, %{default: default_pool_options()}, fn {destination, opts}, acc ->
+  defp pool_options!(pools) do
+    {:ok, default} = NimbleOptions.validate([], @pool_config_schema)
+
+    Enum.reduce(pools, %{default: valid_opts_to_map(default)}, fn {destination, opts}, acc ->
       case cast_pool_opts(opts) do
         {:ok, validated} ->
           Map.put(acc, destination, validated)
@@ -179,41 +197,18 @@ defmodule Finch do
   end
 
   defp cast_pool_opts(opts) do
-    with {:ok, size} <- validate_pool_size(opts),
-         {:ok, count} <- validate_pool_count(opts),
-         {:ok, backoff} <- validate_backoff(opts[:backoff]) do
-      {:ok, %{size: size, count: count, backoff: backoff, conn_opts: []}}
+    with {:ok, valid} <- NimbleOptions.validate(opts, @pool_config_schema) do
+      {:ok, valid_opts_to_map(valid)}
     end
   end
 
-  defp validate_pool_size(opts) do
-    opts |> Keyword.get(:size, @default_pool_size) |> validate_pos_integer()
-  end
-
-  defp validate_pool_count(opts) do
-    opts |> Keyword.get(:count, @default_pool_size) |> validate_pos_integer()
-  end
-
-  defp validate_backoff(nil) do
-    {:ok, %{initial: @default_backoff_initial, max: @default_backoff_max}}
-  end
-
-  defp validate_backoff(opts) do
-    init = Keyword.get(opts, :initial, @default_backoff_initial)
-    max = Keyword.get(opts, :initial, @default_backoff_max)
-
-    with {:ok, init} <- validate_pos_integer(init),
-         {:ok, max} <- validate_pos_integer(max) do
-      {:ok, %{initial: init, max: max}}
-    end
-  end
-
-  defp validate_pos_integer(val) when is_integer(val) and val > 0, do: {:ok, val}
-  defp validate_pos_integer(val), do: {:error, "expected a positive integer, got #{inspect(val)}"}
-
-  defp default_pool_options do
-    backoff = %{initial: @default_backoff_initial, max: @default_backoff_max}
-    %{size: @default_pool_size, count: @default_pool_count, backoff: backoff, conn_opts: []}
+  defp valid_opts_to_map(valid) do
+    %{
+      size: valid[:size],
+      count: valid[:count],
+      backoff: Map.new(valid[:backoff]),
+      conn_opts: []
+    }
   end
 
   defp supervisor_name(name), do: :"#{name}.Supervisor"

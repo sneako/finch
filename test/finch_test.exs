@@ -30,7 +30,7 @@ defmodule FinchTest do
       {:ok, _} =
         Finch.start_link(
           name: MyFinch,
-          pools: %{default: [count: 5, size: 5, backoff: [size: 2, count: 4]]}
+          pools: %{default: [count: 5, size: 5, backoff: [initial: 2, max: 4]]}
         )
 
       expect_any(bypass)
@@ -149,13 +149,18 @@ defmodule FinchTest do
         |> Plug.Conn.send_resp(200, "OK")
       end)
 
-      assert {:ok, %Response{status: 200, body: "OK"}} =
-               Finch.request(
-                 MyFinch,
-                 :get,
-                 endpoint(bypass),
-                 [{"connection", "keep-alive"}]
-               )
+      request = fn ->
+        Finch.request(
+          MyFinch,
+          :get,
+          endpoint(bypass),
+          [{"connection", "keep-alive"}]
+        )
+      end
+
+      for _ <- 1..10 do
+        assert {:ok, %Response{status: 200, body: "OK"}} = request.()
+      end
     end
 
     test "returns error when request times out", %{bypass: bypass} do
