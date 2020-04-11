@@ -16,7 +16,7 @@ defmodule Finch do
   Or, in rare cases, dynamically:
 
   ```elixir
-  Finch.start_link(name: MyFinch}
+  Finch.start_link(name: MyFinch)
   ```
 
   Once you have started Finch, you can use the client you have started,
@@ -31,16 +31,16 @@ defmodule Finch do
   interact with.
 
   You can also configure a pool size and count to be used for each specific
-  `{scheme, host, port}`s that are known before starting Finch. When configuring
-  pools, the `:size` is required. The `:count` will default to 1.
+  `{scheme, host, port}`s that are known before starting Finch. See `Finch.start_link/1` for
+  configuration options.
 
   ```elixir
   children = [
     {Finch,
      name: MyConfiguredFinch, 
      pools: %{
-       :default => %{size: 10},
-       {:https, "hex.pm", 443} => %{size: 32, count: 8}
+       :default => [size: 10],
+       {:https, "hex.pm", 443} => [size: 32, count: 8, backoff: [initial: 1, max: 30_000]]
      }}
   ]
   ```
@@ -80,14 +80,60 @@ defmodule Finch do
   ]
   @atom_to_method Enum.zip(@atom_methods, @methods) |> Enum.into(%{})
 
+  @pool_config_schema [
+    size: [
+      type: :pos_integer,
+      doc: "Number of connections to maintain in each pool.",
+      default: 10
+    ],
+    count: [
+      type: :pos_integer,
+      doc: "Number of pools to start.",
+      default: 1
+    ],
+    backoff: [
+      type: :non_empty_keyword_list,
+      default: [initial: 1, max: :timer.minutes(1)],
+      doc:
+        "Failed connection attempts will be retried using an exponential backoff with jitter. Values are in milliseconds.",
+      keys: [
+        initial: [
+          type: :pos_integer,
+          doc: "Backoff will begin at this value, and increase exponentially.",
+          default: 1
+        ],
+        max: [
+          type: :pos_integer,
+          doc: "Backoff will be capped to this value.",
+          default: :timer.minutes(1)
+        ]
+      ]
+    ]
+  ]
+
+  @doc """
+  Start an instance of Finch.
+
+  ## Options:
+    * `:name` - The name of your Finch instance. This field is required.
+
+    * `:pools` - Configuration for your pools. You can provide a `:default` catch-all
+    configuration for any non specfied {scheme, host, port}, or configuration for any
+    specific {scheme, host, port}. See "Pool Configuration Options" below.
+
+  ### Pool Configuration Options
+  #{NimbleOptions.docs(@pool_config_schema)}
+  """
   def start_link(opts) do
     name = Keyword.get(opts, :name) || raise ArgumentError, "must supply a name"
-    pools = Keyword.get(opts, :pools, %{})
+    pools = Keyword.get(opts, :pools, []) |> pool_options!()
+    {default_pool_config, pools} = Map.pop(pools, :default)
 
     config = %{
       registry_name: name,
       manager_name: manager_name(name),
       supervisor_name: pool_supervisor_name(name),
+      default_pool_config: default_pool_config,
       pools: pools
     }
 
@@ -134,6 +180,35 @@ defmodule Finch do
       "https" -> :https
       "http" -> :http
     end
+  end
+
+  defp pool_options!(pools) do
+    {:ok, default} = NimbleOptions.validate([], @pool_config_schema)
+
+    Enum.reduce(pools, %{default: valid_opts_to_map(default)}, fn {destination, opts}, acc ->
+      case cast_pool_opts(opts) do
+        {:ok, validated} ->
+          Map.put(acc, destination, validated)
+
+        {:error, reason} ->
+          raise ArgumentError, "got invalid configuration for pool #{destination}! #{reason}"
+      end
+    end)
+  end
+
+  defp cast_pool_opts(opts) do
+    with {:ok, valid} <- NimbleOptions.validate(opts, @pool_config_schema) do
+      {:ok, valid_opts_to_map(valid)}
+    end
+  end
+
+  defp valid_opts_to_map(valid) do
+    %{
+      size: valid[:size],
+      count: valid[:count],
+      backoff: Map.new(valid[:backoff]),
+      conn_opts: []
+    }
   end
 
   defp supervisor_name(name), do: :"#{name}.Supervisor"

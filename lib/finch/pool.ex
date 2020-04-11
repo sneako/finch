@@ -12,8 +12,8 @@ defmodule Finch.Pool do
     }
   end
 
-  def start_link({shp, registry_name, pool_size}) do
-    opts = [worker: {__MODULE__, {registry_name, shp}}, pool_size: pool_size]
+  def start_link({shp, registry_name, pool_size, conn_opts}) do
+    opts = [worker: {__MODULE__, {registry_name, shp, conn_opts}}, pool_size: pool_size]
     NimblePool.start_link(opts)
   end
 
@@ -27,6 +27,7 @@ defmodule Finch.Pool do
       port: req.port,
       pool: pool
     }
+
     start_time = Telemetry.start(:queue, metadata)
 
     try do
@@ -55,17 +56,18 @@ defmodule Finch.Pool do
   end
 
   @impl NimblePool
-  def init_pool({_, {registry, shp}, _}) do
+  def init_pool({_, {registry, shp, _}, _}) do
     {:ok, _} = Registry.register(registry, shp, [])
     :ok
   end
 
   @impl NimblePool
-  def init({_, {scheme, host, port}}) do
+  def init({_, {scheme, host, port}, opts}) do
     parent = self()
 
     async = fn ->
-      Conn.connect(Conn.new(scheme, host, port, [], parent))
+      conn = Conn.new(scheme, host, port, opts, parent)
+      Conn.connect(conn)
     end
 
     {:async, async}

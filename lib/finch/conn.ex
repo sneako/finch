@@ -10,8 +10,9 @@ defmodule Finch.Conn do
       scheme: scheme,
       host: host,
       port: port,
-      opts: opts,
+      opts: opts.conn_opts,
       parent: parent,
+      backoff: opts.backoff,
       mint: nil
     }
   end
@@ -20,21 +21,24 @@ defmodule Finch.Conn do
     meta = %{
       scheme: conn.scheme,
       host: conn.host,
-      port: conn.port,
+      port: conn.port
     }
+
     Telemetry.event(:reused_connection, %{}, meta)
     conn
   end
 
-  def connect(conn) do
+  def connect(conn), do: connect(conn, conn.backoff.initial)
+
+  def connect(conn, prev_backoff) do
     meta = %{
       scheme: conn.scheme,
       host: conn.host,
-      port: conn.port,
+      port: conn.port
     }
+
     start_time = Telemetry.start(:connect, meta)
 
-    # TODO add back-off
     with {:ok, mint} <- HTTP.connect(conn.scheme, conn.host, conn.port, conn.opts),
          {:ok, mint} <- HTTP.controlling_process(mint, conn.parent) do
       Telemetry.stop(:connect, start_time, meta)
@@ -43,7 +47,10 @@ defmodule Finch.Conn do
       {:error, error} ->
         meta = Map.put(meta, :error, error)
         Telemetry.stop(:connect, start_time, meta)
-        conn
+
+        backoff = :backoff.rand_increment(prev_backoff, conn.backoff.max)
+        Process.sleep(backoff)
+        connect(conn, backoff)
     end
   end
 
@@ -85,6 +92,7 @@ defmodule Finch.Conn do
       port: conn.port,
       path: full_path
     }
+
     start_time = Telemetry.start(:request, metadata)
 
     case HTTP.request(conn.mint, req.method, full_path, req.headers, req.body) do
@@ -113,11 +121,11 @@ defmodule Finch.Conn do
     start_time = Telemetry.start(:response, metadata)
 
     case receive_response([], conn, ref, %Response{}, timeout) do
-      {:ok, _, _}=resp ->
+      {:ok, _, _} = resp ->
         Telemetry.stop(:response, start_time, metadata)
         resp
 
-      {:error, _, error}=resp ->
+      {:error, _, error} = resp ->
         metadata = Map.put(metadata, :error, error)
         Telemetry.stop(:response, start_time, metadata)
         resp
