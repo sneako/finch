@@ -201,6 +201,76 @@ defmodule FinchTest do
       Bypass.up(bypass)
       assert {:ok, %Response{}} = Finch.request(MyFinch, :get, endpoint(bypass))
     end
+
+    test "will exponentially backoff until connection succeeds", %{bypass: bypass} do
+      {test_name, _arity} = __ENV__.function
+
+      Bypass.expect_once(bypass, fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      initial_backoff = Enum.random(10..50)
+      max_backoff = Enum.random(100..250)
+      backoff = [initial: initial_backoff, max: max_backoff]
+      start_supervised({Finch, name: MyFinch, pools: %{default: [size: 1, backoff: backoff]}})
+
+      parent = self()
+      ref = make_ref()
+
+      handler = fn event, measurements, meta, _ ->
+        send(parent, {ref, event, measurements, meta})
+      end
+
+      :telemetry.attach_many(
+        to_string(test_name),
+        [
+          [:finch, :connect, :start],
+          [:finch, :connect, :stop]
+        ],
+        handler,
+        nil
+      )
+
+      Bypass.down(bypass)
+
+      spawn_link(fn ->
+        Finch.request(MyFinch, :get, endpoint(bypass), [], nil, pool_timeout: 5_000)
+        send(parent, {ref, :request_sent})
+      end)
+
+      Process.sleep(max_backoff * 10)
+
+      Bypass.up(bypass)
+
+      Enum.reduce_while(1..999, [], fn _, start_times ->
+        assert_receive {^ref, [:finch, :connect, :start], %{system_time: start_time}, _},
+                       max_backoff
+
+        assert_receive {^ref, [:finch, :connect, :stop], _, meta}, max_backoff
+
+        case meta do
+          %{error: _} ->
+            {:cont, [start_time | start_times]}
+
+          _ ->
+            {:halt, start_times}
+        end
+      end)
+      |> Enum.reverse()
+      |> Enum.map(&System.convert_time_unit(&1, :native, :millisecond))
+      |> Enum.chunk_every(2)
+      |> Enum.each(fn
+        [a, b] ->
+          interval = b - a
+          assert interval >= initial_backoff
+          assert interval <= max_backoff
+
+        _ ->
+          :ok
+      end)
+
+      assert_receive {^ref, :request_sent}
+    end
   end
 
   describe "telemetry" do
@@ -251,7 +321,7 @@ defmodule FinchTest do
             send(parent, {ref, :exception})
 
           _ ->
-            flunk "Unknown event"
+            flunk("Unknown event")
         end
       end
 
@@ -307,7 +377,7 @@ defmodule FinchTest do
             send(parent, {ref, :stop})
 
           _ ->
-            flunk "Unknown event"
+            flunk("Unknown event")
         end
       end
 
@@ -315,7 +385,7 @@ defmodule FinchTest do
         to_string(test_name),
         [
           [:finch, :connect, :start],
-          [:finch, :connect, :stop],
+          [:finch, :connect, :stop]
         ],
         handler,
         nil
@@ -353,7 +423,7 @@ defmodule FinchTest do
             send(parent, {ref, :stop})
 
           _ ->
-            flunk "Unknown event"
+            flunk("Unknown event")
         end
       end
 
@@ -399,7 +469,7 @@ defmodule FinchTest do
             send(parent, {ref, :stop})
 
           _ ->
-            flunk "Unknown event"
+            flunk("Unknown event")
         end
       end
 
@@ -407,7 +477,7 @@ defmodule FinchTest do
         to_string(test_name),
         [
           [:finch, :response, :start],
-          [:finch, :response, :stop],
+          [:finch, :response, :stop]
         ],
         handler,
         nil
@@ -420,7 +490,6 @@ defmodule FinchTest do
       :telemetry.detach(to_string(test_name))
     end
   end
-
 
   defp get_pools(name, shp) do
     Registry.lookup(name, shp)
