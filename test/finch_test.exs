@@ -209,11 +209,17 @@ defmodule FinchTest do
           [:finch, :queue, :start] ->
             assert is_integer(measurements.system_time)
             assert is_pid(meta.pool)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
             send(parent, {ref, :start})
 
           [:finch, :queue, :stop] ->
             assert is_integer(measurements.duration)
             assert is_pid(meta.pool)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
             send(parent, {ref, :stop})
 
           [:finch, :queue, :exception] ->
@@ -222,6 +228,9 @@ defmodule FinchTest do
             assert meta.kind == :exit
             assert {:timeout, _} = meta.error
             assert meta.stacktrace != nil
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
             send(parent, {ref, :exception})
 
           _ ->
@@ -268,11 +277,15 @@ defmodule FinchTest do
         case event do
           [:finch, :connect, :start] ->
             assert is_integer(measurements.system_time)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
             assert is_binary(meta.host)
             send(parent, {ref, :start})
 
           [:finch, :connect, :stop] ->
             assert is_integer(measurements.duration)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
             assert is_binary(meta.host)
             send(parent, {ref, :stop})
 
@@ -309,11 +322,17 @@ defmodule FinchTest do
           [:finch, :request, :start] ->
             assert is_integer(measurements.system_time)
             assert is_binary(meta.path)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
             send(parent, {ref, :start})
 
           [:finch, :request, :stop] ->
             assert is_integer(measurements.duration)
             assert is_binary(meta.path)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
             send(parent, {ref, :stop})
 
           _ ->
@@ -349,11 +368,17 @@ defmodule FinchTest do
           [:finch, :response, :start] ->
             assert is_integer(measurements.system_time)
             assert is_binary(meta.path)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
             send(parent, {ref, :start})
 
           [:finch, :response, :stop] ->
             assert is_integer(measurements.duration)
             assert is_binary(meta.path)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
             send(parent, {ref, :stop})
 
           _ ->

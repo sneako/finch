@@ -15,6 +15,9 @@ defmodule Finch.Telemetry do
     #### Metadata:
 
       * `:pool` - The pool's pid
+      * `:scheme` - The scheme used in the connection. either `http` or `https`
+      * `:host` - The host address
+      * `:port` - the port to connect on.
 
   * `[:finch, :queue, :stop]` - Executed after a connection is retrieved from the pool.
     #### Measurements
@@ -24,6 +27,9 @@ defmodule Finch.Telemetry do
     #### Metadata
 
     * `:pool` - The pool's pid
+    * `:scheme` - The scheme used in the connection. either `http` or `https`
+    * `:host` - The host address
+    * `:port` - the port to connect on.
 
   * `[:finch, :queue, :exception]` - Executed if checking out a connection throws an exception.
     #### Measurements
@@ -32,6 +38,9 @@ defmodule Finch.Telemetry do
 
     #### Metadata
 
+    * `:scheme` - The scheme used in the connection. either `http` or `https`
+    * `:host` - The host address
+    * `:port` - the port to connect on.
     * `:kind` - The type of exception.
     * `:error` - Error description or error data.
     * `:stacktrace` - The stacktrace
@@ -43,7 +52,9 @@ defmodule Finch.Telemetry do
     * `:system_time` - The system time
 
     #### Metadata
-    * `:host` - The host url.
+    * `:scheme` - The scheme used in the connection. either `http` or `https`
+    * `:host` - The host address
+    * `:port` - the port to connect on.
 
   * `[:finch, :connect, :stop]` - Executed after a connection is opened.
 
@@ -51,7 +62,9 @@ defmodule Finch.Telemetry do
     * `:duration` - Duration to connect to the host.
 
     #### Metadata:
-    * `:host` - The host url.
+    * `:scheme` - The scheme used in the connection. either `http` or `https`
+    * `:host` - The host address
+    * `:port` - the port to connect on.
     * `:error` - This value is optional. It includes any errors that occured while opening the connection.
 
   * `[:finch, :request, :start]` - Executed before sending a request.
@@ -60,6 +73,9 @@ defmodule Finch.Telemetry do
     * `:system_time` - The system time
 
     #### Metadata:
+    * `:scheme` - The scheme used in the connection. either `http` or `https`
+    * `:host` - The host address
+    * `:port` - the port to connect on.
     * `:path` - The request path.
 
   * `[:finch, :request, :stop]` - Executed after a request is finished.
@@ -68,6 +84,9 @@ defmodule Finch.Telemetry do
     * `:duration` - Duration to make the request.
 
     #### Metadata:
+    * `:scheme` - The scheme used in the connection. either `http` or `https`
+    * `:host` - The host address
+    * `:port` - the port to connect on.
     * `:path` - The request path.
     * `:error` - This value is optional. It includes any errors that occured while making the request.
 
@@ -77,6 +96,9 @@ defmodule Finch.Telemetry do
     * `:system_time` - The system time
 
     #### Metadata:
+    * `:scheme` - The scheme used in the connection. either `http` or `https`
+    * `:host` - The host address
+    * `:port` - the port to connect on.
     * `:path` - The request path.
 
   * `[:finch, :response, :stop]` - Executed after a response has been fully received.
@@ -85,12 +107,17 @@ defmodule Finch.Telemetry do
     * `:duration` - Duration to receive the response.
 
     #### Metadata:
+    * `:scheme` - The scheme used in the connection. either `http` or `https`
+    * `:host` - The host address
+    * `:port` - the port to connect on.
     * `:path` - The request path.
     * `:error` - This value is optional. It includes any errors that occured while receiving the response.
 
   * `[:finch, :reused_connection]` - Executed if an existing connection is reused. There are no measurements provided with this event.
     #### Metadata:
-    * `:host` - Host the connection is connected to.
+    * `:scheme` - The scheme used in the connection. either `http` or `https`
+    * `:host` - The host address
+    * `:port` - the port to connect on.
   """
 
   @doc false

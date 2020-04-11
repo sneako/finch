@@ -17,12 +17,21 @@ defmodule Finch.Conn do
   end
 
   def connect(%{mint: mint} = conn) when not is_nil(mint) do
-    Telemetry.event(:reused_connection, %{}, %{host: conn.host})
+    meta = %{
+      scheme: conn.scheme,
+      host: conn.host,
+      port: conn.port,
+    }
+    Telemetry.event(:reused_connection, %{}, meta)
     conn
   end
 
   def connect(conn) do
-    meta = %{host: conn.host}
+    meta = %{
+      scheme: conn.scheme,
+      host: conn.host,
+      port: conn.port,
+    }
     start_time = Telemetry.start(:connect, meta)
 
     # TODO add back-off
@@ -70,7 +79,12 @@ defmodule Finch.Conn do
   def request(conn, req, receive_timeout) do
     full_path = request_path(req)
 
-    metadata = %{path: full_path}
+    metadata = %{
+      scheme: conn.scheme,
+      host: conn.host,
+      port: conn.port,
+      path: full_path
+    }
     start_time = Telemetry.start(:request, metadata)
 
     case HTTP.request(conn.mint, req.method, full_path, req.headers, req.body) do
