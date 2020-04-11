@@ -37,7 +37,7 @@ defmodule Finch do
   ```elixir
   children = [
     {Finch,
-     name: MyConfiguredFinch, 
+     name: MyConfiguredFinch,
      pools: %{
        :default => [size: 10],
        {:https, "hex.pm", 443} => [size: 32, count: 8, backoff: [initial: 1, max: 30_000]]
