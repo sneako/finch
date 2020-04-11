@@ -3,6 +3,7 @@ defmodule Finch.Conn do
 
   alias Finch.Response
   alias Mint.HTTP
+  alias Finch.Telemetry
 
   def new(scheme, host, port, opts, parent) do
     %{
@@ -15,15 +16,33 @@ defmodule Finch.Conn do
     }
   end
 
-  def connect(%{mint: mint} = conn) when not is_nil(mint), do: conn
+  def connect(%{mint: mint} = conn) when not is_nil(mint) do
+    meta = %{
+      scheme: conn.scheme,
+      host: conn.host,
+      port: conn.port,
+    }
+    Telemetry.event(:reused_connection, %{}, meta)
+    conn
+  end
 
   def connect(conn) do
+    meta = %{
+      scheme: conn.scheme,
+      host: conn.host,
+      port: conn.port,
+    }
+    start_time = Telemetry.start(:connect, meta)
+
     # TODO add back-off
     with {:ok, mint} <- HTTP.connect(conn.scheme, conn.host, conn.port, conn.opts),
          {:ok, mint} <- HTTP.controlling_process(mint, conn.parent) do
+      Telemetry.stop(:connect, start_time, meta)
       %{conn | mint: mint}
     else
-      _ ->
+      {:error, error} ->
+        meta = Map.put(meta, :error, error)
+        Telemetry.stop(:connect, start_time, meta)
         conn
     end
   end
@@ -60,11 +79,22 @@ defmodule Finch.Conn do
   def request(conn, req, receive_timeout) do
     full_path = request_path(req)
 
+    metadata = %{
+      scheme: conn.scheme,
+      host: conn.host,
+      port: conn.port,
+      path: full_path
+    }
+    start_time = Telemetry.start(:request, metadata)
+
     case HTTP.request(conn.mint, req.method, full_path, req.headers, req.body) do
       {:ok, mint, ref} ->
-        receive_response([], %{conn | mint: mint}, ref, %Response{}, receive_timeout)
+        Telemetry.stop(:request, start_time, metadata)
+        receive_response(%{conn | mint: mint}, ref, receive_timeout, metadata)
 
       {:error, mint, error} ->
+        metadata = Map.put(metadata, :error, error)
+        Telemetry.stop(:request, start_time, metadata)
         {:error, %{conn | mint: mint}, error}
     end
   end
@@ -78,6 +108,21 @@ defmodule Finch.Conn do
 
   defp request_path(%{path: path, query: nil}), do: path
   defp request_path(%{path: path, query: query}), do: "#{path}?#{query}"
+
+  defp receive_response(conn, ref, timeout, metadata) do
+    start_time = Telemetry.start(:response, metadata)
+
+    case receive_response([], conn, ref, %Response{}, timeout) do
+      {:ok, _, _}=resp ->
+        Telemetry.stop(:response, start_time, metadata)
+        resp
+
+      {:error, _, error}=resp ->
+        metadata = Map.put(metadata, :error, error)
+        Telemetry.stop(:response, start_time, metadata)
+        resp
+    end
+  end
 
   defp receive_response([], conn, ref, response, timeout) do
     case HTTP.recv(conn.mint, 0, timeout) do

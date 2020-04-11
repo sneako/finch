@@ -186,6 +186,225 @@ defmodule FinchTest do
     end
   end
 
+  describe "telemetry" do
+    setup %{bypass: bypass} do
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      client = MyFinch
+      start_supervised({Finch, name: client})
+
+      {:ok, client: client}
+    end
+
+    test "reports queue spans", %{bypass: bypass, client: client} do
+      {test_name, _arity} = __ENV__.function
+
+      parent = self()
+      ref = make_ref()
+
+      handler = fn event, measurements, meta, _config ->
+        case event do
+          [:finch, :queue, :start] ->
+            assert is_integer(measurements.system_time)
+            assert is_pid(meta.pool)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
+            send(parent, {ref, :start})
+
+          [:finch, :queue, :stop] ->
+            assert is_integer(measurements.duration)
+            assert is_pid(meta.pool)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
+            send(parent, {ref, :stop})
+
+          [:finch, :queue, :exception] ->
+            assert is_integer(measurements.duration)
+            assert is_pid(meta.pool)
+            assert meta.kind == :exit
+            assert {:timeout, _} = meta.error
+            assert meta.stacktrace != nil
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
+            send(parent, {ref, :exception})
+
+          _ ->
+            flunk "Unknown event"
+        end
+      end
+
+      :telemetry.attach_many(
+        to_string(test_name),
+        [
+          [:finch, :queue, :start],
+          [:finch, :queue, :stop],
+          [:finch, :queue, :exception]
+        ],
+        handler,
+        nil
+      )
+
+      assert {:ok, %{status: 200}} = Finch.request(client, :get, endpoint(bypass))
+      assert_receive {^ref, :start}
+      assert_receive {^ref, :stop}
+
+      Bypass.down(bypass)
+
+      try do
+        Finch.request(client, :get, endpoint(bypass), [], nil, pool_timeout: 0)
+      catch
+        :exit, reason ->
+          assert {:timeout, _} = reason
+      end
+
+      assert_receive {^ref, :start}
+      assert_receive {^ref, :exception}
+
+      :telemetry.detach(to_string(test_name))
+    end
+
+    test "reports connection spans", %{bypass: bypass, client: client} do
+      {test_name, _arity} = __ENV__.function
+      parent = self()
+      ref = make_ref()
+
+      handler = fn event, measurements, meta, _config ->
+        case event do
+          [:finch, :connect, :start] ->
+            assert is_integer(measurements.system_time)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
+            send(parent, {ref, :start})
+
+          [:finch, :connect, :stop] ->
+            assert is_integer(measurements.duration)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
+            send(parent, {ref, :stop})
+
+          _ ->
+            flunk "Unknown event"
+        end
+      end
+
+      :telemetry.attach_many(
+        to_string(test_name),
+        [
+          [:finch, :connect, :start],
+          [:finch, :connect, :stop],
+        ],
+        handler,
+        nil
+      )
+
+      assert {:ok, %{status: 200}} = Finch.request(client, :get, endpoint(bypass))
+      assert_receive {^ref, :start}
+      assert_receive {^ref, :stop}
+
+      :telemetry.detach(to_string(test_name))
+    end
+
+    test "reports request spans", %{bypass: bypass, client: client} do
+      {test_name, _arity} = __ENV__.function
+
+      parent = self()
+      ref = make_ref()
+
+      handler = fn event, measurements, meta, _config ->
+        case event do
+          [:finch, :request, :start] ->
+            assert is_integer(measurements.system_time)
+            assert is_binary(meta.path)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
+            send(parent, {ref, :start})
+
+          [:finch, :request, :stop] ->
+            assert is_integer(measurements.duration)
+            assert is_binary(meta.path)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
+            send(parent, {ref, :stop})
+
+          _ ->
+            flunk "Unknown event"
+        end
+      end
+
+      :telemetry.attach_many(
+        to_string(test_name),
+        [
+          [:finch, :request, :start],
+          [:finch, :request, :stop],
+          [:finch, :request, :exception]
+        ],
+        handler,
+        nil
+      )
+
+      assert {:ok, %{status: 200}} = Finch.request(client, :get, endpoint(bypass))
+      assert_receive {^ref, :start}
+      assert_receive {^ref, :stop}
+
+      :telemetry.detach(to_string(test_name))
+    end
+
+    test "reports response spans", %{bypass: bypass, client: client} do
+      {test_name, _arity} = __ENV__.function
+      parent = self()
+      ref = make_ref()
+
+      handler = fn event, measurements, meta, _config ->
+        case event do
+          [:finch, :response, :start] ->
+            assert is_integer(measurements.system_time)
+            assert is_binary(meta.path)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
+            send(parent, {ref, :start})
+
+          [:finch, :response, :stop] ->
+            assert is_integer(measurements.duration)
+            assert is_binary(meta.path)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
+            send(parent, {ref, :stop})
+
+          _ ->
+            flunk "Unknown event"
+        end
+      end
+
+      :telemetry.attach_many(
+        to_string(test_name),
+        [
+          [:finch, :response, :start],
+          [:finch, :response, :stop],
+        ],
+        handler,
+        nil
+      )
+
+      assert {:ok, %{status: 200}} = Finch.request(client, :get, endpoint(bypass))
+      assert_receive {^ref, :start}
+      assert_receive {^ref, :stop}
+
+      :telemetry.detach(to_string(test_name))
+    end
+  end
+
+
   defp get_pools(name, shp) do
     Registry.lookup(name, shp)
   end
