@@ -47,9 +47,16 @@ defmodule FinchTest do
         end)
 
       assert error.message =~ "got invalid configuration"
+
+      error =
+        assert_raise(ArgumentError, fn ->
+          Finch.start_link(name: MyFinch, pools: %{invalid: [count: 5, size: 5]})
+        end)
+
+      assert error.message =~ "invalid destination"
     end
 
-    test "specific scheme, host, port combos can be configurated independently and pools will be started automatically",
+    test "pools are started based on only the {scheme, host, port} of the URLs",
          %{bypass: bypass} do
       other_bypass = Bypass.open()
       default_bypass = Bypass.open()
@@ -58,8 +65,8 @@ defmodule FinchTest do
         {Finch,
          name: MyFinch,
          pools: %{
-           shp(bypass) => [count: 5, size: 5],
-           shp(other_bypass) => [count: 10, size: 10]
+           endpoint(bypass, "/some-path") => [count: 5, size: 5],
+           endpoint(other_bypass, "/some-other-path") => [count: 10, size: 10]
          }}
       )
 
@@ -68,6 +75,44 @@ defmodule FinchTest do
 
       # no pool has been started for this unconfigured shp
       assert get_pools(MyFinch, shp(default_bypass)) |> length() == 0
+    end
+
+    test "pools with an invalid URL cannot be started" do
+      error =
+        assert_raise(ArgumentError, fn ->
+          Finch.start_link(
+            name: MyFinch,
+            pools: %{
+              "example.com" => [count: 5, size: 5]
+            }
+          )
+        end)
+
+      assert error.message =~ "invalid scheme nil"
+
+      error =
+        assert_raise(ArgumentError, fn ->
+          Finch.start_link(
+            name: MyFinch,
+            pools: %{
+              "example" => [count: 5, size: 5]
+            }
+          )
+        end)
+
+      assert error.message =~ "invalid scheme nil"
+
+      error =
+        assert_raise(ArgumentError, fn ->
+          Finch.start_link(
+            name: MyFinch,
+            pools: %{
+              ":443" => [count: 5, size: 5]
+            }
+          )
+        end)
+
+      assert error.message =~ "invalid scheme nil"
     end
 
     test "impossible to accidentally start multiple pools when they are dynamically started", %{
@@ -138,6 +183,14 @@ defmodule FinchTest do
                  {"content-type", _} -> true
                  _ -> false
                end)
+    end
+
+    test "raises when requesting a URL with an invalid scheme" do
+      start_supervised({Finch, name: MyFinch})
+
+      assert {:error, error} = Finch.request(MyFinch, :get, "ftp://example.com")
+
+      assert error =~ "invalid scheme \"ftp\""
     end
 
     test "properly handles connection: close", %{bypass: bypass} do
