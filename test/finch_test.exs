@@ -263,6 +263,32 @@ defmodule FinchTest do
     end
   end
 
+  describe "connection options" do
+    test "are passed through to the conn", %{bypass: bypass} do
+      expect_any(bypass)
+
+      start_supervised(
+        {Finch, name: H1Finch, pools: %{default: [conn_opts: [protocols: [:http1]]]}}
+      )
+
+      assert {:ok, _} = Finch.request(H1Finch, :get, endpoint(bypass))
+
+      stop_supervised(Finch)
+
+      start_supervised(
+        {Finch, name: H2Finch, pools: %{default: [conn_opts: [protocols: [:http2]]]}}
+      )
+
+      assert {:error, _} = Finch.request(H2Finch, :get, endpoint(bypass))
+    end
+
+    test "caller is unable to override mode", %{bypass: bypass} do
+      start_supervised({Finch, name: MyFinch, pools: %{default: [conn_opts: [mode: :active]]}})
+      expect_any(bypass)
+      assert {:ok, _} = Finch.request(MyFinch, :get, endpoint(bypass))
+    end
+  end
+
   describe "telemetry" do
     setup %{bypass: bypass} do
       Bypass.expect_once(bypass, "GET", "/", fn conn ->

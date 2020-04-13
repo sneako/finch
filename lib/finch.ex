@@ -80,17 +80,25 @@ defmodule Finch do
     "OPTIONS"
   ]
   @atom_to_method Enum.zip(@atom_methods, @methods) |> Enum.into(%{})
+  @default_pool_size 10
+  @default_pool_count 1
 
   @pool_config_schema [
     size: [
       type: :pos_integer,
       doc: "Number of connections to maintain in each pool.",
-      default: 10
+      default: @default_pool_size
     ],
     count: [
       type: :pos_integer,
       doc: "Number of pools to start.",
-      default: 1
+      default: @default_pool_count
+    ],
+    conn_opts: [
+      type: :keyword_list,
+      doc:
+        "These options are passed to [Mint.HTTP.connect/4](https://hexdocs.pm/mint/Mint.HTTP.html#connect/4-options) whenever a new connection is established. `:mode` is not configurable as Finch must control this setting. Typically these options are used to configure proxying, https settings, or connect timeouts.",
+      default: []
     ]
   ]
 
@@ -100,10 +108,12 @@ defmodule Finch do
   ## Options:
     * `:name` - The name of your Finch instance. This field is required.
 
-    * `:pools` - Configuration for your pools. You can provide a `:default` catch-all
-    configuration for any non specfied {scheme, host, port}, or configuration for any
-    URL that will be parsed into a {scheme, host, port}. See "Pool Configuration Options"
-    below.
+    * `:pools` - A map specifying the configuration for your pools. The keys should be URLs 
+    provided as binaries, or the atom `:default` to provide a catch-all configuration to be used
+    for any unspecified URLs. See "Pool Configuration Options" below for details on the possible
+    map values. Default value is `%{default: [size: #{@default_pool_size}, count: #{
+    @default_pool_count
+  }]}`.
 
   ### Pool Configuration Options
   #{NimbleOptions.docs(@pool_config_schema)}
@@ -234,7 +244,7 @@ defmodule Finch do
     %{
       size: valid[:size],
       count: valid[:count],
-      conn_opts: []
+      conn_opts: valid[:conn_opts]
     }
   end
 
