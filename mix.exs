@@ -24,7 +24,6 @@ defmodule Finch.MixProject do
       {:nimble_pool, github: "dashbitco/nimble_pool"},
       {:nimble_options, github: "dashbitco/nimble_options"},
       {:telemetry, "~> 0.4"},
-      {:backoff, "~> 1.1"},
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
       {:credo, "~> 1.3", only: [:dev, :test]},
       {:bypass, "~> 1.0", only: :test}

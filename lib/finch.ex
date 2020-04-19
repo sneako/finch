@@ -41,7 +41,7 @@ defmodule Finch do
      name: MyConfiguredFinch,
      pools: %{
        :default => [size: 10],
-       "https://hex.pm" => [size: 32, count: 8, backoff: [initial: 1, max: 30_000]]
+       "https://hex.pm" => [size: 32, count: 8]
      }}
   ]
   ```
@@ -91,24 +91,6 @@ defmodule Finch do
       type: :pos_integer,
       doc: "Number of pools to start.",
       default: 1
-    ],
-    backoff: [
-      type: :non_empty_keyword_list,
-      default: [initial: 1, max: :timer.minutes(1)],
-      doc:
-        "Failed connection attempts will be retried using an exponential backoff with jitter. Values are in milliseconds.",
-      keys: [
-        initial: [
-          type: :pos_integer,
-          doc: "Backoff will begin at this value, and increase exponentially.",
-          default: 1
-        ],
-        max: [
-          type: :pos_integer,
-          doc: "Backoff will be capped to this value.",
-          default: :timer.minutes(1)
-        ]
-      ]
     ]
   ]
 
@@ -252,7 +234,6 @@ defmodule Finch do
     %{
       size: valid[:size],
       count: valid[:count],
-      backoff: Map.new(valid[:backoff]),
       conn_opts: []
     }
   end
