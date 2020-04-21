@@ -56,13 +56,13 @@ defmodule Finch.Pool do
   end
 
   @impl NimblePool
-  def init_pool({_, {registry, shp, _}, _}) do
+  def init_pool({registry, shp, _} = pool_state) do
     {:ok, _} = Registry.register(registry, shp, [])
-    :ok
+    {:ok, pool_state}
   end
 
   @impl NimblePool
-  def init({_, {scheme, host, port}, opts}) do
+  def init_worker({_, {scheme, host, port}, opts} = pool_state) do
     parent = self()
 
     async = fn ->
@@ -70,7 +70,7 @@ defmodule Finch.Pool do
       Conn.connect(conn)
     end
 
-    {:async, async}
+    {:async, async, pool_state}
   end
 
   @impl NimblePool
@@ -104,9 +104,9 @@ defmodule Finch.Pool do
   @impl NimblePool
   # On terminate, effectively close it.
   # This will succeed even if it was already closed or if we don't own it.
-  def terminate(_reason, conn) do
+  def terminate_worker(_reason, conn, pool_state) do
     Conn.close(conn)
-    :ok
+    {:ok, pool_state}
   end
 
   defp transfer_conn(conn, pid) do
