@@ -151,6 +151,7 @@ defmodule Finch.Telemetry do
   def exception(event, start_time, kind, reason, stack, meta \\ %{}) do
     end_time = System.monotonic_time()
     measurements = %{duration: end_time - start_time}
+
     meta =
       meta
       |> Map.put(:kind, kind)
