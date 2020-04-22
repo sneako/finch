@@ -55,13 +55,13 @@ defmodule Finch.Pool do
   end
 
   @impl NimblePool
-  def init_pool({registry, shp, _} = pool_state) do
+  def init_pool({registry, shp, opts}) do
     {:ok, _} = Registry.register(registry, shp, [])
-    {:ok, pool_state}
+    {:ok, {shp, opts}}
   end
 
   @impl NimblePool
-  def init_worker({_, {scheme, host, port}, opts} = pool_state) do
+  def init_worker({{scheme, host, port}, opts} = pool_state) do
     {:ok, Conn.new(scheme, host, port, opts, self()), pool_state}
   end
 
