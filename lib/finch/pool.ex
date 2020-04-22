@@ -36,14 +36,13 @@ defmodule Finch.Pool do
         :checkout,
         fn {conn, pool} ->
           Telemetry.stop(:queue, start_time, metadata)
-          conn = Conn.connect(conn)
 
-          case Conn.request(conn, req, receive_timeout) do
-            {:ok, conn, response} ->
-              {{:ok, response}, transfer_conn(conn, pool)}
-
+          with {:ok, conn} <- Conn.connect(conn),
+               {:ok, conn, response} <- Conn.request(conn, req, receive_timeout) do
+            {{:ok, response}, transfer_if_open(conn, pool)}
+          else
             {:error, conn, error} ->
-              {{:error, error}, conn}
+              {{:error, error}, transfer_if_open(conn, pool)}
           end
         end,
         pool_timeout
@@ -63,41 +62,42 @@ defmodule Finch.Pool do
 
   @impl NimblePool
   def init_worker({_, {scheme, host, port}, opts} = pool_state) do
-    parent = self()
-
-    async = fn ->
-      conn = Conn.new(scheme, host, port, opts, parent)
-      Conn.connect(conn)
-    end
-
-    {:async, async, pool_state}
+    {:ok, Conn.new(scheme, host, port, opts, self()), pool_state}
   end
 
   @impl NimblePool
-  # Transfer the conn to the caller.
-  # If we lost the connection, then we remove it to try again.
+  def handle_checkout(:checkout, _, %{mint: nil} = conn) do
+    {:ok, {conn, self()}, conn}
+  end
+
   def handle_checkout(:checkout, {pid, _}, conn) do
-    case Conn.transfer(conn, pid) do
-      {:ok, conn} -> {:ok, {conn, self()}, conn}
-      _ -> {:remove, :closed}
+    with {:ok, conn} <- Conn.set_mode(conn, :passive),
+         {:ok, conn} <- Conn.transfer(conn, pid) do
+      {:ok, {conn, self()}, conn}
+    else
+      {:error, _error} ->
+        {:remove, :closed}
     end
   end
 
   @impl NimblePool
   def handle_checkin(conn, _from, _old_conn) do
-    case Conn.set_mode(conn, :active) do
-      {:ok, conn} -> {:ok, conn}
-      {:error, _} -> {:remove, :closed}
+    with true <- Conn.open?(conn),
+         {:ok, conn} <- Conn.set_mode(conn, :active) do
+      {:ok, conn}
+    else
+      _ ->
+        {:remove, :closed}
     end
   end
 
   @impl NimblePool
   def handle_info(message, conn) do
     case Conn.stream(conn, message) do
-      {:ok, _, _} -> {:ok, conn}
-      {:error, _, _, _} -> {:remove, :closed}
-      {:error, _} -> {:remove, :closed}
+      {:ok, conn, _} -> {:ok, conn}
       :unknown -> {:ok, conn}
+      {:error, _mint, _error, _responses} -> {:remove, :closed}
+      {:error, _error} -> {:remove, :closed}
     end
   end
 
@@ -109,7 +109,7 @@ defmodule Finch.Pool do
     {:ok, pool_state}
   end
 
-  defp transfer_conn(conn, pid) do
+  defp transfer_if_open(conn, pid) do
     if Conn.open?(conn) do
       {:ok, conn} = Conn.transfer(conn, pid)
       conn

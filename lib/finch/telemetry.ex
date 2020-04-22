@@ -114,6 +114,7 @@ defmodule Finch.Telemetry do
     * `:error` - This value is optional. It includes any errors that occured while receiving the response.
 
   * `[:finch, :reused_connection]` - Executed if an existing connection is reused. There are no measurements provided with this event.
+
     #### Metadata:
     * `:scheme` - The scheme used in the connection. either `http` or `https`
     * `:host` - The host address

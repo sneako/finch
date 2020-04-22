@@ -12,7 +12,6 @@ defmodule Finch.Conn do
       port: port,
       opts: opts.conn_opts,
       parent: parent,
-      backoff: opts.backoff,
       mint: nil
     }
   end
@@ -25,12 +24,10 @@ defmodule Finch.Conn do
     }
 
     Telemetry.event(:reused_connection, %{}, meta)
-    conn
+    {:ok, conn}
   end
 
-  def connect(conn), do: connect(conn, conn.backoff.initial)
-
-  def connect(conn, prev_backoff) do
+  def connect(conn) do
     meta = %{
       scheme: conn.scheme,
       host: conn.host,
@@ -38,19 +35,17 @@ defmodule Finch.Conn do
     }
 
     start_time = Telemetry.start(:connect, meta)
+    conn_opts = Keyword.merge([mode: :passive], conn.opts)
 
-    with {:ok, mint} <- HTTP.connect(conn.scheme, conn.host, conn.port, conn.opts),
-         {:ok, mint} <- HTTP.controlling_process(mint, conn.parent) do
-      Telemetry.stop(:connect, start_time, meta)
-      %{conn | mint: mint}
-    else
+    case HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts) do
+      {:ok, mint} ->
+        Telemetry.stop(:connect, start_time, meta)
+        {:ok, %{conn | mint: mint}}
+
       {:error, error} ->
         meta = Map.put(meta, :error, error)
         Telemetry.stop(:connect, start_time, meta)
-
-        backoff = :backoff.rand_increment(prev_backoff, conn.backoff.max)
-        Process.sleep(backoff)
-        connect(conn, backoff)
+        {:error, conn, error}
     end
   end
 
@@ -69,14 +64,15 @@ defmodule Finch.Conn do
   def stream(%{mint: nil}, _), do: {:error, "Connection is dead"}
 
   def stream(conn, message) do
-    HTTP.stream(conn.mint, message)
+    with {:ok, mint, responses} <- HTTP.stream(conn.mint, message) do
+      {:ok, %{conn | mint: mint}, responses}
+    end
   end
 
   def transfer(%{mint: nil}, _), do: {:error, "Connection is dead"}
 
   def transfer(conn, pid) do
-    with {:ok, mint} <- HTTP.set_mode(conn.mint, :passive),
-         {:ok, mint} <- HTTP.controlling_process(mint, pid) do
+    with {:ok, mint} <- HTTP.controlling_process(conn.mint, pid) do
       {:ok, %{conn | mint: mint}}
     end
   end
