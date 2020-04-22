@@ -34,15 +34,15 @@ defmodule Finch.Pool do
       NimblePool.checkout!(
         pool,
         :checkout,
-        fn {conn, pool} ->
+        fn from, conn ->
           Telemetry.stop(:queue, start_time, metadata)
 
           with {:ok, conn} <- Conn.connect(conn),
                {:ok, conn, response} <- Conn.request(conn, req, receive_timeout) do
-            {{:ok, response}, transfer_if_open(conn, pool)}
+            {{:ok, response}, transfer_if_open(conn, from)}
           else
             {:error, conn, error} ->
-              {{:error, error}, transfer_if_open(conn, pool)}
+              {{:error, error}, transfer_if_open(conn, from)}
           end
         end,
         pool_timeout
@@ -67,13 +67,13 @@ defmodule Finch.Pool do
 
   @impl NimblePool
   def handle_checkout(:checkout, _, %{mint: nil} = conn) do
-    {:ok, {conn, self()}, conn}
+    {:ok, conn, conn}
   end
 
   def handle_checkout(:checkout, {pid, _}, conn) do
     with {:ok, conn} <- Conn.set_mode(conn, :passive),
          {:ok, conn} <- Conn.transfer(conn, pid) do
-      {:ok, {conn, self()}, conn}
+      {:ok, conn, conn}
     else
       {:error, _error} ->
         {:remove, :closed}
@@ -82,8 +82,7 @@ defmodule Finch.Pool do
 
   @impl NimblePool
   def handle_checkin(conn, _from, _old_conn) do
-    with true <- Conn.open?(conn),
-         {:ok, conn} <- Conn.set_mode(conn, :active) do
+    with {:ok, conn} <- Conn.set_mode(conn, :active) do
       {:ok, conn}
     else
       _ ->
@@ -109,12 +108,20 @@ defmodule Finch.Pool do
     {:ok, pool_state}
   end
 
-  defp transfer_if_open(conn, pid) do
+  defp transfer_if_open(conn, {pid, _} = from) do
     if Conn.open?(conn) do
-      {:ok, conn} = Conn.transfer(conn, pid)
-      conn
-    else
-      conn
+      NimblePool.precheckin!(from, conn)
+
+      # Transfer is a side-effect, it doesn't effectively change
+      # the conn, so we can ignore it in `{:ok, conn}`. I would
+      # even go as far as changing Conn.transfer to return `:ok`
+      # and move this note to Conn.transfer docs itself.
+      case Conn.transfer(conn, pid) do
+        {:ok, _} -> conn
+        {:error, _} -> Conn.close(conn)
+      end
     end
+
+    conn
   end
 end
