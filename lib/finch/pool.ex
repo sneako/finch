@@ -81,8 +81,9 @@ defmodule Finch.Pool do
   end
 
   @impl NimblePool
-  def handle_checkin(conn, _from, _old_conn) do
-    with {:ok, conn} <- Conn.set_mode(conn, :active) do
+  def handle_checkin(state, _from, conn) do
+    with :prechecked <- state,
+         {:ok, conn} <- Conn.set_mode(conn, :active) do
       {:ok, conn}
     else
       _ ->
@@ -120,8 +121,10 @@ defmodule Finch.Pool do
         {:ok, _} -> conn
         {:error, _} -> Conn.close(conn)
       end
+      
+      :prechecked
+    else
+      :closed
     end
-
-    conn
   end
 end
