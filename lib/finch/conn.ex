@@ -37,11 +37,11 @@ defmodule Finch.Conn do
     start_time = Telemetry.start(:connect, meta)
     conn_opts = Keyword.merge([mode: :passive], conn.opts)
 
-    with {:ok, mint} <- HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts),
-         {:ok, mint} <- HTTP.controlling_process(mint, conn.parent) do
-      Telemetry.stop(:connect, start_time, meta)
-      {:ok, %{conn | mint: mint}}
-    else
+    case HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts) do
+      {:ok, mint} ->
+        Telemetry.stop(:connect, start_time, meta)
+        {:ok, %{conn | mint: mint}}
+
       {:error, error} ->
         meta = Map.put(meta, :error, error)
         Telemetry.stop(:connect, start_time, meta)
