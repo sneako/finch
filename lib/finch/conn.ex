@@ -72,8 +72,10 @@ defmodule Finch.Conn do
   def transfer(%{mint: nil}, _), do: {:error, "Connection is dead"}
 
   def transfer(conn, pid) do
-    with {:ok, mint} <- HTTP.controlling_process(conn.mint, pid) do
-      {:ok, %{conn | mint: mint}}
+    with {:ok, _mint} <- HTTP.controlling_process(conn.mint, pid) do
+      # HTTP.controlling_process causes a side-effect, it doesn't actually change
+      # the conn, so we can ignore the value returned above.
+      :ok
     end
   end
 

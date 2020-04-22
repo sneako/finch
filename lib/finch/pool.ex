@@ -34,15 +34,15 @@ defmodule Finch.Pool do
       NimblePool.checkout!(
         pool,
         :checkout,
-        fn {conn, pool} ->
+        fn from, conn ->
           Telemetry.stop(:queue, start_time, metadata)
 
           with {:ok, conn} <- Conn.connect(conn),
                {:ok, conn, response} <- Conn.request(conn, req, receive_timeout) do
-            {{:ok, response}, transfer_if_open(conn, pool)}
+            {{:ok, response}, transfer_if_open(conn, from)}
           else
             {:error, conn, error} ->
-              {{:error, error}, transfer_if_open(conn, pool)}
+              {{:error, error}, transfer_if_open(conn, from)}
           end
         end,
         pool_timeout
@@ -67,13 +67,13 @@ defmodule Finch.Pool do
 
   @impl NimblePool
   def handle_checkout(:checkout, _, %{mint: nil} = conn) do
-    {:ok, {conn, self()}, conn}
+    {:ok, conn, conn}
   end
 
   def handle_checkout(:checkout, {pid, _}, conn) do
     with {:ok, conn} <- Conn.set_mode(conn, :passive),
-         {:ok, conn} <- Conn.transfer(conn, pid) do
-      {:ok, {conn, self()}, conn}
+         :ok <- Conn.transfer(conn, pid) do
+      {:ok, conn, conn}
     else
       {:error, _error} ->
         {:remove, :closed}
@@ -81,8 +81,8 @@ defmodule Finch.Pool do
   end
 
   @impl NimblePool
-  def handle_checkin(conn, _from, _old_conn) do
-    with true <- Conn.open?(conn),
+  def handle_checkin(state, _from, conn) do
+    with :prechecked <- state,
          {:ok, conn} <- Conn.set_mode(conn, :active) do
       {:ok, conn}
     else
@@ -109,12 +109,18 @@ defmodule Finch.Pool do
     {:ok, pool_state}
   end
 
-  defp transfer_if_open(conn, pid) do
+  defp transfer_if_open(conn, {pid, _} = from) do
     if Conn.open?(conn) do
-      {:ok, conn} = Conn.transfer(conn, pid)
-      conn
+      NimblePool.precheckin(from, conn)
+
+      case Conn.transfer(conn, pid) do
+        :ok -> conn
+        {:error, _} -> Conn.close(conn)
+      end
+
+      :prechecked
     else
-      conn
+      :closed
     end
   end
 end
