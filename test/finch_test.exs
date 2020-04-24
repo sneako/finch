@@ -319,6 +319,7 @@ defmodule FinchTest do
 
           [:finch, :queue, :stop] ->
             assert is_integer(measurements.duration)
+            assert is_integer(measurements.idle_time)
             assert is_pid(meta.pool)
             assert is_atom(meta.scheme)
             assert is_integer(meta.port)
