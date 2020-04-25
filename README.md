@@ -2,7 +2,8 @@
 
 <!-- MDOC !-->
 
-An HTTP client with a focus on performance, built on top of `Mint.HTTP` & `NimblePool`.
+An HTTP client with a focus on performance, built on top of
+[Mint](https://github.com/elixir-mint/mint) and [nimble_pool](https://github.com/dashbitco/nimble_pool).
 
 ## Usage
 
