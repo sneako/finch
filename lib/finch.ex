@@ -50,6 +50,36 @@ defmodule Finch do
     ]
   ]
 
+  @typedoc """
+  The `:name` provided to Finch in `start_link/1`.
+  """
+  @type instance_name() :: atom()
+
+  @typedoc """
+  An HTTP request method represented as an atom or a String in all caps.
+
+  The following methods are supported: #{Enum.join(@methods, ", ")}.
+  """
+  @type http_method() :: :get | :post | :head | :patch | :delete | :options | String.t()
+
+  @typedoc """
+  A Uniform Resource Locator, the address of a resource on the Web.
+  """
+  @type url() :: String.t()
+
+  @typedoc """
+  A body associated with a request or a response.
+  """
+  @type body() :: binary() | nil
+
+  @typedoc """
+  HTTP headers.
+
+  Headers are received as lists of two-element tuples containing two strings,
+  the header name and header value.
+  """
+  @type headers() :: [{header_name :: String.t(), header_value :: String.t()}]
+
   @doc """
   Start an instance of Finch.
 
@@ -93,6 +123,18 @@ defmodule Finch do
     Supervisor.init(children, strategy: :one_for_all)
   end
 
+  @doc """
+  Sends an HTTP request and returns the response.
+
+  ## Options:
+    * `:pool_timeout` - (`pos_integer()` | `:infinity`) This timeout is applied when we check out
+    a connection from the pool.
+
+    * `:receive_timeout` - (`pos_integer()` | `:infinity`) The maximum time to wait for a response
+    before returning an error.
+  """
+  @spec request(instance_name(), http_method(), url(), headers(), body(), keyword()) ::
+          {:ok, Finch.Response.t()} | {:error, Mint.Types.error()}
   def request(name, method, url, headers \\ [], body \\ nil, opts \\ []) do
     with {:ok, uri} <- parse_and_normalize_url(url) do
       req = %{
