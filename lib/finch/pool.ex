@@ -34,8 +34,8 @@ defmodule Finch.Pool do
       NimblePool.checkout!(
         pool,
         :checkout,
-        fn from, conn ->
-          Telemetry.stop(:queue, start_time, metadata)
+        fn from, {conn, idle_time} ->
+          Telemetry.stop(:queue, start_time, metadata, %{idle_time: idle_time})
 
           with {:ok, conn} <- Conn.connect(conn),
                {:ok, conn, response} <- Conn.request(conn, req, receive_timeout) do
@@ -67,13 +67,16 @@ defmodule Finch.Pool do
 
   @impl NimblePool
   def handle_checkout(:checkout, _, %{mint: nil} = conn) do
-    {:ok, conn, conn}
+    idle_time = System.monotonic_time() - conn.last_checkin
+    {:ok, {conn, idle_time}, conn}
   end
 
   def handle_checkout(:checkout, {pid, _}, conn) do
+    idle_time = System.monotonic_time() - conn.last_checkin
+
     with {:ok, conn} <- Conn.set_mode(conn, :passive),
          :ok <- Conn.transfer(conn, pid) do
-      {:ok, conn, conn}
+      {:ok, {conn, idle_time}, conn}
     else
       {:error, _error} ->
         {:remove, :closed}
@@ -84,7 +87,7 @@ defmodule Finch.Pool do
   def handle_checkin(state, _from, conn) do
     with :prechecked <- state,
          {:ok, conn} <- Conn.set_mode(conn, :active) do
-      {:ok, conn}
+      {:ok, %{conn | last_checkin: System.monotonic_time()}}
     else
       _ ->
         {:remove, :closed}

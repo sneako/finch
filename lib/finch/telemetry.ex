@@ -23,6 +23,7 @@ defmodule Finch.Telemetry do
     #### Measurements
 
     * `:duration` - Duration to check out a pool connection.
+    * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata
 
@@ -123,12 +124,12 @@ defmodule Finch.Telemetry do
 
   @doc false
   # emits a `start` telemetry event and returns the the start time
-  def start(event, meta \\ %{}) do
+  def start(event, meta \\ %{}, extra_measurements \\ %{}) do
     start_time = System.monotonic_time()
 
     :telemetry.execute(
       [:finch, event, :start],
-      %{system_time: System.system_time()},
+      Map.merge(extra_measurements, %{system_time: System.system_time()}),
       meta
     )
 
@@ -137,9 +138,9 @@ defmodule Finch.Telemetry do
 
   @doc false
   # Emits a stop event.
-  def stop(event, start_time, meta \\ %{}) do
+  def stop(event, start_time, meta \\ %{}, extra_measurements \\ %{}) do
     end_time = System.monotonic_time()
-    measurements = %{duration: end_time - start_time}
+    measurements = Map.merge(extra_measurements, %{duration: end_time - start_time})
 
     :telemetry.execute(
       [:finch, event, :stop],
@@ -149,9 +150,9 @@ defmodule Finch.Telemetry do
   end
 
   @doc false
-  def exception(event, start_time, kind, reason, stack, meta \\ %{}) do
+  def exception(event, start_time, kind, reason, stack, meta \\ %{}, extra_measurements \\ %{}) do
     end_time = System.monotonic_time()
-    measurements = %{duration: end_time - start_time}
+    measurements = Map.merge(extra_measurements, %{duration: end_time - start_time})
 
     meta =
       meta

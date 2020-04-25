@@ -12,6 +12,7 @@ defmodule Finch.Conn do
       port: port,
       opts: opts.conn_opts,
       parent: parent,
+      last_checkin: System.monotonic_time(),
       mint: nil
     }
   end
