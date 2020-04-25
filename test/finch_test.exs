@@ -10,8 +10,7 @@ defmodule FinchTest do
 
   describe "start_link/1" do
     test "raises if :name is not provided" do
-      error = assert_raise(ArgumentError, fn -> Finch.start_link([]) end)
-      assert error.message =~ "must supply a name"
+      assert_raise(ArgumentError, ~r/must supply a name/, fn -> Finch.start_link([]) end)
     end
   end
 
@@ -41,19 +40,13 @@ defmodule FinchTest do
     end
 
     test "raises when invalid configuration is provided" do
-      error =
-        assert_raise(ArgumentError, fn ->
-          Finch.start_link(name: MyFinch, pools: %{default: [count: :dog]})
-        end)
+      assert_raise(ArgumentError, ~r/got invalid configuration/, fn ->
+        Finch.start_link(name: MyFinch, pools: %{default: [count: :dog]})
+      end)
 
-      assert error.message =~ "got invalid configuration"
-
-      error =
-        assert_raise(ArgumentError, fn ->
-          Finch.start_link(name: MyFinch, pools: %{invalid: [count: 5, size: 5]})
-        end)
-
-      assert error.message =~ "invalid destination"
+      assert_raise(ArgumentError, ~r/invalid destination/, fn ->
+        Finch.start_link(name: MyFinch, pools: %{invalid: [count: 5, size: 5]})
+      end)
     end
 
     test "pools are started based on only the {scheme, host, port} of the URLs",
@@ -78,41 +71,32 @@ defmodule FinchTest do
     end
 
     test "pools with an invalid URL cannot be started" do
-      error =
-        assert_raise(ArgumentError, fn ->
-          Finch.start_link(
-            name: MyFinch,
-            pools: %{
-              "example.com" => [count: 5, size: 5]
-            }
-          )
-        end)
+      assert_raise(ArgumentError, ~r/invalid scheme nil/, fn ->
+        Finch.start_link(
+          name: MyFinch,
+          pools: %{
+            "example.com" => [count: 5, size: 5]
+          }
+        )
+      end)
 
-      assert error.message =~ "invalid scheme nil"
+      assert_raise(ArgumentError, ~r/invalid scheme nil/, fn ->
+        Finch.start_link(
+          name: MyFinch,
+          pools: %{
+            "example" => [count: 5, size: 5]
+          }
+        )
+      end)
 
-      error =
-        assert_raise(ArgumentError, fn ->
-          Finch.start_link(
-            name: MyFinch,
-            pools: %{
-              "example" => [count: 5, size: 5]
-            }
-          )
-        end)
-
-      assert error.message =~ "invalid scheme nil"
-
-      error =
-        assert_raise(ArgumentError, fn ->
-          Finch.start_link(
-            name: MyFinch,
-            pools: %{
-              ":443" => [count: 5, size: 5]
-            }
-          )
-        end)
-
-      assert error.message =~ "invalid scheme nil"
+      assert_raise(ArgumentError, ~r/invalid scheme nil/, fn ->
+        Finch.start_link(
+          name: MyFinch,
+          pools: %{
+            ":443" => [count: 5, size: 5]
+          }
+        )
+      end)
     end
 
     test "impossible to accidentally start multiple pools when they are dynamically started", %{

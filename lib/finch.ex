@@ -131,15 +131,14 @@ defmodule Finch do
   end
 
   defp build_method(method) when is_binary(method), do: method
-
-  defp build_method(method) when is_atom(method) and method in @atom_methods do
-    @atom_to_method[method]
-  end
+  defp build_method(method) when method in @atom_methods, do: @atom_to_method[method]
 
   defp build_method(method) do
     raise ArgumentError, """
     got unsupported atom method #{inspect(method)}.
-    only the following methods can be provided as atoms: #{Enum.map_join(@atom_methods, ", ", &inspect/1)}",
+    only the following methods can be provided as atoms: #{
+      Enum.map_join(@atom_methods, ", ", &inspect/1)
+    }",
     otherwise you must pass a binary.
     """
   end
