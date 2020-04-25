@@ -139,7 +139,7 @@ defmodule Finch do
   defp build_method(method) do
     raise ArgumentError, """
     got unsupported atom method #{inspect(method)}.
-    only the following methods can be provided as atoms: #{Enum.join(@atom_methods, ", ")}",
+    only the following methods can be provided as atoms: #{Enum.map_join(@atom_methods, ", ", &inspect/1)}",
     otherwise you must pass a binary.
     """
   end
