@@ -3,7 +3,7 @@
 <!-- MDOC !-->
 
 An HTTP client with a focus on performance, built on top of
-[Mint](https://github.com/elixir-mint/mint) and [nimble_pool](https://github.com/dashbitco/nimble_pool).
+[Mint](https://github.com/elixir-mint/mint) and [NimblePool](https://github.com/dashbitco/nimble_pool).
 
 ## Usage
 
