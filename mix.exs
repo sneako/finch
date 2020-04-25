@@ -21,8 +21,8 @@ defmodule Finch.MixProject do
     [
       {:mint, "~> 1.0"},
       {:castore, "~> 0.1.5"},
-      {:nimble_pool, github: "dashbitco/nimble_pool"},
-      {:nimble_options, github: "dashbitco/nimble_options"},
+      {:nimble_pool, "~> 0.1"},
+      {:nimble_options, "~> 0.2"},
       {:telemetry, "~> 0.4"},
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
       {:credo, "~> 1.3", only: [:dev, :test]},
