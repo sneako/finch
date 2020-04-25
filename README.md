@@ -1,7 +1,5 @@
 # Finch
 
-WIP HTTP Client using Mint.
-
 <!-- MDOC !-->
 
 An HTTP client with a focus on performance.
