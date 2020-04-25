@@ -127,8 +127,9 @@ defmodule Finch do
   Sends an HTTP request and returns the response.
 
   ## Options:
-    * `:pool_timeout` - (`pos_integer()` | `:infinity`) This timeout is applied when we check out
-    a connection from the pool.
+
+    * `:pool_timeout` - This timeout is applied when we check out a connection from the pool.
+      Default value is `5_000`.
 
     * `:receive_timeout` - The maximum time to wait for a response before returning an error.
       Default value is `15_000`.
