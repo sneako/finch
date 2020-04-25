@@ -22,6 +22,6 @@ defmodule Finch.Response do
   @type t :: %Response{
           status: status(),
           body: Finch.body(),
-          headers: Finch.headers()
+          headers: Mint.Types.headers()
         }
 end
