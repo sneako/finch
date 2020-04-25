@@ -186,10 +186,9 @@ defmodule FinchTest do
     end
 
     test "raises if unsupported atom request method provided", %{bypass: bypass} do
-      error =
-        assert_raise(ArgumentError, fn -> Finch.request(MyFinch, :gimme, endpoint(bypass)) end)
-
-      assert error.message =~ "got unsupported atom method :gimme"
+      assert_raise ArgumentError, ~r/got unsupported atom method :gimme/, fn ->
+        Finch.request(MyFinch, :gimme, endpoint(bypass))
+      end
     end
 
     test "raises when requesting a URL with an invalid scheme" do
