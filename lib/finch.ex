@@ -56,9 +56,10 @@ defmodule Finch do
   @type name() :: atom()
 
   @typedoc """
-  An HTTP request method represented as an atom or a String in all caps.
+  An HTTP request method represented as an `atom()` or a `String.t()`.
 
-  The following methods are supported: #{Enum.join(@methods, ", ")}.
+  The following atom methods are supported: `#{Enum.map_join(@atom_methods, "`, `", &inspect/1)}`.
+  You can use any arbitrary method by providing it as a `String.t()`.
   """
   @type http_method() :: :get | :post | :head | :patch | :delete | :options | String.t()
 
