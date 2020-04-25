@@ -22,7 +22,7 @@ Finch.start_link(name: MyFinch)
 ```
 
 Once you have started Finch, you can use the client you have started,
-by passing the name of your client as the first argument of `Finch.request/3,4,5`:
+by passing the name of your client as the first argument of `Finch.request/3,4,5,6`:
 
 ```elixir
 Finch.request(MyFinch, :get, "https://hex.pm")
