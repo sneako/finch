@@ -35,7 +35,7 @@ defmodule Finch.Conn do
     }
 
     start_time = Telemetry.start(:connect, meta)
-    conn_opts = Keyword.merge([mode: :passive], conn.opts)
+    conn_opts = Keyword.merge(conn.opts, mode: :passive)
 
     case HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts) do
       {:ok, mint} ->
