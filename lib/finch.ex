@@ -70,7 +70,7 @@ defmodule Finch do
   @typedoc """
   A body associated with a request.
   """
-  @type body() :: binary() | nil
+  @type body() :: iodata() | nil
 
   @doc """
   Start an instance of Finch.
