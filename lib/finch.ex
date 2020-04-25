@@ -53,7 +53,7 @@ defmodule Finch do
   @typedoc """
   The `:name` provided to Finch in `start_link/1`.
   """
-  @type instance_name() :: atom()
+  @type name() :: atom()
 
   @typedoc """
   An HTTP request method represented as an atom or a String in all caps.
@@ -68,17 +68,9 @@ defmodule Finch do
   @type url() :: String.t()
 
   @typedoc """
-  A body associated with a request or a response.
+  A body associated with a request.
   """
   @type body() :: binary() | nil
-
-  @typedoc """
-  HTTP headers.
-
-  Headers are received as lists of two-element tuples containing two strings,
-  the header name and header value.
-  """
-  @type headers() :: [{header_name :: String.t(), header_value :: String.t()}]
 
   @doc """
   Start an instance of Finch.
@@ -134,7 +126,7 @@ defmodule Finch do
     * `:receive_timeout` - The maximum time to wait for a response before returning an error.
       Default value is `15_000`.
   """
-  @spec request(instance_name(), http_method(), url(), headers(), body(), keyword()) ::
+  @spec request(name(), http_method(), url(), Mint.Types.headers(), body(), keyword()) ::
           {:ok, Finch.Response.t()} | {:error, Mint.Types.error()}
   def request(name, method, url, headers \\ [], body \\ nil, opts \\ []) do
     with {:ok, uri} <- parse_and_normalize_url(url) do

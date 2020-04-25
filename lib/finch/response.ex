@@ -12,16 +12,13 @@ defmodule Finch.Response do
   ]
 
   @typedoc """
-  An HTTP status code.
-
-  The type for an HTTP is a generic non-negative integer since we don't formally check that
-  the response code is in the "common" range (`200..599`).
+  A body associated with a response.
   """
-  @type status() :: non_neg_integer()
+  @type body() :: binary() | nil
 
   @type t :: %Response{
-          status: status(),
-          body: Finch.body(),
+          status: Mint.Types.status(),
+          body: body(),
           headers: Mint.Types.headers()
         }
 end

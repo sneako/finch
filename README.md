@@ -2,7 +2,7 @@
 
 <!-- MDOC !-->
 
-An HTTP client with a focus on performance.
+An HTTP client with a focus on performance, built on top of `Mint` & `NimblePool`.
 
 ## Usage
 
