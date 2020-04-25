@@ -130,8 +130,8 @@ defmodule Finch do
     * `:pool_timeout` - (`pos_integer()` | `:infinity`) This timeout is applied when we check out
     a connection from the pool.
 
-    * `:receive_timeout` - (`pos_integer()` | `:infinity`) The maximum time to wait for a response
-    before returning an error.
+    * `:receive_timeout` - The maximum time to wait for a response before returning an error.
+      Default value is `15_000`.
   """
   @spec request(instance_name(), http_method(), url(), headers(), body(), keyword()) ::
           {:ok, Finch.Response.t()} | {:error, Mint.Types.error()}
