@@ -137,7 +137,7 @@ defmodule FinchTest do
     end
   end
 
-  describe "request/5" do
+  describe "request/6" do
     test "successful get request, with query string", %{bypass: bypass} do
       start_supervised({Finch, name: MyFinch})
       query_string = "query=value"
@@ -183,6 +183,13 @@ defmodule FinchTest do
                  {"content-type", _} -> true
                  _ -> false
                end)
+    end
+
+    test "raises if unsupported atom request method provided", %{bypass: bypass} do
+      error =
+        assert_raise(ArgumentError, fn -> Finch.request(MyFinch, :gimme, endpoint(bypass)) end)
+
+      assert error.message =~ "got unsupported atom method :gimme"
     end
 
     test "raises when requesting a URL with an invalid scheme" do

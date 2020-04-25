@@ -130,10 +130,18 @@ defmodule Finch do
     end
   end
 
-  defp build_method(method) when method in @methods, do: method
+  defp build_method(method) when is_binary(method), do: method
 
-  defp build_method(method) when is_atom(method) do
+  defp build_method(method) when is_atom(method) and method in @atom_methods do
     @atom_to_method[method]
+  end
+
+  defp build_method(method) do
+    raise ArgumentError, """
+    got unsupported atom method #{inspect(method)}.
+    only the following methods can be provided as atoms: #{Enum.join(@atom_methods, ", ")}",
+    otherwise you must pass a binary.
+    """
   end
 
   defp normalize_scheme(scheme) do
@@ -158,7 +166,8 @@ defmodule Finch do
         Map.put(acc, valid_destination, valid_pool_opts)
       else
         {:error, reason} ->
-          raise ArgumentError, "got invalid configuration for pool #{destination}! #{reason}"
+          raise ArgumentError,
+                "got invalid configuration for pool #{inspect(destination)}! #{reason}"
       end
     end)
   end
