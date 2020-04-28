@@ -61,7 +61,7 @@ defmodule Finch do
   The following atom methods are supported: `#{Enum.map_join(@atom_methods, "`, `", &inspect/1)}`.
   You can use any arbitrary method by providing it as a `String.t()`.
   """
-  @type http_method() :: :get | :post | :head | :patch | :delete | :options | String.t()
+  @type http_method() :: :get | :post | :head | :patch | :delete | :options | :put | String.t()
 
   @typedoc """
   A Uniform Resource Locator, the address of a resource on the Web.
