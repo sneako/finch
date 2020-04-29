@@ -33,8 +33,8 @@ defmodule Finch.PoolManager do
       [{pid, _}] ->
         pid
 
-      [{_, strategy} | _] = pids ->
-        choose_pool(strategy, pids)
+      [{_, config} | _] = pids ->
+        choose_pool(config, pids)
     end
   end
 
@@ -73,21 +73,11 @@ defmodule Finch.PoolManager do
     end
   end
 
-  defp pool_registry_value(%{strategy: :round_robin, count: count}) do
-    counter = :counters.new(1, [:atomics])
-    {:round_robin, counter, count}
+  defp pool_registry_value(%{strategy: strategy} = config) do
+    strategy.registry_value(config)
   end
 
-  defp pool_registry_value(_), do: []
-
-  defp choose_pool({:round_robin, counter, size}, pids) do
-    i = :counters.get(counter, 1)
-    {pid, _} = Enum.at(pids, rem(i, size))
-    pid
-  end
-
-  defp choose_pool(_, pids) do
-    {pid, _} = Enum.random(pids)
-    pid
+  defp choose_pool(%{strategy: strategy} = config, pids) do
+    strategy.choose_pool(config, pids)
   end
 end
