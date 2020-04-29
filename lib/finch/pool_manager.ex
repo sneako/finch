@@ -33,10 +33,8 @@ defmodule Finch.PoolManager do
       [{pid, _}] ->
         pid
 
-      pids ->
-        # TODO implement alternative strategies
-        {pid, _} = Enum.random(pids)
-        pid
+      [{_, strategy} | _] = pids ->
+        choose_pool(strategy, pids)
     end
   end
 
@@ -58,7 +56,8 @@ defmodule Finch.PoolManager do
 
   defp do_start_pools(shp, config) do
     pool_config = pool_config(config, shp)
-    pool_args = {shp, config.registry_name, pool_config.size, pool_config}
+    registry_value = pool_registry_value(pool_config)
+    pool_args = {shp, config.registry_name, Map.put(pool_config, :registry_value, registry_value)}
 
     Enum.map(1..pool_config.count, fn _ ->
       {:ok, pid} = DynamicSupervisor.start_child(config.supervisor_name, {Finch.Pool, pool_args})
@@ -72,5 +71,23 @@ defmodule Finch.PoolManager do
       nil -> default
       config -> config
     end
+  end
+
+  defp pool_registry_value(%{strategy: :round_robin, count: count}) do
+    counter = :counters.new(1, [:atomics])
+    {:round_robin, counter, count}
+  end
+
+  defp pool_registry_value(_), do: []
+
+  defp choose_pool({:round_robin, counter, size}, pids) do
+    i = :counters.get(counter, 1)
+    {pid, _} = Enum.at(pids, rem(i, size))
+    pid
+  end
+
+  defp choose_pool(_, pids) do
+    {pid, _} = Enum.random(pids)
+    pid
   end
 end
