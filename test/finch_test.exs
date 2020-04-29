@@ -511,6 +511,39 @@ defmodule FinchTest do
     end
   end
 
+  describe "pool strategies" do
+    test "round robin cycles through the available pools", %{bypass: bypass} do
+      expect_any(bypass)
+      {test_name, _arity} = __ENV__.function
+      parent = self()
+      ref = make_ref()
+
+      start_supervised(
+        {Finch,
+         name: RoundRobin, pools: %{endpoint(bypass) => [count: 5, strategy: :round_robin]}}
+      )
+
+      handler = fn [:finch, :queue, :start], _, %{pool: pool}, _ -> send(parent, {ref, pool}) end
+
+      :telemetry.attach(to_string(test_name), [:finch, :queue, :start], handler, nil)
+
+      for _ <- 1..15, do: Finch.request(RoundRobin, :get, endpoint(bypass))
+
+      frequencies =
+        Enum.reduce(1..15, [], fn _, acc ->
+          assert_receive {^ref, pool}
+          [pool | acc]
+        end)
+        |> Enum.frequencies()
+
+      assert map_size(frequencies) == 5
+
+      for {_pool, freq} <- frequencies do
+        assert freq == 3
+      end
+    end
+  end
+
   defp get_pools(name, shp) do
     Registry.lookup(name, shp)
   end
