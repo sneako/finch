@@ -16,7 +16,7 @@ defmodule Finch.Pool.RoundRobin do
   end
 
   @impl true
-  def choose_pool(%{counter: counter, count: count}, pids) do
+  def choose_pool([{_, %{counter: counter, count: count}} | _] = pids) do
     index = :counters.get(counter, 1)
     {pid, _} = Enum.at(pids, rem(index, count))
 

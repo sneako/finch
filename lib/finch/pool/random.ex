@@ -1,6 +1,6 @@
 defmodule Finch.Pool.Random do
   @moduledoc """
-  Randomly chooses a pool. Minimal overhead, but may not be most optimal.
+  Randomly chooses a pool. Minimal overhead, but not necessarily optimal.
   """
 
   @behaviour Finch.Pool.Strategy
@@ -12,7 +12,7 @@ defmodule Finch.Pool.Random do
   def handle_enqueue(_), do: :ok
 
   @impl true
-  def choose_pool(_, pids) do
+  def choose_pool(pids) do
     {pid, _} = Enum.random(pids)
     pid
   end

@@ -111,8 +111,11 @@ defmodule Finch.Pool do
   end
 
   @impl NimblePool
-  def handle_enqueue(command, %{registry_value: %{strategy: strategy} = config} = pool_state) do
-    strategy.handle_enqueue(config)
+  def handle_enqueue(
+        command,
+        %{registry_value: %{strategy: strategy} = registry_value} = pool_state
+      ) do
+    strategy.handle_enqueue(registry_value)
     {:ok, command, pool_state}
   end
 
