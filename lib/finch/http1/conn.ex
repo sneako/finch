@@ -10,7 +10,7 @@ defmodule Finch.Conn do
       scheme: scheme,
       host: host,
       port: port,
-      opts: opts.conn_opts,
+      opts: opts,
       parent: parent,
       last_checkin: System.monotonic_time(),
       mint: nil

@@ -34,10 +34,12 @@ defmodule Finch.MixProject do
     [
       {:mint, "~> 1.0"},
       {:castore, "~> 0.1.5"},
-      {:nimble_pool, "~> 0.1.0"},
+      # {:nimble_pool, "~> 0.1.0"},
+      {:nimble_pool, github: "dashbitco/nimble_pool"},
       {:nimble_options, "~> 0.2.0"},
       {:telemetry, "~> 0.4.0"},
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
+      {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
       {:credo, "~> 1.3", only: [:dev, :test]},
       {:bypass, "~> 1.0", only: :test},
       {:cowboy, "~> 2.0", only: [:dev, :test]},

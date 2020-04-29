@@ -5,7 +5,7 @@ defmodule Finch do
              |> String.split("<!-- MDOC !-->")
              |> Enum.fetch!(1)
 
-  alias Finch.PoolManager
+  alias Finch.{Pool, PoolManager}
 
   use Supervisor
 
@@ -30,6 +30,7 @@ defmodule Finch do
   @atom_to_method Enum.zip(@atom_methods, @methods) |> Enum.into(%{})
   @default_pool_size 10
   @default_pool_count 1
+  @pool_selection_strategies [:random, :round_robin]
 
   @pool_config_schema [
     protocol: [
@@ -49,9 +50,22 @@ defmodule Finch do
     ],
     conn_opts: [
       type: :keyword_list,
-      doc:
-        "These options are passed to `Mint.HTTP.connect/4` whenever a new connection is established. `:mode` is not configurable as Finch must control this setting. Typically these options are used to configure proxying, https settings, or connect timeouts.",
+      doc: """
+      These options are passed to `Mint.HTTP.connect/4` whenever a new connection is established.
+      `:mode` is not configurable as Finch must control this setting.
+      Typically these options are used to configure proxying, https settings, or connect timeouts.
+      """,
       default: []
+    ],
+    strategy: [
+      type: {:one_of, @pool_selection_strategies},
+      doc: """
+      How requests will be routed to your pools. Only relevant when count > 1.
+      The following options are available: `#{
+        Enum.map_join(@pool_selection_strategies, "`, `", &inspect/1)
+      }`
+      """,
+      default: :random
     ]
   ]
 
@@ -66,7 +80,7 @@ defmodule Finch do
   The following atom methods are supported: `#{Enum.map_join(@atom_methods, "`, `", &inspect/1)}`.
   You can use any arbitrary method by providing it as a `String.t()`.
   """
-  @type http_method() :: :get | :post | :head | :patch | :delete | :options | :put | String.t()
+  @type http_method() :: :get | :post | :put | :patch | :delete | :head | :options | String.t()
 
   @typedoc """
   A Uniform Resource Locator, the address of a resource on the Web.
@@ -151,7 +165,7 @@ defmodule Finch do
 
       shp = {uri.scheme, uri.host, uri.port}
 
-      {pool, pool_mod} = PoolManager.get_pool(name, shp)
+      {pool, {pool_mod, _}} = PoolManager.get_pool(name, shp)
       pool_mod.request(pool, req, opts)
     end
   end
@@ -254,6 +268,7 @@ defmodule Finch do
       size: valid[:size],
       count: valid[:count],
       conn_opts: valid[:conn_opts],
+      strategy: pool_strategy(valid[:strategy]),
       protocol: valid[:protocol]
     }
   end
@@ -261,4 +276,11 @@ defmodule Finch do
   defp supervisor_name(name), do: :"#{name}.Supervisor"
   defp manager_name(name), do: :"#{name}.PoolManager"
   defp pool_supervisor_name(name), do: :"#{name}.PoolSupervisor"
+
+  defp pool_strategy(type) do
+    case type do
+      :round_robin -> Pool.SelectionStrategy.RoundRobin
+      :random -> Pool.SelectionStrategy.Random
+    end
+  end
 end

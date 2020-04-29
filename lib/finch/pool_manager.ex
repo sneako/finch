@@ -34,8 +34,7 @@ defmodule Finch.PoolManager do
         pool
 
       pools ->
-        # TODO implement alternative strategies
-        Enum.random(pools)
+        choose_pool(pools)
     end
   end
 
@@ -57,13 +56,14 @@ defmodule Finch.PoolManager do
 
   defp do_start_pools(shp, config) do
     pool_config = pool_config(config, shp)
-    pool_args = {shp, config.registry_name, pool_config.size, pool_config}
+    registry_value = pool_registry_value(pool_config)
+    pool_args = {shp, config.registry_name, Map.put(pool_config, :registry_value, registry_value)}
     pool_mod = pool_mod(pool_config.protocol)
 
     Enum.map(1..pool_config.count, fn _ ->
       # Choose pool type here...
       {:ok, pid} = DynamicSupervisor.start_child(config.supervisor_name, {pool_mod, pool_args})
-      {pid, pool_mod}
+      {pid, {pool_mod, registry_value}}
     end)
     |> hd()
   end
@@ -77,4 +77,12 @@ defmodule Finch.PoolManager do
 
   defp pool_mod(:http1), do: Finch.HTTP1.Pool
   defp pool_mod(:http2), do: Finch.HTTP2.Pool
+
+  defp pool_registry_value(%{strategy: strategy} = pool_config) do
+    strategy.registry_value(pool_config)
+  end
+
+  defp choose_pool([{_, {_, %{strategy: strategy}}} | _] = pools) do
+    strategy.choose_pool(pools)
+  end
 end
