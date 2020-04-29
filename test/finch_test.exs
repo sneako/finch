@@ -179,8 +179,7 @@ defmodule FinchTest do
         Plug.Conn.send_resp(conn, 200, "OK")
       end)
 
-      assert {:ok, %{status: 200}} =
-               Finch.request(MyFinch, :get, uri)
+      assert {:ok, %{status: 200}} = Finch.request(MyFinch, :get, uri)
     end
 
     test "raises if unsupported atom request method provided", %{bypass: bypass} do
