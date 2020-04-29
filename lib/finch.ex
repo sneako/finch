@@ -274,4 +274,11 @@ defmodule Finch do
   defp supervisor_name(name), do: :"#{name}.Supervisor"
   defp manager_name(name), do: :"#{name}.PoolManager"
   defp pool_supervisor_name(name), do: :"#{name}.PoolSupervisor"
+
+  defp pool_strategy(type) do
+    case type do
+      :round_robin -> Pool.RoundRobin
+      :random -> Pool.Random
+    end
+  end
 end
