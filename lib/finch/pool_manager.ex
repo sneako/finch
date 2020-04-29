@@ -33,8 +33,8 @@ defmodule Finch.PoolManager do
       [pool] ->
         pool
 
-      [{_, config} | _] = pids ->
-        choose_pool(config, pids)
+      pids ->
+        choose_pool(pids)
     end
   end
 
@@ -82,7 +82,7 @@ defmodule Finch.PoolManager do
     strategy.registry_value(config)
   end
 
-  defp choose_pool(%{strategy: strategy} = config, pids) do
-    strategy.choose_pool(config, pids)
+  defp choose_pool([{_, %{strategy: strategy}} | _] = pools) do
+    strategy.choose_pool(pools)
   end
 end

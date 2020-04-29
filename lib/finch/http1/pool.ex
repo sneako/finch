@@ -13,13 +13,6 @@ defmodule Finch.HTTP1.Pool do
     }
   end
 
-  def child_spec(opts) do
-    %{
-      id: __MODULE__,
-      start: {__MODULE__, :start_link, [opts]}
-    }
-  end
-
   def start_link({shp, registry_name, pool_config}) do
     state = %{
       shp: shp,
@@ -119,8 +112,11 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
-  def handle_enqueue(command, %{registry_value: %{strategy: strategy} = config} = pool_state) do
-    strategy.handle_enqueue(config)
+  def handle_enqueue(
+        command,
+        %{registry_value: %{strategy: strategy} = registry_value} = pool_state
+      ) do
+    strategy.handle_enqueue(registry_value)
     {:ok, command, pool_state}
   end
 
