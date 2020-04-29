@@ -516,13 +516,16 @@ defmodule FinchTest do
 
       for _ <- 1..15, do: Finch.request(RoundRobin, :get, endpoint(bypass))
 
-      frequencies =
+      requests =
         Enum.reduce(1..15, [], fn _, acc ->
           assert_receive {^ref, pool}
           [pool | acc]
         end)
-        |> Enum.frequencies()
+        |> Enum.reverse()
 
+      assert [round, round, round] = Enum.chunk_every(requests, 5)
+
+      frequencies = Enum.frequencies(requests)
       assert map_size(frequencies) == 5
 
       for {_pool, freq} <- frequencies do
