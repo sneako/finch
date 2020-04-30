@@ -121,8 +121,8 @@ defmodule Finch do
 
   @impl true
   def init(config) do
-    ets_name = ets_name(config.registry_name)
-    config = Map.put(config, :ets_name, ets_name)
+    ets_table = :ets.new(ets_name(config.registry_name), [:public])
+    config = Map.put(config, :ets_table, ets_table)
 
     children = [
       {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
@@ -130,7 +130,6 @@ defmodule Finch do
       {PoolManager, config}
     ]
 
-    :ets.new(ets_name, [:public, :named_table])
     Supervisor.init(children, strategy: :one_for_all)
   end
 
