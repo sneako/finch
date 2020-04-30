@@ -528,7 +528,14 @@ defmodule FinchTest do
         end)
         |> Enum.reverse()
 
-      frequencies = Enum.frequencies(requests)
+      frequencies =
+        Enum.reduce(requests, %{}, fn key, acc ->
+          case acc do
+            %{^key => value} -> %{acc | key => value + 1}
+            %{} -> Map.put(acc, key, 1)
+          end
+        end)
+
       assert map_size(frequencies) == pool_count
 
       for {_pool, freq} <- frequencies do
