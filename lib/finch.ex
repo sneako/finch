@@ -121,7 +121,7 @@ defmodule Finch do
 
   @impl true
   def init(config) do
-    ets_table = :ets.new(ets_name(config.registry_name), [:public])
+    ets_table = :ets.new(ets_name(config.registry_name), [:public, write_concurrency: true])
     config = Map.put(config, :ets_table, ets_table)
 
     children = [
