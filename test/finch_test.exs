@@ -504,32 +504,35 @@ defmodule FinchTest do
       {test_name, _arity} = __ENV__.function
       parent = self()
       ref = make_ref()
+      pool_count = 5
+      iterations = 100
 
       start_supervised(
         {Finch,
-         name: RoundRobin, pools: %{endpoint(bypass) => [count: 5, strategy: :round_robin]}}
+         name: RoundRobin,
+         pools: %{endpoint(bypass) => [count: pool_count, strategy: :round_robin]}}
       )
 
       handler = fn [:finch, :queue, :start], _, %{pool: pool}, _ -> send(parent, {ref, pool}) end
-
       :telemetry.attach(to_string(test_name), [:finch, :queue, :start], handler, nil)
 
-      for _ <- 1..15, do: Finch.request(RoundRobin, :get, endpoint(bypass))
+      Task.async_stream(1..iterations, fn _ ->
+        Finch.request(RoundRobin, :get, endpoint(bypass))
+      end)
+      |> Stream.run()
 
       requests =
-        Enum.reduce(1..15, [], fn _, acc ->
+        Enum.reduce(1..iterations, [], fn _, acc ->
           assert_receive {^ref, pool}
           [pool | acc]
         end)
         |> Enum.reverse()
 
-      assert [round, round, round] = Enum.chunk_every(requests, 5)
-
       frequencies = Enum.frequencies(requests)
-      assert map_size(frequencies) == 5
+      assert map_size(frequencies) == pool_count
 
       for {_pool, freq} <- frequencies do
-        assert freq == 3
+        assert freq == iterations / pool_count
       end
     end
   end
