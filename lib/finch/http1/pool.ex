@@ -112,15 +112,6 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
-  def handle_enqueue(
-        command,
-        %{registry_value: %{strategy: strategy} = registry_value} = pool_state
-      ) do
-    strategy.handle_enqueue(registry_value)
-    {:ok, command, pool_state}
-  end
-
-  @impl NimblePool
   # On terminate, effectively close it.
   # This will succeed even if it was already closed or if we don't own it.
   def terminate_worker(_reason, conn, pool_state) do

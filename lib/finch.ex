@@ -112,15 +112,18 @@ defmodule Finch do
     name = Keyword.get(opts, :name) || raise ArgumentError, "must supply a name"
     pools = Keyword.get(opts, :pools, []) |> pool_options!()
     {default_pool_config, pools} = Map.pop(pools, :default)
+    ets_name = ets_name(name)
 
     config = %{
       registry_name: name,
+      ets_name: ets_name,
       manager_name: manager_name(name),
       supervisor_name: pool_supervisor_name(name),
       default_pool_config: default_pool_config,
       pools: pools
     }
 
+    :ets.new(ets_name, [:public, :named_table])
     Supervisor.start_link(__MODULE__, config, name: supervisor_name(name))
   end
 
@@ -274,6 +277,7 @@ defmodule Finch do
   defp supervisor_name(name), do: :"#{name}.Supervisor"
   defp manager_name(name), do: :"#{name}.PoolManager"
   defp pool_supervisor_name(name), do: :"#{name}.PoolSupervisor"
+  defp ets_name(name), do: :"#{name}.Ets"
 
   defp pool_strategy(type) do
     case type do

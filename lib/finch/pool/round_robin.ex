@@ -5,19 +5,20 @@ defmodule Finch.Pool.RoundRobin do
   @behaviour Finch.Pool.Strategy
 
   @impl true
-  def registry_value(%{count: count}) do
-    counter = :counters.new(1, [:atomics])
-    %{strategy: __MODULE__, counter: counter, count: count}
+  def init_pool_group(shp, %{ets_name: ets}, _pool_config) do
+    :ets.insert(ets, {shp, -1})
+    :ok
   end
 
   @impl true
-  def handle_enqueue(%{counter: counter}) do
-    :counters.add(counter, 1, 1)
+  def registry_value(shp, %{ets_name: ets}, %{count: count}) do
+    %{strategy: __MODULE__, shp: shp, count: count, ets_name: ets}
   end
 
   @impl true
-  def choose_pool([{_, %{counter: counter, count: count}} | _] = pids) do
-    index = :counters.get(counter, 1)
+  def choose_pool([{_, registry_value} | _] = pids) do
+    %{ets_name: name, shp: shp, count: count} = registry_value
+    index = :ets.update_counter(name, shp, {2, 1, count, 1})
     {pid, _} = Enum.at(pids, rem(index, count))
 
     pid
