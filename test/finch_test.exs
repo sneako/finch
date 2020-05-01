@@ -169,6 +169,20 @@ defmodule FinchTest do
                end)
     end
 
+    test "successful get request, with query string, when given a %URI{}", %{bypass: bypass} do
+      start_supervised({Finch, name: MyFinch})
+      query_string = "query=value"
+      uri = URI.parse(endpoint(bypass, "?" <> query_string))
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        assert conn.query_string == query_string
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      assert {:ok, %{status: 200}} =
+               Finch.request(MyFinch, :get, uri)
+    end
+
     test "raises if unsupported atom request method provided", %{bypass: bypass} do
       assert_raise ArgumentError, ~r/got unsupported atom method :gimme/, fn ->
         Finch.request(MyFinch, :gimme, endpoint(bypass))
