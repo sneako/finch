@@ -66,7 +66,7 @@ defmodule Finch do
   @typedoc """
   A Uniform Resource Locator, the address of a resource on the Web.
   """
-  @type url() :: String.t() | %URI{}
+  @type url() :: String.t() | URI.t()
 
   @typedoc """
   A body associated with a request.
