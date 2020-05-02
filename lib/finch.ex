@@ -66,7 +66,7 @@ defmodule Finch do
   @typedoc """
   A Uniform Resource Locator, the address of a resource on the Web.
   """
-  @type url() :: String.t()
+  @type url() :: String.t() | URI.t()
 
   @typedoc """
   A body associated with a request.
@@ -79,7 +79,7 @@ defmodule Finch do
   ## Options:
     * `:name` - The name of your Finch instance. This field is required.
 
-    * `:pools` - A map specifying the configuration for your pools. The keys should be URLs 
+    * `:pools` - A map specifying the configuration for your pools. The keys should be URLs
     provided as binaries, or the atom `:default` to provide a catch-all configuration to be used
     for any unspecified URLs. See "Pool Configuration Options" below for details on the possible
     map values. Default value is `%{default: [size: #{@default_pool_size}, count: #{
@@ -150,7 +150,16 @@ defmodule Finch do
   end
 
   defp parse_and_normalize_url(url) when is_binary(url) do
-    parsed_uri = URI.parse(url)
+    url
+    |> URI.parse()
+    |> parse_and_normalize_url()
+  end
+
+  defp parse_and_normalize_url(%URI{} = parsed_uri) do
+    normalize_uri(parsed_uri)
+  end
+
+  defp normalize_uri(parsed_uri) do
     normalized_path = parsed_uri.path || "/"
 
     with {:ok, scheme} <- normalize_scheme(parsed_uri.scheme) do
