@@ -32,6 +32,11 @@ defmodule Finch do
   @default_pool_count 1
 
   @pool_config_schema [
+    scheme: [
+      type: {:one_of, [:http2, :http1]},
+      doc: "The type of connection and pool to use",
+      default: :http1
+    ],
     size: [
       type: :pos_integer,
       doc: "Number of connections to maintain in each pool.",
@@ -144,8 +149,8 @@ defmodule Finch do
 
       shp = {uri.scheme, uri.host, uri.port}
 
-      pool = PoolManager.get_pool(name, shp)
-      Pool.request(pool, req, opts)
+      {pool, pool_mod} = PoolManager.get_pool(name, shp)
+      pool_mod.request(pool, req, opts)
     end
   end
 
@@ -246,7 +251,8 @@ defmodule Finch do
     %{
       size: valid[:size],
       count: valid[:count],
-      conn_opts: valid[:conn_opts]
+      conn_opts: valid[:conn_opts],
+      scheme: valid[:scheme],
     }
   end
 

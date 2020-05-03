@@ -17,7 +17,7 @@ defmodule Finch.PoolManager do
 
   def get_pool(registry_name, {_scheme, _host, _port} = key) do
     case lookup_pool(registry_name, key) do
-      pool when is_pid(pool) ->
+      {pid, _}=pool when is_pid(pid) ->
         pool
 
       :none ->
@@ -30,13 +30,12 @@ defmodule Finch.PoolManager do
       [] ->
         :none
 
-      [{pid, _}] ->
-        pid
+      [pool] ->
+        pool
 
-      pids ->
+      pools ->
         # TODO implement alternative strategies
-        {pid, _} = Enum.random(pids)
-        pid
+        Enum.random(pools)
     end
   end
 
@@ -50,7 +49,7 @@ defmodule Finch.PoolManager do
     reply =
       case lookup_pool(state.registry_name, shp) do
         :none -> do_start_pools(shp, state)
-        pid -> pid
+        pool -> pool
       end
 
     {:reply, reply, state}
@@ -58,11 +57,13 @@ defmodule Finch.PoolManager do
 
   defp do_start_pools(shp, config) do
     pool_config = pool_config(config, shp)
-    pool_args = {shp, config.registry_name, pool_config.size, pool_config}
+    pool_args   = {shp, config.registry_name, pool_config.size, pool_config}
+    pool_mod    = pool_mod(pool_config.scheme)
 
     Enum.map(1..pool_config.count, fn _ ->
-      {:ok, pid} = DynamicSupervisor.start_child(config.supervisor_name, {Finch.Pool, pool_args})
-      pid
+      # Choose pool type here...
+      {:ok, pid} = DynamicSupervisor.start_child(config.supervisor_name, {pool_mod, pool_args})
+      {pid, pool_mod}
     end)
     |> hd()
   end
@@ -73,4 +74,7 @@ defmodule Finch.PoolManager do
       config -> config
     end
   end
+
+  defp pool_mod(:http1), do: Finch.HTTP1.Pool
+  defp pool_mod(:http2), do: Finch.HTTP2.Pool
 end
