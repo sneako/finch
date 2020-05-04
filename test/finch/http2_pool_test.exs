@@ -8,9 +8,9 @@ defmodule Finch.HTTP2PoolTest do
 
     assert {:ok, server} = server
 
-    {:ok, conn} = Finch.HTTP2Conn.start_link()
+    {:ok, conn} = Finch.HTTP2.Conn.start_link()
 
-    results = Finch.HTTP2Conn.multi(conn)
+    results = Finch.HTTP2.Conn.multi(conn)
 
     assert Enum.count(results) == 50
     assert results

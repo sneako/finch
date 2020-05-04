@@ -3,6 +3,7 @@ defmodule FinchTest do
   doctest Finch
 
   alias Finch.Response
+  alias Finch.HTTP2Server
 
   setup do
     {:ok, bypass: Bypass.open()}
@@ -118,6 +119,19 @@ defmodule FinchTest do
       |> Stream.run()
 
       assert get_pools(MyFinch, shp(bypass)) |> length() == 5
+    end
+
+    test "choose between http1 and http2" do
+      {:ok, _} = HTTP2Server.start()
+
+      opts = %{
+        default: [scheme: :http2]
+      }
+
+      start_supervised({Finch, [name: MyFinch, pools: opts]})
+
+      {:ok, resp} = Finch.request(MyFinch, "GET", "https://localhost:4000")
+      assert resp.body == "Hello world"
     end
   end
 

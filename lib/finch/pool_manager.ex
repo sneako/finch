@@ -60,6 +60,8 @@ defmodule Finch.PoolManager do
     pool_args   = {shp, config.registry_name, pool_config.size, pool_config}
     pool_mod    = pool_mod(pool_config.scheme)
 
+    IO.inspect(pool_args, label: "Pool args")
+
     Enum.map(1..pool_config.count, fn _ ->
       # Choose pool type here...
       {:ok, pid} = DynamicSupervisor.start_child(config.supervisor_name, {pool_mod, pool_args})

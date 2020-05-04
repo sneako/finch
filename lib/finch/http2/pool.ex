@@ -1,57 +1,78 @@
-defmodule Finch.HTTP2Conn do
-  use GenServer
+defmodule Finch.HTTP2.Pool do
+  @moduledoc false
+
+  @behaviour :gen_statem
 
   alias Mint.HTTP2, as: HTTP
 
   require Logger
 
-  def start_link() do
-    GenServer.start_link(__MODULE__, [])
+  def start_link(config) do
+    :gen_statem.start_link(__MODULE__, config)
   end
 
-  def multi(pid) do
-    (0..49)
-    |> Enum.map(fn _ -> Task.async(fn -> GenServer.call(pid, :go) end) end)
-    |> Enum.map(& Task.await(&1))
+  def request(pid, req, opts) do
+    :gen_statem.call(pid, {:request, req, opts})
   end
 
-  def init(opts) do
-    {:ok, conn} = HTTP.connect(:https, "localhost", 4000, [transport_opts: [verify: :verify_none]])
-    # Process.send_after(self(), :send_ping, 50)
+  @impl true
+  def callback_mode(), do: [:state_functions, :state_enter]
+
+  def init(config) do
+    {:ok, _} = Registry.register(config.registry, config.shp, __MODULE__)
+    {s, h, p} = config.shp
+    # TODO - Make transport opts configurable
+    {:ok, conn} = HTTP.connect(s, h, p, [transport_opts: [verify: :verify_none]])
 
     data = %{
-      # scheme: :https,
-      # host: "keathley.io",
-      # port: 443,
-      # path: "/",
+      scheme: s,
+      host: h,
+      port: p,
       conn: conn,
       requests: %{},
       pings: %{},
     }
 
     {:ok, data}
+    # {:ok, disconnected, data, {:next_event, :
   end
 
-  def handle_call(:go, from, data) do
-    {:ok, conn, ref} = HTTP.request(data.conn, "GET", "/wait/100", [], nil)
+  def disconnected(event, content, data)
+
+  def disconnected(:enter, :disconnected, _data) do
+    :keep_state_and_data
+  end
+
+  # If we enter a disconnected state, cancel all pending requests
+  def disconnected(:enter, _, data) do
+    resps = Enum.map(data.requests, fn from ->
+      {:reply, from, {:error, :connection_closed}}
+    end)
+
+    data = put_in(data.requests, %{})
+    data = put_in(data.conn, nil)
+
+    actions = [{{:timeout, :reconnect}, data.backoff_initial, data.backoff_initial}]
+    {:keep_state, data, actions}
+  end
+
+  def connected(:enter, _, _) do
+    :keep_state_and_data
+  end
+
+  def connected({:call, from}, {:request, req, opts}, data) do
+    case HTTP2.request(data.conn, req.method, req.path, req.headers, req.body) do
+      {:ok, conn, ref} ->
+    end
+  end
+
+  def handle_call({:request, req, opts}, from, data) do
+    {:ok, conn, ref} = HTTP.request(data.conn, req.method, req.path, req.headers, req.body)
 
     data =
       data
       |> put_in([:conn], conn)
       |> put_in([:requests, ref],  %{from: from, data: ""})
-
-    {:noreply, data}
-  end
-
-  def handle_info(:send_ping, data) do
-    {:ok, conn, ref} = HTTP.ping(data.conn)
-
-    Process.send_after(self(), :send_ping, 50)
-
-    data =
-      data
-      |> put_in([:conn], conn)
-      |> put_in([:pings, ref], %{}) # TODO - Track latency
 
     {:noreply, data}
   end
@@ -68,7 +89,6 @@ defmodule Finch.HTTP2Conn do
         {:noreply, %{data | conn: conn}}
 
       :unknown ->
-        Logger.debug("Unknown message: #{inspect message}")
         {:noreply, data}
     end
   end
@@ -101,7 +121,7 @@ defmodule Finch.HTTP2Conn do
         handle_responses(rs, data)
 
       unhandled ->
-        IO.inspect(unhandled, label: "Unhandled")
+        # IO.inspect(unhandled, label: "Unhandled")
         handle_responses(rs, data)
     end
   end
