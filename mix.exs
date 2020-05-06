@@ -2,7 +2,7 @@ defmodule Finch.MixProject do
   use Mix.Project
 
   @name "Finch"
-  @version "0.1.1"
+  @version "0.2.0"
   @repo_url "https://github.com/keathley/finch"
 
   def project do
