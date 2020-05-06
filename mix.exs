@@ -13,12 +13,16 @@ defmodule Finch.MixProject do
       description: "An HTTP client focused on performance.",
       package: package(),
       docs: docs(),
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       name: @name,
       source_url: @repo_url,
       deps: deps()
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
 
   def application do
     [
@@ -35,7 +39,10 @@ defmodule Finch.MixProject do
       {:telemetry, "~> 0.4.0"},
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
       {:credo, "~> 1.3", only: [:dev, :test]},
-      {:bypass, "~> 1.0", only: :test}
+      {:bypass, "~> 1.0", only: :test},
+      {:cowboy, "~> 2.0", only: [:dev, :test]},
+      {:plug_cowboy, "~> 2.0", only: [:dev, :test]},
+      {:x509, "~> 0.8", only: [:dev, :test]}
     ]
   end
 
