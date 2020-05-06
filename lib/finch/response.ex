@@ -7,18 +7,13 @@ defmodule Finch.Response do
 
   defstruct [
     :status,
-    :body,
+    body: "",
     headers: []
   ]
 
-  @typedoc """
-  A body associated with a response.
-  """
-  @type body() :: binary() | nil
-
   @type t :: %Response{
           status: Mint.Types.status(),
-          body: body(),
+          body: binary(),
           headers: Mint.Types.headers()
         }
 end
