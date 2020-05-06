@@ -163,10 +163,6 @@ defmodule Finch.Conn do
     end
   end
 
-  defp append_data_chunk(%Response{body: nil} = response, data_chunk) do
-    %{response | body: data_chunk}
-  end
-
   defp append_data_chunk(%Response{body: body} = response, data_chunk) when is_binary(body) do
     %{response | body: body <> data_chunk}
   end
