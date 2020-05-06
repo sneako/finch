@@ -1,6 +1,8 @@
 defmodule Finch.HTTP2Server do
   @moduledoc false
 
+  @fixtures_dir Path.expand("../fixtures", __DIR__)
+
   def start do
     children = [
       Plug.Adapters.Cowboy.child_spec(
@@ -9,8 +11,8 @@ defmodule Finch.HTTP2Server do
         options: [
           port: 4000,
           cipher_suite: :strong,
-          certfile: "priv/cert/selfsigned.pem",
-          keyfile: "priv/cert/selfsigned_key.pem",
+          certfile: Path.join([@fixtures_dir, "selfsigned.pem"]),
+          keyfile: Path.join([@fixtures_dir, "selfsigned_key.pem"]),
           otp_app: :finch,
           protocol_options: [
             idle_timeout: 3_000,
