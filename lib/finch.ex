@@ -130,7 +130,7 @@ defmodule Finch do
       Default value is `5_000`.
 
     * `:receive_timeout` - The maximum time to wait for a response before returning an error.
-      Default value is `15_000`.
+      Default value is `5_000`.
   """
   @spec request(name(), http_method(), url(), Mint.Types.headers(), body(), keyword()) ::
           {:ok, Finch.Response.t()} | {:error, Mint.Types.error()}
@@ -146,6 +146,8 @@ defmodule Finch do
         body: body,
         query: uri.query
       }
+
+      opts = Keyword.merge([receive_timeout: 5_000], opts)
 
       shp = {uri.scheme, uri.host, uri.port}
 
