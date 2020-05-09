@@ -8,7 +8,7 @@ jobs:
        elixir: ['1.7.4', '1.10.2']
        include:
          - elixir: '1.7.4'
-           otp: '19.x'
+           otp: '21.2'
          - elixir: '1.10.2'
            otp: '22.x'
    runs-on: ubuntu-16.04

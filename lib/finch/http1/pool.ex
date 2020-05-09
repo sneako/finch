@@ -24,6 +24,7 @@ defmodule Finch.HTTP1.Pool do
     NimblePool.start_link(opts)
   end
 
+  @impl Finch.Pool
   def request(pool, req, opts) do
     pool_timeout = Keyword.get(opts, :pool_timeout, 5_000)
     receive_timeout = Keyword.get(opts, :receive_timeout, 15_000)
@@ -56,14 +57,17 @@ defmodule Finch.HTTP1.Pool do
       )
     catch
       :exit, data ->
-        Telemetry.exception(:queue, start_time, :exit, data, System.stacktrace(), metadata)
+        Telemetry.exception(:queue, start_time, :exit, data, __STACKTRACE__, metadata)
         exit(data)
     end
   end
 
   @impl NimblePool
   def init_pool({registry, state}) do
-    {:ok, _} = Registry.register(registry, state.shp, state.registry_value)
+    # Register our pool with our module name and the registry value as the key.
+    # This allows the caller to determine the correct pool module to use to make the request,
+    # and use alternative pool selection strategies.
+    {:ok, _} = Registry.register(registry, state.shp, {__MODULE__, state.registry_value})
     {:ok, state}
   end
 

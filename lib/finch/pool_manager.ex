@@ -33,8 +33,8 @@ defmodule Finch.PoolManager do
       [pool] ->
         pool
 
-      pids ->
-        choose_pool(pids)
+      pools ->
+        choose_pool(pools)
     end
   end
 
@@ -63,7 +63,7 @@ defmodule Finch.PoolManager do
     Enum.map(1..pool_config.count, fn _ ->
       # Choose pool type here...
       {:ok, pid} = DynamicSupervisor.start_child(config.supervisor_name, {pool_mod, pool_args})
-      {pid, pool_mod}
+      {pid, {pool_mod, registry_value}}
     end)
     |> hd()
   end
@@ -78,11 +78,11 @@ defmodule Finch.PoolManager do
   defp pool_mod(:http1), do: Finch.HTTP1.Pool
   defp pool_mod(:http2), do: Finch.HTTP2.Pool
 
-  defp pool_registry_value(%{strategy: strategy} = config) do
-    strategy.registry_value(config)
+  defp pool_registry_value(%{strategy: strategy} = pool_config) do
+    strategy.registry_value(pool_config)
   end
 
-  defp choose_pool([{_, %{strategy: strategy}} | _] = pools) do
+  defp choose_pool([{_, {_, %{strategy: strategy}}} | _] = pools) do
     strategy.choose_pool(pools)
   end
 end
