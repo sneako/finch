@@ -51,7 +51,7 @@ defmodule Finch.HTTP1.Pool do
       )
     catch
       :exit, data ->
-        Telemetry.exception(:queue, start_time, :exit, data, System.stacktrace(), metadata)
+        Telemetry.exception(:queue, start_time, :exit, data, __STACKTRACE__, metadata)
         exit(data)
     end
   end
