@@ -55,6 +55,7 @@ defmodule Finch.MixProject do
 
   def docs do
     [
+      logo: "assets/Finch_logo_all-White.png",
       source_ref: "v#{@version}",
       source_url: @repo_url,
       main: @name

@@ -1,4 +1,4 @@
-# Finch
+<img alt="Finch" height="350px" src="assets/Finch_logo_onWhite.png?raw=true">
 
 <!-- MDOC !-->
 
