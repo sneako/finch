@@ -3,13 +3,13 @@ defmodule Finch.HTTP2Server do
 
   @fixtures_dir Path.expand("../fixtures", __DIR__)
 
-  def start do
+  def start(port) do
     children = [
       Plug.Adapters.Cowboy.child_spec(
         scheme: :https,
         plug: Finch.HTTP2Server.PlugRouter,
         options: [
-          port: 4000,
+          port: port,
           cipher_suite: :strong,
           certfile: Path.join([@fixtures_dir, "selfsigned.pem"]),
           keyfile: Path.join([@fixtures_dir, "selfsigned_key.pem"]),
@@ -40,7 +40,9 @@ defmodule Finch.HTTP2Server.PlugRouter do
 
   get "/" do
     name = conn.params["name"] || "world"
-    send_resp(conn, 200, "Hello #{name}!")
+    conn
+    |> send_resp(200, "Hello #{name}!")
+    |> halt()
   end
 
   get "/wait/:delay" do
