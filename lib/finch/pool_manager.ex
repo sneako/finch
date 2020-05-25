@@ -61,7 +61,6 @@ defmodule Finch.PoolManager do
     pool_mod = pool_mod(pool_config.protocol)
 
     Enum.map(1..pool_config.count, fn _ ->
-      # Choose pool type here...
       {:ok, pid} = DynamicSupervisor.start_child(config.supervisor_name, {pool_mod, pool_args})
       {pid, {pool_mod, registry_value}}
     end)

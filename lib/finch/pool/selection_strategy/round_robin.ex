@@ -6,7 +6,7 @@ defmodule Finch.Pool.SelectionStrategy.RoundRobin do
 
   @impl true
   def registry_value(%{count: count}) do
-    atomics = :atomics.new(1, [signed: false])
+    atomics = :atomics.new(1, signed: false)
     %{strategy: __MODULE__, count: count, atomics: atomics}
   end
 

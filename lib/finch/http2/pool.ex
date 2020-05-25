@@ -47,6 +47,7 @@ defmodule Finch.HTTP2.Pool do
       # get the process unstuck.
       fail_safe_timeout = if is_integer(timeout), do: max(2000, timeout * 2), else: :infinity
       start_time = Telemetry.start(:response, metadata)
+
       try do
         result = response_waiting_loop(ref, monitor, %Response{}, fail_safe_timeout)
 
@@ -94,13 +95,19 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  def start_link(opts) do
-    :gen_statem.start_link(__MODULE__, opts, [])
+  def start_link({shp, registry, pool_config}) do
+    state = %{
+      shp: shp,
+      conn_opts: pool_config.conn_opts,
+      registry_value: pool_config.registry_value
+    }
+
+    :gen_statem.start_link(__MODULE__, {registry, state}, [])
   end
 
   @impl true
-  def init({{scheme, host, port}=shp, registry, _pool_size, pool_opts}) do
-    {:ok, _} = Registry.register(registry, shp, __MODULE__)
+  def init({registry, %{shp: {scheme, host, port}} = state}) do
+    {:ok, _} = Registry.register(registry, state.shp, {__MODULE__, state.registry_value})
 
     data = %{
       conn: nil,
@@ -110,7 +117,7 @@ defmodule Finch.HTTP2.Pool do
       requests: %{},
       backoff_base: 500,
       backoff_max: 10_000,
-      connect_opts: pool_opts[:conn_opts] || [],
+      connect_opts: state.conn_opts
     }
 
     {:ok, :disconnected, data, {:next_event, :internal, {:connect, 0}}}
@@ -126,9 +133,10 @@ defmodule Finch.HTTP2.Pool do
   # When entering a disconnected state we need to fail all of the pending
   # requests
   def disconnected(:enter, _, data) do
-    :ok = Enum.each(data.requests, fn {ref, from} ->
-      send(from, {:error, ref, %{reason: :connection_closed}})
-    end)
+    :ok =
+      Enum.each(data.requests, fn {ref, from} ->
+        send(from, {:error, ref, %{reason: :connection_closed}})
+      end)
 
     data =
       data
@@ -144,9 +152,11 @@ defmodule Finch.HTTP2.Pool do
     metadata = %{
       scheme: data.scheme,
       host: data.host,
-      port: data.port,
+      port: data.port
     }
+
     start = Telemetry.start(:connect)
+
     case HTTP2.connect(data.scheme, data.host, data.port, data.connect_opts) do
       {:ok, conn} ->
         Telemetry.stop(:connect, start, metadata)
@@ -156,6 +166,7 @@ defmodule Finch.HTTP2.Pool do
       {:error, error} ->
         metadata = Map.put(metadata, :error, error)
         Telemetry.stop(:connect, start, metadata)
+
         Logger.error([
           "Failed to connect to #{data.scheme}://#{data.host}:#{data.port}: ",
           Exception.message(error)
@@ -177,14 +188,13 @@ defmodule Finch.HTTP2.Pool do
     {:keep_state_and_data, {:reply, from, {:error, %{reason: :disconnected}}}}
   end
 
- # We cancel all request timeouts as soon as we enter the :disconnected state, but
- # some timeouts might fire while changing states, so we need to handle them here.
- # Since we replied to all pending requests when entering the :disconnected state,
- # we can just do nothing here.
- def disconnected({:timeout, {:request_timeout, _ref}}, _content, _data) do
-   :keep_state_and_data
- end
-
+  # We cancel all request timeouts as soon as we enter the :disconnected state, but
+  # some timeouts might fire while changing states, so we need to handle them here.
+  # Since we replied to all pending requests when entering the :disconnected state,
+  # we can just do nothing here.
+  def disconnected({:timeout, {:request_timeout, _ref}}, _content, _data) do
+    :keep_state_and_data
+  end
 
   @doc false
   def connected(event, content, data)
@@ -195,7 +205,7 @@ defmodule Finch.HTTP2.Pool do
 
   # Issue request to the upstream server. We store a ref to the request so we
   # know who to respond to when we've completed everything
-  def connected({:call, {from_pid, _}=from}, {:request, req, opts}, data) do
+  def connected({:call, {from_pid, _} = from}, {:request, req, opts}, data) do
     case HTTP2.request(data.conn, req.method, req.path, req.headers, req.body) do
       {:ok, conn, ref} ->
         data =
