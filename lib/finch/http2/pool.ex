@@ -7,6 +7,7 @@ defmodule Finch.HTTP2.Pool do
   alias Mint.HTTPError
   alias Finch.Response
   alias Finch.Telemetry
+  alias Finch.Error
 
   require Logger
 
@@ -71,7 +72,7 @@ defmodule Finch.HTTP2.Pool do
   defp response_waiting_loop(ref, monitor_ref, response, fail_safe_timeout) do
     receive do
       {:DOWN, ^monitor_ref, _, _, _} ->
-        {:error, :connection_process_went_down}
+        {:error, error(:connection_process_went_down)}
 
       {kind, ^ref, value} when kind in [:status, :headers] ->
         response = Map.put(response, kind, value)
@@ -85,7 +86,7 @@ defmodule Finch.HTTP2.Pool do
         {:ok, response}
 
       {:error, ^ref, error} ->
-        {:error, error}
+        {:error, error(error.reason)}
     after
       fail_safe_timeout ->
         raise "no response was received even after waiting #{fail_safe_timeout}ms. " <>
@@ -127,7 +128,7 @@ defmodule Finch.HTTP2.Pool do
   # requests
   def disconnected(:enter, _, data) do
     :ok = Enum.each(data.requests, fn {ref, from} ->
-      send(from, {:error, ref, %{reason: :connection_closed}})
+      send(from, {:error, ref, error(:connection_closed)})
     end)
 
     data =
@@ -174,7 +175,7 @@ defmodule Finch.HTTP2.Pool do
 
   # Immediately fail a request if we're disconnected
   def disconnected({:call, from}, {:request, _, _}, _data) do
-    {:keep_state_and_data, {:reply, from, {:error, %{reason: :disconnected}}}}
+    {:keep_state_and_data, {:reply, from, {:error, error(:disconnected)}}}
   end
 
  # We cancel all request timeouts as soon as we enter the :disconnected state, but
@@ -213,12 +214,12 @@ defmodule Finch.HTTP2.Pool do
 
       {:error, conn, %HTTPError{reason: :closed_for_writing}} ->
         data = put_in(data.conn, conn)
-        actions = [{:reply, from, {:error, "read_only"}}]
+        actions = [{:reply, from, {:error, error(:read_only)}}]
         {:next_state, :connected_read_only, data, actions}
 
       {:error, conn, error} ->
         data = put_in(data.conn, conn)
-        actions = [{:reply, from, {:error, error}}]
+        actions = [{:reply, from, {:error, error(error.reason)}}]
 
         if HTTP2.open?(conn) do
           {:keep_state, data, actions}
@@ -406,4 +407,8 @@ defmodule Finch.HTTP2.Pool do
 
   defp request_path(%{path: path, query: nil}), do: path
   defp request_path(%{path: path, query: query}), do: "#{path}?#{query}"
+
+  defp error(atom) when is_atom(atom) do
+    %Error{reason: atom}
+  end
 end

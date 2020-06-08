@@ -133,7 +133,7 @@ defmodule Finch do
       Default value is `5_000`.
   """
   @spec request(name(), http_method(), url(), Mint.Types.headers(), body(), keyword()) ::
-          {:ok, Finch.Response.t()} | {:error, Mint.Types.error()}
+          {:ok, Finch.Response.t()} | {:error, Finch.Error}
   def request(name, method, url, headers \\ [], body \\ nil, opts \\ []) do
     with {:ok, uri} <- parse_and_normalize_url(url) do
       req = %{

@@ -42,7 +42,8 @@ defmodule Finch.MixProject do
       {:bypass, "~> 1.0", only: :test},
       {:cowboy, "~> 2.0", only: [:dev, :test]},
       {:plug_cowboy, "~> 2.0", only: [:dev, :test]},
-      {:x509, "~> 0.8", only: [:dev, :test]}
+      {:x509, "~> 0.8", only: [:dev, :test]},
+      {:dialyxir, "~> 1.0", only: [:dev], runtime: false},
     ]
   end
 
