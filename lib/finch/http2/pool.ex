@@ -2,15 +2,15 @@ defmodule Finch.HTTP2.Pool do
   @moduledoc false
 
   @behaviour :gen_statem
+  @behaviour Finch.Pool
 
   alias Mint.HTTP2
   alias Mint.HTTPError
-  alias Finch.Response
   alias Finch.Telemetry
 
   require Logger
 
-  @default_receive_timeout 1_000
+  @default_receive_timeout 15_000
 
   @impl true
   def callback_mode(), do: [:state_functions, :state_enter]
@@ -24,7 +24,8 @@ defmodule Finch.HTTP2.Pool do
 
   # Call the pool with the request. The pool will multiplex multiple requests
   # and stream the result set back to the calling process using `send`
-  def request(pool, request, opts) do
+  @impl true
+  def request(pool, request, acc, fun, opts) do
     opts = Keyword.put_new(opts, :receive_timeout, @default_receive_timeout)
     timeout = opts[:receive_timeout]
 
@@ -32,7 +33,7 @@ defmodule Finch.HTTP2.Pool do
       scheme: request.scheme,
       host: request.host,
       port: request.port,
-      path: request_path(request)
+      path: Finch.Request.request_path(request)
     }
 
     start_time = Telemetry.start(:request, metadata)
@@ -48,7 +49,7 @@ defmodule Finch.HTTP2.Pool do
       fail_safe_timeout = if is_integer(timeout), do: max(2000, timeout * 2), else: :infinity
       start_time = Telemetry.start(:response, metadata)
       try do
-        result = response_waiting_loop(ref, monitor, %Response{}, fail_safe_timeout)
+        result = response_waiting_loop(acc, fun, ref, monitor, fail_safe_timeout)
 
         case result do
           {:ok, _} ->
@@ -68,21 +69,16 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  defp response_waiting_loop(ref, monitor_ref, response, fail_safe_timeout) do
+  defp response_waiting_loop(acc, fun, ref, monitor_ref, fail_safe_timeout) do
     receive do
       {:DOWN, ^monitor_ref, _, _, _} ->
         {:error, :connection_process_went_down}
 
-      {kind, ^ref, value} when kind in [:status, :headers] ->
-        response = Map.put(response, kind, value)
-        response_waiting_loop(ref, monitor_ref, response, fail_safe_timeout)
-
-      {:data, ^ref, data} ->
-        response = Map.update(response, :body, data, &(&1 <> data))
-        response_waiting_loop(ref, monitor_ref, response, fail_safe_timeout)
+      {kind, ^ref, value} when kind in [:status, :headers, :data] ->
+        response_waiting_loop(fun.({kind, value}, acc), fun, ref, monitor_ref, fail_safe_timeout)
 
       {:done, _ref} ->
-        {:ok, response}
+        {:ok, acc}
 
       {:error, ^ref, error} ->
         {:error, error}
@@ -403,7 +399,4 @@ defmodule Finch.HTTP2.Pool do
     max_sleep = trunc(min(max_backoff, base_backoff * factor))
     :rand.uniform(max_sleep)
   end
-
-  defp request_path(%{path: path, query: nil}), do: path
-  defp request_path(%{path: path, query: query}), do: "#{path}?#{query}"
 end

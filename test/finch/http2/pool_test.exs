@@ -40,7 +40,7 @@ defmodule Finch.HTTP2.PoolTest do
       end)
 
     spawn(fn ->
-      {:ok, resp} = Pool.request(pool, req, [])
+      {:ok, resp} = request(pool, req, [])
       send(us, {:resp, {:ok, resp}})
     end)
 
@@ -53,7 +53,7 @@ defmodule Finch.HTTP2.PoolTest do
       data(stream_id: stream_id, data: "hello to you", flags: set_flags(:data, [:end_stream]))
     ])
 
-    assert_receive {:resp, {:ok, resp}}
+    assert_receive {:resp, {:ok, {200, [], "hello to you"}}}
   end
 
   test "errors such as :max_header_list_size_reached are returned to the caller", %{request: req} do
@@ -64,7 +64,7 @@ defmodule Finch.HTTP2.PoolTest do
         start_pool(port)
       end)
 
-    assert {:error, error} = Pool.request(pool, %{req | headers: [{"foo", "bar"}]}, [])
+    assert {:error, error} = request(pool, %{req | headers: [{"foo", "bar"}]}, [])
     assert %{reason: {:max_header_list_size_exceeded, _, _}} = error
   end
 
@@ -76,7 +76,7 @@ defmodule Finch.HTTP2.PoolTest do
       end)
 
     spawn(fn ->
-      result = Pool.request(pool, req, [])
+      result = request(pool, req, [])
       send(us, {:resp, result})
     end)
 
@@ -90,10 +90,10 @@ defmodule Finch.HTTP2.PoolTest do
       data(stream_id: stream_id, data: "hello", flags: set_flags(:data, [:end_stream]))
     ])
 
-    assert_receive {:resp, {:ok, resp}}
+    assert_receive {:resp, {:ok, {200, [], "hello"}}}
 
     # We can't send any more requests since the connection is closed for writing.
-    assert {:error, %{reason: :read_only}} = Pool.request(pool, req, [])
+    assert {:error, %{reason: :read_only}} = request(pool, req, [])
 
     # If the server now closes the socket, we actually shut down.
     :ok = :ssl.close(server_socket())
@@ -101,7 +101,7 @@ defmodule Finch.HTTP2.PoolTest do
     Process.sleep(50)
 
     # If we try to make a request now that the server shut down, we get an error.
-    assert {:error, %{reason: :disconnected}} = Pool.request(pool, req, [])
+    assert {:error, %{reason: :disconnected}} = request(pool, req, [])
   end
 
   test "if server disconnects while there are waiting clients, we notify those clients", %{request: req} do
@@ -112,7 +112,7 @@ defmodule Finch.HTTP2.PoolTest do
       end)
 
     spawn(fn ->
-      result = Pool.request(pool, req, [])
+      result = request(pool, req, [])
       send(us, {:resp, result})
     end)
 
@@ -138,12 +138,12 @@ defmodule Finch.HTTP2.PoolTest do
       end)
 
     spawn(fn ->
-      Pool.request(pool, req, [])
+      request(pool, req, [])
     end)
 
     assert_recv_frames [headers(stream_id: _stream_id)]
 
-    assert {:error, %{reason: :too_many_concurrent_requests}} = Pool.request(pool, req, [])
+    assert {:error, %{reason: :too_many_concurrent_requests}} = request(pool, req, [])
   end
 
   test "request timeout with timeout of 0", %{request: req} do
@@ -154,7 +154,7 @@ defmodule Finch.HTTP2.PoolTest do
     end)
 
     spawn(fn ->
-      resp = Pool.request(pool, req, receive_timeout: 0)
+      resp = request(pool, req, receive_timeout: 0)
       send(us, {:resp, resp})
     end)
 
@@ -171,7 +171,7 @@ defmodule Finch.HTTP2.PoolTest do
     end)
 
     spawn(fn ->
-      resp = Pool.request(pool, req, receive_timeout: 50)
+      resp = request(pool, req, receive_timeout: 50)
       send(us, {:resp, resp})
     end)
 
@@ -193,7 +193,7 @@ defmodule Finch.HTTP2.PoolTest do
     end)
 
     spawn(fn ->
-      resp = Pool.request(pool, req, receive_timeout: 50)
+      resp = request(pool, req, receive_timeout: 50)
       send(us, {:resp, resp})
     end)
 
@@ -221,7 +221,7 @@ defmodule Finch.HTTP2.PoolTest do
     end)
 
     spawn(fn ->
-      resp = Pool.request(pool, req, receive_timeout: 10)
+      resp = request(pool, req, receive_timeout: 10)
       send(us, {:resp, resp})
     end)
 
@@ -245,6 +245,18 @@ defmodule Finch.HTTP2.PoolTest do
   end
 
   @pdict_key {__MODULE__, :http2_test_server}
+
+  defp request(pool, req, opts) do
+    acc = {nil, [], ""}
+
+    fun = fn
+      {:status, value}, {_, headers, body} -> {value, headers, body}
+      {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
+      {:data, value}, {status, headers, body} -> {status, headers, body <> value}
+    end
+
+    Pool.request(pool, req, acc, fun, opts)
+  end
 
   defp start_server_and_connect_with(opts \\ [], fun) do
     {result, server} = MockHTTP2Server.start_and_connect_with(opts, fun)

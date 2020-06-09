@@ -5,29 +5,10 @@ defmodule Finch do
              |> String.split("<!-- MDOC !-->")
              |> Enum.fetch!(1)
 
-  alias Finch.PoolManager
+  alias Finch.{PoolManager, Request}
 
   use Supervisor
 
-  @atom_methods [
-    :get,
-    :post,
-    :put,
-    :patch,
-    :delete,
-    :head,
-    :options
-  ]
-  @methods [
-    "GET",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-    "HEAD",
-    "OPTIONS"
-  ]
-  @atom_to_method Enum.zip(@atom_methods, @methods) |> Enum.into(%{})
   @default_pool_size 10
   @default_pool_count 1
 
@@ -61,27 +42,16 @@ defmodule Finch do
   @type name() :: atom()
 
   @typedoc """
-  An HTTP request method represented as an `atom()` or a `String.t()`.
-
-  The following atom methods are supported: `#{Enum.map_join(@atom_methods, "`, `", &inspect/1)}`.
-  You can use any arbitrary method by providing it as a `String.t()`.
+  The stream function given to `stream/5`.
   """
-  @type http_method() :: :get | :post | :head | :patch | :delete | :options | :put | String.t()
-
-  @typedoc """
-  A Uniform Resource Locator, the address of a resource on the Web.
-  """
-  @type url() :: String.t() | URI.t()
-
-  @typedoc """
-  A body associated with a request.
-  """
-  @type body() :: iodata() | nil
+  @type stream(acc) ::
+          ({:status, integer} | {:headers, Mint.Types.headers()} | {:data, binary}, acc -> acc)
 
   @doc """
   Start an instance of Finch.
 
-  ## Options:
+  ## Options
+
     * `:name` - The name of your Finch instance. This field is required.
 
     * `:pools` - A map specifying the configuration for your pools. The keys should be URLs
@@ -92,6 +62,7 @@ defmodule Finch do
   }]}`.
 
   ### Pool Configuration Options
+
   #{NimbleOptions.docs(@pool_config_schema)}
   """
   def start_link(opts) do
@@ -119,93 +90,6 @@ defmodule Finch do
     ]
 
     Supervisor.init(children, strategy: :one_for_all)
-  end
-
-  @doc """
-  Sends an HTTP request and returns the response.
-
-  ## Options:
-
-    * `:pool_timeout` - This timeout is applied when we check out a connection from the pool.
-      Default value is `5_000`.
-
-    * `:receive_timeout` - The maximum time to wait for a response before returning an error.
-      Default value is `5_000`.
-  """
-  @spec request(name(), http_method(), url(), Mint.Types.headers(), body(), keyword()) ::
-          {:ok, Finch.Response.t()} | {:error, Mint.Types.error()}
-  def request(name, method, url, headers \\ [], body \\ nil, opts \\ []) do
-    with {:ok, uri} <- parse_and_normalize_url(url) do
-      req = %{
-        scheme: uri.scheme,
-        host: uri.host,
-        port: uri.port,
-        method: build_method(method),
-        path: uri.path,
-        headers: headers,
-        body: body,
-        query: uri.query
-      }
-
-      opts = Keyword.merge([receive_timeout: 5_000], opts)
-
-      shp = {uri.scheme, uri.host, uri.port}
-
-      {pool, pool_mod} = PoolManager.get_pool(name, shp)
-      pool_mod.request(pool, req, opts)
-    end
-  end
-
-  defp parse_and_normalize_url(url) when is_binary(url) do
-    url
-    |> URI.parse()
-    |> parse_and_normalize_url()
-  end
-
-  defp parse_and_normalize_url(%URI{} = parsed_uri) do
-    normalize_uri(parsed_uri)
-  end
-
-  defp normalize_uri(parsed_uri) do
-    normalized_path = parsed_uri.path || "/"
-
-    with {:ok, scheme} <- normalize_scheme(parsed_uri.scheme) do
-      normalized_uri = %{
-        scheme: scheme,
-        host: parsed_uri.host,
-        port: parsed_uri.port,
-        path: normalized_path,
-        query: parsed_uri.query
-      }
-
-      {:ok, normalized_uri}
-    end
-  end
-
-  defp build_method(method) when is_binary(method), do: method
-  defp build_method(method) when method in @atom_methods, do: @atom_to_method[method]
-
-  defp build_method(method) do
-    raise ArgumentError, """
-    got unsupported atom method #{inspect(method)}.
-    only the following methods can be provided as atoms: #{
-      Enum.map_join(@atom_methods, ", ", &inspect/1)
-    }",
-    otherwise you must pass a binary.
-    """
-  end
-
-  defp normalize_scheme(scheme) do
-    case scheme do
-      "https" ->
-        {:ok, :https}
-
-      "http" ->
-        {:ok, :http}
-
-      scheme ->
-        {:error, "invalid scheme #{inspect(scheme)}"}
-    end
   end
 
   defp pool_options!(pools) do
@@ -237,10 +121,8 @@ defmodule Finch do
   end
 
   defp cast_binary_destination(url) when is_binary(url) do
-    with {:ok, uri} <- parse_and_normalize_url(url),
-         shp <- {uri.scheme, uri.host, uri.port} do
-      {:ok, shp}
-    end
+    {scheme, host, port, _path, _query} = Finch.Request.parse_url(url)
+    {:ok, {scheme, host, port}}
   end
 
   defp cast_pool_opts(opts) do
@@ -261,4 +143,87 @@ defmodule Finch do
   defp supervisor_name(name), do: :"#{name}.Supervisor"
   defp manager_name(name), do: :"#{name}.PoolManager"
   defp pool_supervisor_name(name), do: :"#{name}.PoolSupervisor"
+
+  @doc """
+  Builds an HTTP request to be sent with `request/3` or `stream/4`.
+  """
+  @spec build(Request.method(), Request.url(), Request.headers(), Request.body()) :: Request.t()
+  defdelegate build(method, url, headers \\ [], body \\ nil), to: Request
+
+  @doc """
+  Streams an HTTP request and returns the accumulator.
+
+  A function of arity 2 is expected as argument. The first argument
+  is a tuple, as listed below, and the second argument is the
+  accumulator. The function must return a potentially updated
+  accumulator.
+
+  ## Stream commands
+
+    * `{:status, status}` - the status of the http response
+    * `{:headers, headers}` - the headers of the http response
+    * `{:data, data}` - a streaming section of the http body
+
+  ## Options
+
+    * `:pool_timeout` - This timeout is applied when we check out a connection from the pool.
+      Default value is `5_000`.
+
+    * `:receive_timeout` - The maximum time to wait for a response before returning an error.
+      Default value is `15_000`.
+
+  """
+  @spec stream(Request.t(), name(), acc, stream(acc), keyword) :: Request.t() when acc: term()
+  def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
+    %{scheme: scheme, host: host, port: port} = req
+    {pool, pool_mod} = PoolManager.get_pool(name, {scheme, host, port})
+    pool_mod.request(pool, req, acc, fun, opts)
+  end
+
+  @doc """
+  Sends an HTTP request and returns a `Finch.Response` struct.
+
+  ## Options
+
+    * `:pool_timeout` - This timeout is applied when we check out a connection from the pool.
+      Default value is `5_000`.
+
+    * `:receive_timeout` - The maximum time to wait for a response before returning an error.
+      Default value is `15_000`.
+
+  """
+  @spec request(Request.t(), name(), keyword()) ::
+          {:ok, Finch.Response.t()} | {:error, Mint.Types.error()}
+  def request(req, name, opts \\ [])
+
+  def request(%Request{} = req, name, opts) do
+    acc = {nil, [], []}
+
+    fun = fn
+      {:status, value}, {_, headers, body} -> {value, headers, body}
+      {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
+      {:data, value}, {status, headers, body} -> {status, headers, [value | body]}
+    end
+
+    with {:ok, {status, headers, body}} <- stream(req, name, acc, fun, opts) do
+      {:ok,
+       %Finch.Response{
+         status: status,
+         headers: headers,
+         body: body |> Enum.reverse() |> IO.iodata_to_binary()
+       }}
+    end
+  end
+
+  # Catch-all for backwards compatibility below
+  def request(name, method, url) do
+    request(name, method, url, [])
+  end
+
+  def request(name, method, url, headers, body \\ nil, opts \\ []) do
+    IO.warn("Finch.request/6 is deprecated, use Finch.build/4 + Finch.request/3 instead")
+
+    build(method, url, headers, body)
+    |> request(name, opts)
+  end
 end

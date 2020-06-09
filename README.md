@@ -26,7 +26,7 @@ Once you have started Finch, you can use the client you have started,
 by passing the name of your client as the first argument of `Finch.request/3,4,5,6`:
 
 ```elixir
-Finch.request(MyFinch, :get, "https://hex.pm")
+Finch.build(:get, "https://hex.pm") |> Finch.request(MyFinch)
 ```
 
 When using HTTP/1, Finch will parse the passed in URL into a `{scheme, host, port}`
