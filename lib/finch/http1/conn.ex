@@ -80,10 +80,10 @@ defmodule Finch.Conn do
     end
   end
 
-  def request(%{mint: nil} = conn, _, _), do: {:error, conn, "Could not connect"}
+  def request(%{mint: nil} = conn, _, _, _, _), do: {:error, conn, "Could not connect"}
 
-  def request(conn, req, receive_timeout) do
-    full_path = request_path(req)
+  def request(conn, req, acc, fun, receive_timeout) do
+    full_path = Finch.Request.request_path(req)
 
     metadata = %{
       scheme: conn.scheme,
@@ -97,7 +97,18 @@ defmodule Finch.Conn do
     case HTTP.request(conn.mint, req.method, full_path, req.headers, req.body) do
       {:ok, mint, ref} ->
         Telemetry.stop(:request, start_time, metadata)
-        receive_response(%{conn | mint: mint}, ref, receive_timeout, metadata)
+        start_time = Telemetry.start(:response, metadata)
+
+        case receive_response([], acc, fun, mint, ref, receive_timeout) do
+          {:ok, mint, acc} ->
+            Telemetry.stop(:response, start_time, metadata)
+            {:ok, %{conn | mint: mint}, acc}
+
+          {:error, mint, error} ->
+            metadata = Map.put(metadata, :error, error)
+            Telemetry.stop(:response, start_time, metadata)
+            {:error, %{conn | mint: mint}, error}
+        end
 
       {:error, mint, error} ->
         metadata = Map.put(metadata, :error, error)
@@ -113,57 +124,32 @@ defmodule Finch.Conn do
     %{conn | mint: mint}
   end
 
-  defp request_path(%{path: path, query: nil}), do: path
-  defp request_path(%{path: path, query: query}), do: "#{path}?#{query}"
-
-  defp receive_response(conn, ref, timeout, metadata) do
-    start_time = Telemetry.start(:response, metadata)
-
-    case receive_response([], conn, ref, %Response{}, timeout) do
-      {:ok, _, _} = resp ->
-        Telemetry.stop(:response, start_time, metadata)
-        resp
-
-      {:error, _, error} = resp ->
-        metadata = Map.put(metadata, :error, error)
-        Telemetry.stop(:response, start_time, metadata)
-        resp
-    end
-  end
-
-  defp receive_response([], conn, ref, response, timeout) do
-    case HTTP.recv(conn.mint, 0, timeout) do
+  defp receive_response([], acc, fun, mint, ref, timeout) do
+    case HTTP.recv(mint, 0, timeout) do
       {:ok, mint, entries} ->
-        receive_response(entries, %{conn | mint: mint}, ref, response, timeout)
+        receive_response(entries, acc, fun, mint, ref, timeout)
 
       {:error, mint, error, _responses} ->
-        {:error, %{conn | mint: mint}, error}
+        {:error, mint, error}
     end
   end
 
-  defp receive_response([entry | entries], conn, ref, response, timeout) do
+  defp receive_response([entry | entries], acc, fun, mint, ref, timeout) do
     case entry do
       {:status, ^ref, value} ->
-        response = %{response | status: value}
-        receive_response(entries, conn, ref, response, timeout)
+        receive_response(entries, fun.({:status, value}, acc), fun, mint, ref, timeout)
 
       {:headers, ^ref, value} ->
-        response = %{response | headers: value}
-        receive_response(entries, conn, ref, response, timeout)
+        receive_response(entries, fun.({:headers, value}, acc), fun, mint, ref, timeout)
 
-      {:data, ^ref, data} ->
-        response = append_data_chunk(response, data)
-        receive_response(entries, conn, ref, response, timeout)
+      {:data, ^ref, value} ->
+        receive_response(entries, fun.({:data, value}, acc), fun, mint, ref, timeout)
 
       {:done, ^ref} ->
-        {:ok, conn, response}
+        {:ok, mint, acc}
 
       {:error, ^ref, error} ->
-        {:error, conn, error}
+        {:error, mint, error}
     end
-  end
-
-  defp append_data_chunk(%Response{body: body} = response, data_chunk) when is_binary(body) do
-    %{response | body: body <> data_chunk}
   end
 end
