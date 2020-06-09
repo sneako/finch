@@ -1,7 +1,6 @@
 defmodule Finch.Conn do
   @moduledoc false
 
-  alias Finch.Response
   alias Mint.HTTP
   alias Finch.Telemetry
 
