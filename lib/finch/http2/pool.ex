@@ -10,7 +10,7 @@ defmodule Finch.HTTP2.Pool do
 
   require Logger
 
-  @default_receive_timeout 15000
+  @default_receive_timeout 15_000
 
   @impl true
   def callback_mode(), do: [:state_functions, :state_enter]
