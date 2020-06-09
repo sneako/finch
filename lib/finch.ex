@@ -150,7 +150,6 @@ defmodule Finch do
   @spec build(Request.method(), Request.url(), Request.headers(), Request.body()) :: Request.t()
   defdelegate build(method, url, headers \\ [], body \\ nil), to: Request
 
-
   @doc """
   Streams an HTTP request and returns the accumulator.
 
