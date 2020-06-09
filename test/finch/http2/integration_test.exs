@@ -47,7 +47,7 @@ defmodule Finch.HTTP2.IntegrationTest do
     request = Finch.build(:get, url <> "/wait/1000")
 
     results =
-      (1..1)
+      (1..50)
       |> Enum.map(fn _ -> Task.async(fn ->
           start = System.monotonic_time()
           {:ok, _} = Finch.request(request, TestFinch)
