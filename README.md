@@ -22,7 +22,7 @@ Or, in rare cases, dynamically:
 Finch.start_link(name: MyFinch)
 ```
 
-Once you have started your Finch, you can build a request and ask your Finch to make it:
+Once you have started your instance of Finch, you are ready to start making requests:
 
 ```elixir
 Finch.build(:get, "https://hex.pm") |> Finch.request(MyFinch)
