@@ -5,7 +5,7 @@ defmodule Finch do
              |> String.split("<!-- MDOC !-->")
              |> Enum.fetch!(1)
 
-  alias Finch.{PoolManager, Request}
+  alias Finch.{PoolManager, Request, Response}
 
   use Supervisor
 
@@ -173,7 +173,7 @@ defmodule Finch do
       Default value is `15_000`.
 
   """
-  @spec stream(Request.t(), name(), acc, stream(acc), keyword) :: Request.t() when acc: term()
+  @spec stream(Request.t(), name(), acc, stream(acc), keyword) :: acc when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
     %{scheme: scheme, host: host, port: port} = req
     {pool, pool_mod} = PoolManager.get_pool(name, {scheme, host, port})
@@ -193,7 +193,7 @@ defmodule Finch do
 
   """
   @spec request(Request.t(), name(), keyword()) ::
-          {:ok, Finch.Response.t()} | {:error, Mint.Types.error()}
+          {:ok, Response.t()} | {:error, Mint.Types.error()}
   def request(req, name, opts \\ [])
 
   def request(%Request{} = req, name, opts) do
@@ -207,7 +207,7 @@ defmodule Finch do
 
     with {:ok, {status, headers, body}} <- stream(req, name, acc, fun, opts) do
       {:ok,
-       %Finch.Response{
+       %Response{
          status: status,
          headers: headers,
          body: body |> Enum.reverse() |> IO.iodata_to_binary()
