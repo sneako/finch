@@ -43,8 +43,8 @@ defmodule Finch.HTTP1.Pool do
                {:ok, conn, acc} <- Conn.request(conn, req, acc, fun, receive_timeout) do
             {{:ok, acc}, transfer_if_open(conn, from)}
           else
-            {:error, conn, error} ->
-              {{:error, error}, transfer_if_open(conn, from)}
+            {:error, conn, location, error} ->
+              {{:error, location, error}, transfer_if_open(conn, from)}
           end
         end,
         pool_timeout

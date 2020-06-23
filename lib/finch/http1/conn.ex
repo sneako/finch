@@ -45,7 +45,7 @@ defmodule Finch.Conn do
       {:error, error} ->
         meta = Map.put(meta, :error, error)
         Telemetry.stop(:connect, start_time, meta)
-        {:error, conn, error}
+        {:error, conn, :connect, error}
     end
   end
 
@@ -79,7 +79,7 @@ defmodule Finch.Conn do
     end
   end
 
-  def request(%{mint: nil} = conn, _, _, _, _), do: {:error, conn, "Could not connect"}
+  def request(%{mint: nil} = conn, _, _, _, _), do: {:error, conn, :request_mint_nil, "Could not connect"}
 
   def request(conn, req, acc, fun, receive_timeout) do
     full_path = Finch.Request.request_path(req)
@@ -106,13 +106,13 @@ defmodule Finch.Conn do
           {:error, mint, error} ->
             metadata = Map.put(metadata, :error, error)
             Telemetry.stop(:response, start_time, metadata)
-            {:error, %{conn | mint: mint}, error}
+            {:error, %{conn | mint: mint}, :request_receive_response, error}
         end
 
       {:error, mint, error} ->
         metadata = Map.put(metadata, :error, error)
         Telemetry.stop(:request, start_time, metadata)
-        {:error, %{conn | mint: mint}, error}
+        {:error, %{conn | mint: mint}, :request_send_request, error}
     end
   end
 

@@ -241,7 +241,7 @@ defmodule FinchTest do
     test "returns error when requesting bad address" do
       start_supervised!({Finch, name: MyFinch})
 
-      assert {:error, %{reason: :nxdomain}} =
+      assert {:error, :connect, %{reason: :nxdomain}} =
                Finch.build(:get, "http://idontexist.wat") |> Finch.request(MyFinch)
     end
 
@@ -282,7 +282,7 @@ defmodule FinchTest do
         {Finch, name: H2Finch, pools: %{default: [conn_opts: [protocols: [:http2]]]}}
       )
 
-      assert {:error, _} = Finch.build(:get, endpoint(bypass)) |> Finch.request(H2Finch)
+      assert {:error, _, _} = Finch.build(:get, endpoint(bypass)) |> Finch.request(H2Finch)
     end
 
     test "caller is unable to override mode", %{bypass: bypass} do
