@@ -1,5 +1,6 @@
 defmodule FinchTest do
   use ExUnit.Case, async: true
+  import ExUnit.CaptureLog
   doctest Finch
 
   alias Finch.Response
@@ -270,19 +271,17 @@ defmodule FinchTest do
     test "are passed through to the conn", %{bypass: bypass} do
       expect_any(bypass)
 
-      start_supervised!(
-        {Finch, name: H1Finch, pools: %{default: [conn_opts: [protocols: [:http1]]]}}
-      )
+      start_supervised!({Finch, name: H1Finch, pools: %{default: [protocol: :http1]}})
 
       assert {:ok, _} = Finch.build(:get, endpoint(bypass)) |> Finch.request(H1Finch)
 
       stop_supervised(Finch)
 
-      start_supervised!(
-        {Finch, name: H2Finch, pools: %{default: [conn_opts: [protocols: [:http2]]]}}
-      )
+      start_supervised!({Finch, name: H2Finch, pools: %{default: [protocol: :http2]}})
 
-      assert {:error, _} = Finch.build(:get, endpoint(bypass)) |> Finch.request(H2Finch)
+      capture_log(fn ->
+        assert {:error, _} = Finch.build(:get, endpoint(bypass)) |> Finch.request(H2Finch)
+      end) =~ "failed to negotiate protocol"
     end
 
     test "caller is unable to override mode", %{bypass: bypass} do
