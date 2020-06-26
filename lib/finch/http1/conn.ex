@@ -98,9 +98,10 @@ defmodule Finch.Conn do
         Telemetry.stop(:request, start_time, metadata)
         start_time = Telemetry.start(:response, metadata)
 
-        case receive_response([], acc, fun, mint, ref, receive_timeout) do
-          {:ok, mint, acc} ->
-            Telemetry.stop(:response, start_time, metadata)
+        case receive_response([], acc, false, fun, mint, ref, receive_timeout) do
+          {:ok, mint, acc, closed?} ->
+            Telemetry.stop(:response, start_time, Map.put(metadata, :closed?, closed?))
+            {:ok, mint} = if closed?, do: HTTP.close(mint), else: {:ok, mint}
             {:ok, %{conn | mint: mint}, acc}
 
           {:error, mint, error} ->
@@ -123,29 +124,30 @@ defmodule Finch.Conn do
     %{conn | mint: mint}
   end
 
-  defp receive_response([], acc, fun, mint, ref, timeout) do
+  defp receive_response([], acc, closed?, fun, mint, ref, timeout) do
     case HTTP.recv(mint, 0, timeout) do
       {:ok, mint, entries} ->
-        receive_response(entries, acc, fun, mint, ref, timeout)
+        receive_response(entries, acc, closed?, fun, mint, ref, timeout)
 
       {:error, mint, error, _responses} ->
         {:error, mint, error}
     end
   end
 
-  defp receive_response([entry | entries], acc, fun, mint, ref, timeout) do
+  defp receive_response([entry | entries], acc, closed?, fun, mint, ref, timeout) do
     case entry do
       {:status, ^ref, value} ->
-        receive_response(entries, fun.({:status, value}, acc), fun, mint, ref, timeout)
+        receive_response(entries, fun.({:status, value}, acc), closed?, fun, mint, ref, timeout)
 
       {:headers, ^ref, value} ->
-        receive_response(entries, fun.({:headers, value}, acc), fun, mint, ref, timeout)
+        closed? = List.keyfind(value, "connection", 0) == {"connection", "close"}
+        receive_response(entries, fun.({:headers, value}, acc), closed?, fun, mint, ref, timeout)
 
       {:data, ^ref, value} ->
-        receive_response(entries, fun.({:data, value}, acc), fun, mint, ref, timeout)
+        receive_response(entries, fun.({:data, value}, acc), closed?, fun, mint, ref, timeout)
 
       {:done, ^ref} ->
-        {:ok, mint, acc}
+        {:ok, mint, acc, closed?}
 
       {:error, ^ref, error} ->
         {:error, mint, error}
