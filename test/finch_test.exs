@@ -275,10 +275,6 @@ defmodule FinchTest do
       assert {:ok, _} = Finch.build(:get, endpoint(bypass)) |> Finch.request(H1Finch)
 
       stop_supervised(Finch)
-
-      start_supervised!({Finch, name: H2Finch, pools: %{default: [protocol: :http2]}})
-
-      assert {:ok, _} = Finch.build(:get, endpoint(bypass)) |> Finch.request(H2Finch)
     end
 
     test "caller is unable to override mode", %{bypass: bypass} do
