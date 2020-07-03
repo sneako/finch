@@ -278,12 +278,12 @@ defmodule FinchTest do
       stop_supervised(Finch)
     end
 
-    test "SSL - fail to select HTTP2", _bypass do
+    test "fail to negotiate h2 protocol", _bypass do
       start_supervised!({Finch, name: H2Finch, pools: %{default: [protocol: :http2]}})
 
       capture_log(fn ->
         assert {:error, _} = Finch.build(:get, "https://httpstat.us") |> Finch.request(H2Finch)
-      end) =~ "failed to negotiate protocol"
+      end) =~ "ALPN protocol not negotiated"
     end
 
     test "caller is unable to override mode", %{bypass: bypass} do
