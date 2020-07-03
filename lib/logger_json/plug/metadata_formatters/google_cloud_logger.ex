@@ -8,7 +8,7 @@ if Code.ensure_loaded?(Plug) do
       * `phoenix.controller` - Phoenix controller that processed the request;
       * `phoenix.action` - Phoenix action that processed the request;
       * `node.hostname` - node hostname;
-      * `node.pid` - Erlang VM process identifier.
+      * `node.vm_pid` - Erlang VM process identifier.
     """
     import Jason.Helpers, only: [json_map: 1]
 
