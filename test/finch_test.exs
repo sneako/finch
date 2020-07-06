@@ -431,6 +431,7 @@ defmodule FinchTest do
             assert is_atom(meta.scheme)
             assert is_integer(meta.port)
             assert is_binary(meta.host)
+            assert is_binary(meta.method)
             send(parent, {ref, :start})
 
           [:finch, :request, :stop] ->
@@ -439,6 +440,7 @@ defmodule FinchTest do
             assert is_atom(meta.scheme)
             assert is_integer(meta.port)
             assert is_binary(meta.host)
+            assert is_binary(meta.method)
             send(parent, {ref, :stop})
 
           _ ->
@@ -477,6 +479,7 @@ defmodule FinchTest do
             assert is_atom(meta.scheme)
             assert is_integer(meta.port)
             assert is_binary(meta.host)
+            assert is_binary(meta.method)
             send(parent, {ref, :start})
 
           [:finch, :response, :stop] ->
@@ -485,6 +488,7 @@ defmodule FinchTest do
             assert is_atom(meta.scheme)
             assert is_integer(meta.port)
             assert is_binary(meta.host)
+            assert is_binary(meta.method)
             send(parent, {ref, :stop})
 
           _ ->
