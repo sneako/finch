@@ -78,6 +78,7 @@ defmodule Finch.Telemetry do
     * `:host` - The host address
     * `:port` - the port to connect on.
     * `:path` - The request path.
+    * `:method` - The request method.
 
   * `[:finch, :request, :stop]` - Executed after a request is finished.
 
@@ -89,6 +90,7 @@ defmodule Finch.Telemetry do
     * `:host` - The host address
     * `:port` - the port to connect on.
     * `:path` - The request path.
+    * `:method` - The request method.
     * `:error` - This value is optional. It includes any errors that occured while making the request.
 
   * `[:finch, :response, :start]` - Executed before receiving the response.
@@ -101,6 +103,7 @@ defmodule Finch.Telemetry do
     * `:host` - The host address
     * `:port` - the port to connect on.
     * `:path` - The request path.
+    * `:method` - The request method.
 
   * `[:finch, :response, :stop]` - Executed after a response has been fully received.
 
@@ -112,6 +115,7 @@ defmodule Finch.Telemetry do
     * `:host` - The host address
     * `:port` - the port to connect on.
     * `:path` - The request path.
+    * `:method` - The request method.
     * `:error` - This value is optional. It includes any errors that occured while receiving the response.
 
   * `[:finch, :reused_connection]` - Executed if an existing connection is reused. There are no measurements provided with this event.

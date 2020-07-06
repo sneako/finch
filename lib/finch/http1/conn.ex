@@ -88,7 +88,8 @@ defmodule Finch.Conn do
       scheme: conn.scheme,
       host: conn.host,
       port: conn.port,
-      path: full_path
+      path: full_path,
+      method: req.method
     }
 
     start_time = Telemetry.start(:request, metadata)
