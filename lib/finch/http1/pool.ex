@@ -36,15 +36,15 @@ defmodule Finch.HTTP1.Pool do
       NimblePool.checkout!(
         pool,
         :checkout,
-        fn from, {conn, idle_time} ->
+        fn _from, {conn, idle_time} ->
           Telemetry.stop(:queue, start_time, metadata, %{idle_time: idle_time})
 
           with {:ok, conn} <- Conn.connect(conn),
                {:ok, conn, acc} <- Conn.request(conn, req, acc, fun, receive_timeout) do
-            {{:ok, acc}, transfer_if_open(conn, from)}
+            {{:ok, acc}, transfer_if_open(conn)}
           else
             {:error, conn, error} ->
-              {{:error, error}, transfer_if_open(conn, from)}
+              {{:error, error}, transfer_if_open(conn)}
           end
         end,
         pool_timeout
@@ -75,11 +75,17 @@ defmodule Finch.HTTP1.Pool do
     {:ok, {conn, idle_time}, conn}
   end
 
-  def handle_checkout(:checkout, {pid, _}, conn) do
+  def handle_checkout(:checkout, _from, conn) do
     idle_time = System.monotonic_time() - conn.last_checkin
 
+    peer =
+      case conn.mint.transport do
+        Mint.Core.Transport.TCP -> :inet.peername(conn.mint.socket)
+        Mint.Core.Transport.SSL -> :ssl.peername(conn.mint.socket)
+      end
+
     with {:ok, conn} <- Conn.set_mode(conn, :passive),
-         :ok <- Conn.transfer(conn, pid) do
+         {:ok, _} <- peer do
       {:ok, {conn, idle_time}, conn}
     else
       {:error, _error} ->
@@ -88,8 +94,8 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
-  def handle_checkin(state, _from, conn) do
-    with :prechecked <- state,
+  def handle_checkin(checkin, _from, _old_conn) do
+    with {:ok, conn} <- checkin,
          {:ok, conn} <- Conn.set_mode(conn, :active) do
       {:ok, %{conn | last_checkin: System.monotonic_time()}}
     else
@@ -116,16 +122,9 @@ defmodule Finch.HTTP1.Pool do
     {:ok, pool_state}
   end
 
-  defp transfer_if_open(conn, {pid, _} = from) do
+  defp transfer_if_open(conn) do
     if Conn.open?(conn) do
-      NimblePool.precheckin(from, conn)
-
-      case Conn.transfer(conn, pid) do
-        :ok -> conn
-        {:error, _} -> Conn.close(conn)
-      end
-
-      :prechecked
+      {:ok, conn}
     else
       :closed
     end
