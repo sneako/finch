@@ -33,6 +33,7 @@ defmodule Finch.HTTP2.Pool do
       scheme: request.scheme,
       host: request.host,
       port: request.port,
+      method: request.method,
       path: Finch.Request.request_path(request)
     }
 
