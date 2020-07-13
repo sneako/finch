@@ -52,6 +52,15 @@ defmodule Finch.Conn do
   def open?(%{mint: nil}), do: false
   def open?(%{mint: mint}), do: HTTP.open?(mint)
 
+  def empty_and_open(%{mint: nil}), do: :error
+
+  def empty_and_open(conn) do
+    case HTTP.recv(conn.mint, 0, 0) do
+      {:ok, mint, []} -> {:ok, %{conn | mint: mint}}
+      _ -> :error
+    end
+  end
+
   def set_mode(%{mint: nil}, _), do: {:error, "Connection is dead"}
 
   def set_mode(conn, mode) when mode in [:active, :passive] do
@@ -66,16 +75,6 @@ defmodule Finch.Conn do
   def stream(conn, message) do
     with {:ok, mint, responses} <- HTTP.stream(conn.mint, message) do
       {:ok, %{conn | mint: mint}, responses}
-    end
-  end
-
-  def transfer(%{mint: nil}, _), do: {:error, "Connection is dead"}
-
-  def transfer(conn, pid) do
-    with {:ok, _mint} <- HTTP.controlling_process(conn.mint, pid) do
-      # HTTP.controlling_process causes a side-effect, it doesn't actually change
-      # the conn, so we can ignore the value returned above.
-      :ok
     end
   end
 
