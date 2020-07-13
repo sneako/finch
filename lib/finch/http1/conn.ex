@@ -55,7 +55,7 @@ defmodule Finch.Conn do
   def empty_and_open(%{mint: nil}), do: :error
 
   def empty_and_open(conn) do
-    case HTTP.recv(conn.mint, 0, 0) do
+    case HTTP.recv(conn.mint, 0, 5000) do
       {:ok, mint, []} -> {:ok, %{conn | mint: mint}}
       _ -> :error
     end
