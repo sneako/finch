@@ -16,32 +16,34 @@ defmodule Finch.Conn do
     }
   end
 
-  def connect(%{mint: mint} = conn) when not is_nil(mint) do
+  def connect(%{mint: mint} = conn, {pid, _ref}) when not is_nil(mint) do
     meta = %{
       scheme: conn.scheme,
       host: conn.host,
-      port: conn.port
+      port: conn.port,
+      pool: pid
     }
 
     Telemetry.event(:reused_connection, %{}, meta)
     {:ok, conn}
   end
 
-  def connect(conn) do
+  def connect(conn, {pid, _ref}) do
     meta = %{
       scheme: conn.scheme,
       host: conn.host,
-      port: conn.port
+      port: conn.port,
+      pool: pid
     }
 
     start_time = Telemetry.start(:connect, meta)
     conn_opts = Keyword.merge(conn.opts, mode: :passive)
 
-    case HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts) do
-      {:ok, mint} ->
-        Telemetry.stop(:connect, start_time, meta)
-        {:ok, %{conn | mint: mint}}
-
+    with {:ok, mint} <- HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts),
+         {:ok, mint} <- HTTP.controlling_process(mint, pid) do
+      Telemetry.stop(:connect, start_time, meta)
+      {:ok, %{conn | mint: mint}}
+    else
       {:error, error} ->
         meta = Map.put(meta, :error, error)
         Telemetry.stop(:connect, start_time, meta)
@@ -51,19 +53,6 @@ defmodule Finch.Conn do
 
   def open?(%{mint: nil}), do: false
   def open?(%{mint: mint}), do: HTTP.open?(mint)
-
-  def empty_and_open(%{mint: nil}), do: {:error, "Connection is dead"}
-
-  def empty_and_open(conn) do
-    case HTTP.recv(conn.mint, 0, 0) do
-      {:ok, mint, []} -> {:ok, %{conn | mint: mint}}
-      {:ok, _mint, _responses} -> {:error, :unexpected_response}
-      {:error, mint, :timeout, []} -> {:ok, %{conn | mint: mint}}
-      {:error, _mint, reason, _responses} -> {:error, reason}
-    end
-  end
-
-  def set_mode(%{mint: nil}, _), do: {:error, "Connection is dead"}
 
   def set_mode(conn, mode) when mode in [:active, :passive] do
     case HTTP.set_mode(conn.mint, mode) do
