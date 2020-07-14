@@ -39,12 +39,12 @@ defmodule Finch.HTTP1.Pool do
         fn from, {conn, idle_time} ->
           Telemetry.stop(:queue, start_time, metadata, %{idle_time: idle_time})
 
-          with {:ok, conn} <- Conn.connect(conn, from),
+          with {:ok, conn} <- Conn.connect(conn),
                {:ok, conn, acc} <- Conn.request(conn, req, acc, fun, receive_timeout) do
-            {{:ok, acc}, transfer_if_open(conn)}
+            {{:ok, acc}, transfer_if_open(conn, from)}
           else
             {:error, conn, error} ->
-              {{:error, error}, transfer_if_open(conn)}
+              {{:error, error}, transfer_if_open(conn, from)}
           end
         end,
         pool_timeout
@@ -75,18 +75,21 @@ defmodule Finch.HTTP1.Pool do
     {:ok, {conn, idle_time}, conn}
   end
 
-  def handle_checkout(:checkout, _from, conn) do
+  def handle_checkout(:checkout, {pid, _}, conn) do
     idle_time = System.monotonic_time() - conn.last_checkin
 
-    case Conn.set_mode(conn, :passive) do
-      {:ok, conn} -> {:ok, {conn, idle_time}, conn}
-      _ -> {:remove, :closed}
+    with {:ok, conn} <- Conn.set_mode(conn, :passive),
+         :ok <- Conn.transfer(conn, pid) do
+      {:ok, {conn, idle_time}, conn}
+    else
+      {:error, _error} ->
+        {:remove, :closed}
     end
   end
 
   @impl NimblePool
-  def handle_checkin(checkin, _from, _old_conn) do
-    with {:ok, conn} <- checkin,
+  def handle_checkin(state, _from, conn) do
+    with :prechecked <- state,
          {:ok, conn} <- Conn.set_mode(conn, :active) do
       {:ok, %{conn | last_checkin: System.monotonic_time()}}
     else
@@ -113,9 +116,16 @@ defmodule Finch.HTTP1.Pool do
     {:ok, pool_state}
   end
 
-  defp transfer_if_open(conn) do
+  defp transfer_if_open(conn, {pid, _} = from) do
     if Conn.open?(conn) do
-      {:ok, conn}
+      NimblePool.precheckin(from, conn)
+
+      case Conn.transfer(conn, pid) do
+        :ok -> conn
+        {:error, _} -> Conn.close(conn)
+      end
+
+      :prechecked
     else
       :closed
     end
