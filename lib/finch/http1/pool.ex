@@ -78,8 +78,14 @@ defmodule Finch.HTTP1.Pool do
   def handle_checkout(:checkout, _from, conn) do
     idle_time = System.monotonic_time() - conn.last_checkin
 
-    case Conn.set_mode(conn, :passive) do
-      {:ok, conn} -> {:ok, {conn, idle_time}, conn}
+    with {:ok, conn} <- Conn.set_mode(conn, :passive),
+         {:ok, _} <-
+           (case conn.mint.transport do
+              Mint.Core.Transport.TCP -> :inet.peername(conn.mint.socket)
+              Mint.Core.Transport.SSL -> :ssl.peername(conn.mint.socket)
+            end) do
+      {:ok, {conn, idle_time}, conn}
+    else
       _ -> {:remove, :closed}
     end
   end
