@@ -41,10 +41,10 @@ defmodule Finch.HTTP1.Pool do
 
           with {:ok, conn} <- Conn.connect(conn, from),
                {:ok, conn, acc} <- Conn.request(conn, req, acc, fun, receive_timeout) do
-            {{:ok, acc}, transfer_if_open(conn, from)}
+            {{:ok, acc}, transfer_if_open(conn)}
           else
             {:error, conn, error} ->
-              {{:error, error}, transfer_if_open(conn, from)}
+              {{:error, error}, transfer_if_open(conn)}
           end
         end,
         pool_timeout
@@ -113,9 +113,8 @@ defmodule Finch.HTTP1.Pool do
     {:ok, pool_state}
   end
 
-  defp transfer_if_open(conn, from) do
+  defp transfer_if_open(conn) do
     if Conn.open?(conn) do
-      NimblePool.precheckin(from, conn)
       {:ok, conn}
     else
       :closed
