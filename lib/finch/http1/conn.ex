@@ -52,12 +52,14 @@ defmodule Finch.Conn do
   def open?(%{mint: nil}), do: false
   def open?(%{mint: mint}), do: HTTP.open?(mint)
 
-  def empty_and_open(%{mint: nil}), do: :error
+  def empty_and_open(%{mint: nil}), do: {:error, "Connection is dead"}
 
   def empty_and_open(conn) do
-    case HTTP.recv(conn.mint, 0, 5000) do
+    case HTTP.recv(conn.mint, 0, 0) do
       {:ok, mint, []} -> {:ok, %{conn | mint: mint}}
-      _ -> :error
+      {:ok, _mint, _responses} -> {:error, :unexpected_response}
+      {:error, mint, :timeout, []} -> {:ok, %{conn | mint: mint}}
+      {:error, _mint, reason, _responses} -> {:error, reason}
     end
   end
 
