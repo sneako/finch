@@ -16,34 +16,32 @@ defmodule Finch.Conn do
     }
   end
 
-  def connect(%{mint: mint} = conn, {pid, _ref}) when not is_nil(mint) do
+  def connect(%{mint: mint} = conn) when not is_nil(mint) do
     meta = %{
       scheme: conn.scheme,
       host: conn.host,
-      port: conn.port,
-      pool: pid
+      port: conn.port
     }
 
     Telemetry.event(:reused_connection, %{}, meta)
     {:ok, conn}
   end
 
-  def connect(conn, {pid, _ref}) do
+  def connect(conn) do
     meta = %{
       scheme: conn.scheme,
       host: conn.host,
-      port: conn.port,
-      pool: pid
+      port: conn.port
     }
 
     start_time = Telemetry.start(:connect, meta)
     conn_opts = Keyword.merge(conn.opts, mode: :passive)
 
-    with {:ok, mint} <- HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts),
-         {:ok, mint} <- HTTP.controlling_process(mint, pid) do
-      Telemetry.stop(:connect, start_time, meta)
-      {:ok, %{conn | mint: mint}}
-    else
+    case HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts) do
+      {:ok, mint} ->
+        Telemetry.stop(:connect, start_time, meta)
+        {:ok, %{conn | mint: mint}}
+
       {:error, error} ->
         meta = Map.put(meta, :error, error)
         Telemetry.stop(:connect, start_time, meta)
@@ -53,6 +51,8 @@ defmodule Finch.Conn do
 
   def open?(%{mint: nil}), do: false
   def open?(%{mint: mint}), do: HTTP.open?(mint)
+
+  def set_mode(%{mint: nil}, _), do: {:error, "Connection is dead"}
 
   def set_mode(conn, mode) when mode in [:active, :passive] do
     case HTTP.set_mode(conn.mint, mode) do
@@ -66,6 +66,16 @@ defmodule Finch.Conn do
   def stream(conn, message) do
     with {:ok, mint, responses} <- HTTP.stream(conn.mint, message) do
       {:ok, %{conn | mint: mint}, responses}
+    end
+  end
+
+  def transfer(%{mint: nil}, _), do: {:error, "Connection is dead"}
+
+  def transfer(conn, pid) do
+    with {:ok, _mint} <- HTTP.controlling_process(conn.mint, pid) do
+      # HTTP.controlling_process causes a side-effect, it doesn't actually change
+      # the conn, so we can ignore the value returned above.
+      :ok
     end
   end
 
