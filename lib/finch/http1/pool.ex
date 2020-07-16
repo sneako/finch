@@ -117,10 +117,14 @@ defmodule Finch.HTTP1.Pool do
     if Conn.open?(conn) do
       if state == :fresh do
         NimblePool.precheckin(from, conn)
-        Conn.transfer(conn, pid)
-      end
 
-      {:ok, conn}
+        case Conn.transfer(conn, pid) do
+          {:ok, conn} -> {:ok, conn}
+          {:error, _, _} -> :closed
+        end
+      else
+        {:ok, conn}
+      end
     else
       :closed
     end
