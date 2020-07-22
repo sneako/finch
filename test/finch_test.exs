@@ -1,6 +1,5 @@
 defmodule FinchTest do
   use ExUnit.Case, async: true
-  import ExUnit.CaptureLog
   doctest Finch
 
   alias Finch.Response
@@ -276,14 +275,6 @@ defmodule FinchTest do
       assert {:ok, _} = Finch.build(:get, endpoint(bypass)) |> Finch.request(H1Finch)
 
       stop_supervised(Finch)
-    end
-
-    test "fail to negotiate h2 protocol", _bypass do
-      start_supervised!({Finch, name: H2Finch, pools: %{default: [protocol: :http2]}})
-
-      assert capture_log(fn ->
-        {:error, _} = Finch.build(:get, "https://httpstat.us") |> Finch.request(H2Finch)
-      end) =~ "ALPN protocol not negotiated"
     end
 
     test "caller is unable to override mode", %{bypass: bypass} do
