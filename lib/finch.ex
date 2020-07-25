@@ -197,6 +197,12 @@ defmodule Finch do
   def request(req, name, opts \\ [])
 
   def request(%Request{} = req, name, opts) do
+    metadata = %{
+      pool_name: name,
+      request: req,
+    }
+    start = Telemetry.start(:request, metadata)
+
     acc = {nil, [], []}
 
     fun = fn
@@ -205,13 +211,19 @@ defmodule Finch do
       {:data, value}, {status, headers, body} -> {status, headers, [value | body]}
     end
 
-    with {:ok, {status, headers, body}} <- stream(req, name, acc, fun, opts) do
-      {:ok,
-       %Response{
-         status: status,
-         headers: headers,
-         body: body |> Enum.reverse() |> IO.iodata_to_binary()
-       }}
+    case stream(req, name, acc, fun, opts) do
+      {:ok, {status, headers, body}} ->
+        {:ok,
+         %Response{
+           status: status,
+           headers: headers,
+           body: body |> Enum.reverse() |> IO.iodata_to_binary()
+         }}
+
+      {:error, error} ->
+        metadata = metadata
+        Telemetry.stop(:request, start, metadata)
+        {:error, error}
     end
   end
 
