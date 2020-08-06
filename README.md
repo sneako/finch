@@ -151,13 +151,26 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
   plug LoggerJSON.Plug
   ```
 
-  6. Optionally. Log Ecto queries via Plug:
+  6. Optionally. Use Ecto telemetry for additional metadata:
+
+  Attach telemetry handler for Ecto events in `start/2` function in `application.ex`
+
+  ```ex
+  :ok =
+    :telemetry.attach(
+      "logger-json-ecto",
+      [:my_app, :repo, :query],
+      &LoggerJSON.Ecto.telemetry_logging_handler/4,
+      :debug
+    )
+  ```
+
+  Prevent duplicate logging of events, by setting `log` configuration option to `false`
 
   ```ex
   config :my_app, MyApp.Repo,
     adapter: Ecto.Adapters.Postgres,
-    ...
-    loggers: [{LoggerJSON.Ecto, :log, [:info]}]
+    log: false
   ```
 
 ## Dynamic configuration
