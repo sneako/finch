@@ -169,6 +169,15 @@ defmodule LoggerJSONGoogleTest do
 
       assert %{"message" => "hello"} = log
     end
+
+    test "ignore otp's metadata unixtime" do
+      Logger.configure_backend(LoggerJSON, metadata: :all)
+      log =
+        fn -> Logger.debug("hello") end
+        |> capture_log()
+        |> Jason.decode!()
+      assert not is_integer(log["time"])
+    end
   end
 
   describe "on_init/1 callback" do
