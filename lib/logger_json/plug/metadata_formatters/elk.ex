@@ -12,7 +12,7 @@ if Code.ensure_loaded?(Plug) do
       * `client.ip' - value of `X-Forwarded-For` header if present, otherwise - remote IP of a connected client;
       * `client.api_version' - version of API that was requested by a client;
       * `node.hostname` - system hostname;
-      * `node.pid` - Erlang VM process identifier;
+      * `node.vm_pid` - Erlang VM process identifier;
       * `phoenix.controller` - Phoenix controller that processed the request;
       * `phoenix.action` - Phoenix action that processed the request;
       * `latency_μs` - time in microseconds taken to process the request.
