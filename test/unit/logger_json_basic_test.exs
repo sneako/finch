@@ -64,4 +64,15 @@ defmodule LoggerJSONBasicTest do
       assert %{} == log["metadata"]
     end
   end
+
+  test "logs chardata messages" do
+    Logger.configure_backend(LoggerJSON, metadata: :all)
+
+    log =
+      fn -> Logger.debug([?α, ?β, ?ω]) end
+      |> capture_log()
+      |> Jason.decode!()
+
+    assert %{"message" => "αβω"} = log
+  end
 end

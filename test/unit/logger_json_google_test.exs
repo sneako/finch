@@ -85,6 +85,17 @@ defmodule LoggerJSONGoogleTest do
     assert %{"message" => "hello"} = log
   end
 
+  test "logs chardata messages" do
+    Logger.configure_backend(LoggerJSON, metadata: :all)
+
+    log =
+      fn -> Logger.debug([?π, ?α, ?β]) end
+      |> capture_log()
+      |> Jason.decode!()
+
+    assert %{"message" => "παβ"} = log
+  end
+
   test "log message does not break escaping" do
     Logger.configure_backend(LoggerJSON, metadata: :all)
 

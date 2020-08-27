@@ -16,7 +16,7 @@ defmodule LoggerJSON.Formatters.BasicLogger do
     json_map(
       time: FormatterUtils.format_timestamp(ts),
       severity: Atom.to_string(level),
-      message: IO.iodata_to_binary(msg),
+      message: IO.chardata_to_string(msg),
       metadata: format_metadata(md, md_keys)
     )
   end
