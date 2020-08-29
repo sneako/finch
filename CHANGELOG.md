@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.3.1 (2020-08-29)
+* Add HTTP method to telemetry events
+* BUGFIX - Include query parameters in HTTP/2 requests
+
 ## v0.3.0 (2020-06-24)
 * HTTP/2 support
 * Streaming support for both http/1.1 and http/2 pools
