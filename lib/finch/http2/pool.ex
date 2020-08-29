@@ -193,7 +193,7 @@ defmodule Finch.HTTP2.Pool do
   # Issue request to the upstream server. We store a ref to the request so we
   # know who to respond to when we've completed everything
   def connected({:call, {from_pid, _}=from}, {:request, req, opts}, data) do
-    case HTTP2.request(data.conn, req.method, req.path, req.headers, req.body) do
+    case HTTP2.request(data.conn, req.method, Finch.Request.request_path(req), req.headers, req.body) do
       {:ok, conn, ref} ->
         data =
           data

@@ -45,6 +45,15 @@ defmodule Finch.HTTP2Server.PlugRouter do
     |> halt()
   end
 
+  get "/query" do
+    conn = fetch_query_params(conn)
+    response = URI.encode_query(conn.query_params)
+
+    conn
+    |> send_resp(200, response)
+    |> halt()
+  end
+
   get "/wait/:delay" do
     delay = conn.params["delay"] |> String.to_integer()
     Process.sleep(delay)

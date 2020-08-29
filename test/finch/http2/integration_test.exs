@@ -28,6 +28,26 @@ defmodule Finch.HTTP2.IntegrationTest do
     assert response.body == "Hello world!"
   end
 
+  test "sends the query string", %{url: url} do
+    start_supervised!({Finch, name: TestFinch, pools: %{
+      default: [
+        protocol: :http2,
+        count: 5,
+        conn_opts: [
+          transport_opts: [
+            verify: :verify_none
+          ]
+        ]
+      ]
+    }})
+
+    query_string = URI.encode_query([test: true, these: "params"])
+    url = url <> "/query?" <> query_string
+
+    assert {:ok, response} = Finch.build(:get, url) |> Finch.request(TestFinch)
+    assert response.body == query_string
+  end
+
   test "multiplexes requests over a single pool", %{url: url} do
     start_supervised!({Finch, name: TestFinch, pools: %{
       default: [
