@@ -1,7 +1,7 @@
 defmodule LoggerJSON.Mixfile do
   use Mix.Project
 
-  @version "4.0.0"
+  @version "4.1.0"
 
   def project do
     [
