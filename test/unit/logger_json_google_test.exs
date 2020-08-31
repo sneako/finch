@@ -4,6 +4,8 @@ defmodule LoggerJSONGoogleTest do
   require Logger
   alias LoggerJSON.Formatters.GoogleCloudLogger
 
+  defmodule IDStruct, do: defstruct(id: nil)
+
   setup do
     :ok =
       Logger.configure_backend(
@@ -15,6 +17,8 @@ defmodule LoggerJSONGoogleTest do
         on_init: :disabled,
         formatter: GoogleCloudLogger
       )
+
+    :ok = Logger.reset_metadata([])
   end
 
   describe "configure_log_level!/1" do
@@ -183,11 +187,26 @@ defmodule LoggerJSONGoogleTest do
 
     test "ignore otp's metadata unixtime" do
       Logger.configure_backend(LoggerJSON, metadata: :all)
+
       log =
         fn -> Logger.debug("hello") end
         |> capture_log()
         |> Jason.decode!()
+
       assert not is_integer(log["time"])
+    end
+
+    test "converts Struct metadata to maps" do
+      Logger.configure_backend(LoggerJSON, metadata: :all)
+
+      Logger.metadata(id_struct: %IDStruct{id: "test"})
+
+      log =
+        fn -> Logger.debug("hello") end
+        |> capture_log()
+        |> Jason.decode!()
+
+      assert %{"id_struct" => %{"id" => "test"}} = log
     end
   end
 

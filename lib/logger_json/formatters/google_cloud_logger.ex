@@ -4,7 +4,7 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
   """
   import Jason.Helpers, only: [json_map: 1]
 
-  alias LoggerJSON.FormatterUtils
+  alias LoggerJSON.{FormatterUtils, JasonSafeFormatter}
 
   @behaviour LoggerJSON.Formatter
 
@@ -51,6 +51,7 @@ defmodule LoggerJSON.Formatters.GoogleCloudLogger do
 
   defp format_metadata(md, md_keys) do
     LoggerJSON.take_metadata(md, md_keys, @processed_metadata_keys)
+    |> JasonSafeFormatter.format()
     |> FormatterUtils.maybe_put(:error, FormatterUtils.format_process_crash(md))
     |> FormatterUtils.maybe_put(:"logging.googleapis.com/sourceLocation", format_source_location(md))
     |> FormatterUtils.maybe_put(:"logging.googleapis.com/operation", format_operation(md))

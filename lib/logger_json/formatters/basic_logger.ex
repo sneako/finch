@@ -5,7 +5,7 @@ defmodule LoggerJSON.Formatters.BasicLogger do
 
   import Jason.Helpers, only: [json_map: 1]
 
-  alias LoggerJSON.FormatterUtils
+  alias LoggerJSON.{FormatterUtils, JasonSafeFormatter}
 
   @behaviour LoggerJSON.Formatter
 
@@ -25,5 +25,6 @@ defmodule LoggerJSON.Formatters.BasicLogger do
     md
     |> LoggerJSON.take_metadata(md_keys, @processed_metadata_keys)
     |> FormatterUtils.maybe_put(:error, FormatterUtils.format_process_crash(md))
+    |> JasonSafeFormatter.format()
   end
 end

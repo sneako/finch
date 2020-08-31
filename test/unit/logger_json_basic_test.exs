@@ -3,6 +3,8 @@ defmodule LoggerJSONBasicTest do
   require Logger
   alias LoggerJSON.Formatters.BasicLogger
 
+  defmodule IDStruct, do: defstruct(id: nil)
+
   setup do
     :ok =
       Logger.configure_backend(
@@ -62,6 +64,19 @@ defmodule LoggerJSONBasicTest do
 
       assert %{"message" => "hello"} = log
       assert %{} == log["metadata"]
+    end
+
+    test "converts Struct metadata to maps" do
+      Logger.configure_backend(LoggerJSON, metadata: :all)
+
+      Logger.metadata(id_struct: %IDStruct{id: "test"})
+
+      log =
+        fn -> Logger.debug("hello") end
+        |> capture_log()
+        |> Jason.decode!()
+
+      assert %{"metadata" => %{"id_struct" => %{"id" => "test"}}} = log
     end
   end
 
