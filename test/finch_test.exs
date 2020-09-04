@@ -427,20 +427,23 @@ defmodule FinchTest do
         case event do
           [:finch, :request, :start] ->
             assert is_integer(measurements.system_time)
-            assert is_binary(meta.path)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            assert is_binary(meta.method)
+            assert meta.pool_name == MyFinch
+            assert match?(%Finch.Request{}, meta.request)
+            # assert is_atom(meta.scheme)
+            # assert is_integer(meta.port)
+            # assert is_binary(meta.host)
+            # assert is_binary(meta.method)
             send(parent, {ref, :start})
 
           [:finch, :request, :stop] ->
             assert is_integer(measurements.duration)
-            assert is_binary(meta.path)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            assert is_binary(meta.method)
+            assert match?(%Finch.Request{}, meta.request)
+            assert match?(%Finch.Response{}, meta.response)
+            # assert is_binary(meta.path)
+            # assert is_atom(meta.scheme)
+            # assert is_integer(meta.port)
+            # assert is_binary(meta.host)
+            # assert is_binary(meta.method)
             send(parent, {ref, :stop})
 
           _ ->

@@ -37,10 +37,10 @@ defmodule Finch.HTTP2.Pool do
       path: Finch.Request.request_path(request)
     }
 
-    start_time = Telemetry.start(:request, metadata)
+    # start_time = Telemetry.start(:request, metadata)
 
     with {:ok, ref} <- :gen_statem.call(pool, {:request, request, opts}) do
-      Telemetry.stop(:request, start_time, metadata)
+      # Telemetry.stop(:request, start_time, metadata)
       monitor = Process.monitor(pool)
       # If the timeout is an integer, we add a fail-safe "after" clause that fires
       # after a timeout that is double the original timeout (min 2000ms). This means

@@ -89,11 +89,11 @@ defmodule Finch.Conn do
       method: req.method
     }
 
-    start_time = Telemetry.start(:request, metadata)
+    # start_time = Telemetry.start(:request, metadata)
 
     case HTTP.request(conn.mint, req.method, full_path, req.headers, req.body) do
       {:ok, mint, ref} ->
-        Telemetry.stop(:request, start_time, metadata)
+        # Telemetry.stop(:request, start_time, metadata)
         start_time = Telemetry.start(:response, metadata)
 
         case receive_response([], acc, fun, mint, ref, receive_timeout) do
@@ -108,8 +108,8 @@ defmodule Finch.Conn do
         end
 
       {:error, mint, error} ->
-        metadata = Map.put(metadata, :error, error)
-        Telemetry.stop(:request, start_time, metadata)
+        # metadata = Map.put(metadata, :error, error)
+        # Telemetry.stop(:request, start_time, metadata)
         {:error, %{conn | mint: mint}, error}
     end
   end
