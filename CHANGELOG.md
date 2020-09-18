@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.3.2 (2020-09-18)
+* Add metadata to connection start telemetry in http/2 pools
+
 ## v0.3.1 (2020-08-29)
 * Add HTTP method to telemetry events
 * BUGFIX - Include query parameters in HTTP/2 requests
