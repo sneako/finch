@@ -143,7 +143,7 @@ defmodule Finch.HTTP2.Pool do
       host: data.host,
       port: data.port,
     }
-    start = Telemetry.start(:connect)
+    start = Telemetry.start(:connect, metadata)
     case HTTP2.connect(data.scheme, data.host, data.port, data.connect_opts) do
       {:ok, conn} ->
         Telemetry.stop(:connect, start, metadata)
