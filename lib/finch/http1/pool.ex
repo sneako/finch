@@ -102,10 +102,9 @@ defmodule Finch.HTTP1.Pool do
 
   @impl NimblePool
   def handle_info(message, conn) do
-    case Conn.stream(conn, message) do
-      {:ok, conn, _} -> {:ok, conn}
+    case Conn.discard(conn, message) do
+      {:ok, conn} -> {:ok, conn}
       :unknown -> {:ok, conn}
-      {:error, _mint, _error, _responses} -> {:remove, :closed}
       {:error, _error} -> {:remove, :closed}
     end
   end
