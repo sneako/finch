@@ -1,7 +1,7 @@
 defmodule Finch.Conn do
   @moduledoc false
 
-  alias Mint.HTTP
+  alias Mint.HTTP1
   alias Finch.Telemetry
 
   def new(scheme, host, port, opts, parent) do
@@ -37,7 +37,7 @@ defmodule Finch.Conn do
     start_time = Telemetry.start(:connect, meta)
     conn_opts = Keyword.merge(conn.opts, mode: :passive)
 
-    case HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts) do
+    case HTTP1.connect(conn.scheme, conn.host, conn.port, conn_opts) do
       {:ok, mint} ->
         Telemetry.stop(:connect, start_time, meta)
         {:ok, %{conn | mint: mint}}
@@ -50,8 +50,8 @@ defmodule Finch.Conn do
   end
 
   def transfer(conn, pid) do
-    case HTTP.controlling_process(conn.mint, pid) do
-      # HTTP.controlling_process causes a side-effect, but it doesn't actually
+    case HTTP1.controlling_process(conn.mint, pid) do
+      # HTTP1.controlling_process causes a side-effect, but it doesn't actually
       # change the conn, so we can ignore the value returned above.
       {:ok, _} -> {:ok, conn}
       {:error, error} -> {:error, conn, error}
@@ -59,10 +59,10 @@ defmodule Finch.Conn do
   end
 
   def open?(%{mint: nil}), do: false
-  def open?(%{mint: mint}), do: HTTP.open?(mint)
+  def open?(%{mint: mint}), do: HTTP1.open?(mint)
 
   def set_mode(conn, mode) when mode in [:active, :passive] do
-    case HTTP.set_mode(conn.mint, mode) do
+    case HTTP1.set_mode(conn.mint, mode) do
       {:ok, mint} -> {:ok, %{conn | mint: mint}}
       _ -> {:error, "Connection is dead"}
     end
@@ -71,7 +71,7 @@ defmodule Finch.Conn do
   def stream(%{mint: nil}, _), do: {:error, "Connection is dead"}
 
   def stream(conn, message) do
-    with {:ok, mint, responses} <- HTTP.stream(conn.mint, message) do
+    with {:ok, mint, responses} <- HTTP1.stream(conn.mint, message) do
       {:ok, %{conn | mint: mint}, responses}
     end
   end
@@ -91,7 +91,7 @@ defmodule Finch.Conn do
 
     start_time = Telemetry.start(:request, metadata)
 
-    case HTTP.request(conn.mint, req.method, full_path, req.headers, req.body) do
+    case HTTP1.request(conn.mint, req.method, full_path, req.headers, req.body) do
       {:ok, mint, ref} ->
         Telemetry.stop(:request, start_time, metadata)
         start_time = Telemetry.start(:response, metadata)
@@ -117,12 +117,12 @@ defmodule Finch.Conn do
   def close(%{mint: nil} = conn), do: conn
 
   def close(conn) do
-    {:ok, mint} = HTTP.close(conn.mint)
+    {:ok, mint} = HTTP1.close(conn.mint)
     %{conn | mint: mint}
   end
 
   defp receive_response([], acc, fun, mint, ref, timeout) do
-    case HTTP.recv(mint, 0, timeout) do
+    case HTTP1.recv(mint, 0, timeout) do
       {:ok, mint, entries} ->
         receive_response(entries, acc, fun, mint, ref, timeout)
 
