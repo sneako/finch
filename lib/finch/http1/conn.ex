@@ -68,11 +68,13 @@ defmodule Finch.Conn do
     end
   end
 
-  def stream(%{mint: nil}, _), do: {:error, "Connection is dead"}
+  def discard(%{mint: nil}, _), do: :unknown
 
-  def stream(conn, message) do
-    with {:ok, mint, responses} <- HTTP1.stream(conn.mint, message) do
-      {:ok, %{conn | mint: mint}, responses}
+  def discard(conn, message) do
+    case HTTP1.stream(conn.mint, message) do
+      {:ok, mint, _responses} -> {:ok, %{conn | mint: mint}}
+      {:error, _, reason, _} -> {:error, reason}
+      :unknown -> :unknown
     end
   end
 
