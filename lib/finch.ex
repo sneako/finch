@@ -101,8 +101,7 @@ defmodule Finch do
         Map.put(acc, valid_destination, valid_pool_opts)
       else
         {:error, reason} ->
-          raise ArgumentError,
-                "got invalid configuration for pool #{inspect(destination)}! #{reason}"
+          raise reason
       end
     end)
   end
@@ -116,7 +115,7 @@ defmodule Finch do
         cast_binary_destination(url)
 
       _ ->
-        {:error, "invalid destination"}
+        {:error, %ArgumentError{message: "invalid destination"}}
     end
   end
 
