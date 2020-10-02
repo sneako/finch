@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.4.0 (2020-10-2)
+* Update all dependencies. This includes bug fixes for Mint.
+
 ## v0.3.2 (2020-09-18)
 * Add metadata to connection start telemetry in http/2 pools
 
