@@ -1,6 +1,5 @@
 defmodule FinchTest do
   use ExUnit.Case, async: true
-  import ExUnit.CaptureLog
   doctest Finch
 
   alias Finch.Response
@@ -41,7 +40,7 @@ defmodule FinchTest do
     end
 
     test "raises when invalid configuration is provided" do
-      assert_raise(ArgumentError, ~r/got invalid configuration/, fn ->
+      assert_raise(NimbleOptions.ValidationError, ~r/expected :count to be a positive integer/, fn ->
         Finch.start_link(name: MyFinch, pools: %{default: [count: :dog]})
       end)
 
@@ -279,9 +278,7 @@ defmodule FinchTest do
 
       start_supervised!({Finch, name: H2Finch, pools: %{default: [protocol: :http2]}})
 
-      capture_log(fn ->
-        assert {:error, _} = Finch.build(:get, endpoint(bypass)) |> Finch.request(H2Finch)
-      end) =~ "failed to negotiate protocol"
+      assert {:ok, _} = Finch.build(:get, endpoint(bypass)) |> Finch.request(H2Finch)
     end
 
     test "caller is unable to override mode", %{bypass: bypass} do
