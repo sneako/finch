@@ -70,29 +70,34 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
-  def handle_checkout(:checkout, _, %{mint: nil} = conn) do
+  def handle_checkout(:checkout, _, %{mint: nil} = conn, pool_state) do
     idle_time = System.monotonic_time() - conn.last_checkin
-    {:ok, {:fresh, conn, idle_time}, conn}
+    {:ok, {:fresh, conn, idle_time}, conn, pool_state}
   end
 
-  def handle_checkout(:checkout, _from, conn) do
+  def handle_checkout(:checkout, _from, conn, pool_state) do
     idle_time = System.monotonic_time() - conn.last_checkin
 
     case Conn.set_mode(conn, :passive) do
-      {:ok, conn} -> {:ok, {:reuse, conn, idle_time}, conn}
-      _ -> {:remove, :closed}
+      {:ok, conn} -> {:ok, {:reuse, conn, idle_time}, conn, pool_state}
+      _ -> {:remove, :closed, pool_state}
     end
   end
 
   @impl NimblePool
-  def handle_checkin(checkin, _from, _old_conn) do
+  def handle_checkin(checkin, _from, _old_conn, pool_state) do
     with {:ok, conn} <- checkin,
          {:ok, conn} <- Conn.set_mode(conn, :active) do
-      {:ok, %{conn | last_checkin: System.monotonic_time()}}
+      {:ok, %{conn | last_checkin: System.monotonic_time()}, pool_state}
     else
       _ ->
-        {:remove, :closed}
+        {:remove, :closed, pool_state}
     end
+  end
+
+  @impl NimblePool
+  def handle_update(new_conn, _old_conn, pool_state) do
+    {:ok, new_conn, pool_state}
   end
 
   @impl NimblePool
@@ -116,7 +121,7 @@ defmodule Finch.HTTP1.Pool do
   defp transfer_if_open(conn, state, {pid, _} = from) do
     if Conn.open?(conn) do
       if state == :fresh do
-        NimblePool.precheckin(from, conn)
+        NimblePool.update(from, conn)
 
         case Conn.transfer(conn, pid) do
           {:ok, conn} -> {:ok, conn}
