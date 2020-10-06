@@ -111,7 +111,7 @@ config :logger_json, :backend,
 
 It's [available on Hex](https://hex.pm/packages/logger_json), the package can be installed as:
 
-  1. Add `:logger_json` and `:jason` to your list of dependencies in `mix.exs`:
+  1. Add `:logger_json` to your list of dependencies in `mix.exs`:
 
   ```ex
   def deps do
@@ -119,15 +119,7 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
   end
   ```
 
-  2. Ensure `logger_json` and `:jason` is started before your application:
-
-  ```ex
-  def application do
-    [extra_applications: [:jason, :logger_json]]
-  end
-  ```
-
-  3. Set configuration in your `config/config.exs`:
+  2. Set configuration in your `config/config.exs`:
 
   ```ex
   config :logger_json, :backend,
@@ -138,20 +130,20 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
   and response parameters. You can reduce log size by replacing `:all`
   (which means log all) with a list of the ones that you actually need.
 
-  4. Replace default Logger `:console` back-end with `LoggerJSON`:
+  3. Replace default Logger `:console` back-end with `LoggerJSON`:
 
   ```ex
   config :logger,
     backends: [LoggerJSON]
   ```
 
-  5. Optionally. Log requests and responses by replacing a `Plug.Logger` in your endpoint with a:
+  4. Optionally. Log requests and responses by replacing a `Plug.Logger` in your endpoint with a:
 
   ```ex
   plug LoggerJSON.Plug
   ```
 
-  6. Optionally. Use Ecto telemetry for additional metadata:
+  5. Optionally. Use Ecto telemetry for additional metadata:
 
   Attach telemetry handler for Ecto events in `start/2` function in `application.ex`
 
