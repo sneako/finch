@@ -35,9 +35,12 @@ defmodule Finch.Conn do
     }
 
     start_time = Telemetry.start(:connect, meta)
-    conn_opts = Keyword.merge(conn.opts, mode: :passive)
 
-    case HTTP1.connect(conn.scheme, conn.host, conn.port, conn_opts) do
+    # We have to use Mint's top-level connect function or else proxying won't work. So we
+    # force the connection to use http1 and call it in this roundabout way.
+    conn_opts = Keyword.merge(conn.opts, mode: :passive, protocols: [:http1])
+
+    case Mint.HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts) do
       {:ok, mint} ->
         Telemetry.stop(:connect, start_time, meta)
         {:ok, %{conn | mint: mint}}
