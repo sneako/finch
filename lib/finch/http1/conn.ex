@@ -71,6 +71,8 @@ defmodule Finch.Conn do
     System.convert_time_unit(idle_time, :native, unit)
   end
 
+  def reusable?(%{max_idle_time: :infinity}), do: true
+
   def reusable?(conn) do
     idle_time(conn, :millisecond) < conn.max_idle_time
   end
