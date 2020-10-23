@@ -127,6 +127,14 @@ defmodule Finch.HTTP2.Pool do
       send(from, {:error, ref, %{reason: :connection_closed}})
     end)
 
+    # It's possible that we're entering this state before we are alerted of the
+    # fact that the socket is closed. This most often happens if we're in a read
+    # only state but have no pending requests to wait on. In this case we can just
+    # close the connection and throw it away.
+    if data.conn do
+      HTTP2.close(data.conn)
+    end
+
     data =
       data
       |> Map.put(:requests, %{})
@@ -211,7 +219,11 @@ defmodule Finch.HTTP2.Pool do
       {:error, conn, %HTTPError{reason: :closed_for_writing}} ->
         data = put_in(data.conn, conn)
         actions = [{:reply, from, {:error, "read_only"}}]
-        {:next_state, :connected_read_only, data, actions}
+        if HTTP2.open?(conn, :read) && Enum.any?(data.requests) do
+          {:next_state, :connected_read_only, data, actions}
+        else
+          {:next_state, :disconnected, data, actions}
+        end
 
       {:error, conn, error} ->
         data = put_in(data.conn, conn)
@@ -235,7 +247,7 @@ defmodule Finch.HTTP2.Pool do
           HTTP2.open?(conn, :write) ->
             {:keep_state, data, actions}
 
-          HTTP2.open?(conn, :read) ->
+          HTTP2.open?(conn, :read) && Enum.any?(data.requests) ->
             {:next_state, :connected_read_only, data, actions}
 
           true ->
@@ -251,7 +263,7 @@ defmodule Finch.HTTP2.Pool do
         data = put_in(data.conn, conn)
         {data, actions} = handle_responses(data, responses)
 
-        if HTTP2.open?(conn, :read) do
+        if HTTP2.open?(conn, :read) && Enum.any?(data.requests) do
           {:next_state, :connected_read_only, data, actions}
         else
           {:next_state, :disconnected, data, actions}
@@ -277,7 +289,8 @@ defmodule Finch.HTTP2.Pool do
           HTTP2.open?(conn, :write) ->
             {:keep_state, data}
 
-          HTTP2.open?(conn, :read) ->
+          # Don't bother entering read only mode if we don't have any pending requests.
+          HTTP2.open?(conn, :read) && Enum.any?(data.requests)  ->
             {:next_state, :connected_read_only, data}
 
           true ->
@@ -310,7 +323,10 @@ defmodule Finch.HTTP2.Pool do
         data = put_in(data.conn, conn)
         {data, actions} = handle_responses(data, responses)
 
-        if HTTP2.open?(conn, :read) do
+        # If the connection is still open for reading and we have pending requests
+        # to receive, we should try to wait for the responses. Otherwise enter
+        # the disconnected state so we can try to re-establish a connection.
+        if HTTP2.open?(conn, :read) && Enum.any?(data.requests) do
           {:keep_state, data, actions}
         else
           {:next_state, :disconnected, data, actions}
@@ -325,7 +341,10 @@ defmodule Finch.HTTP2.Pool do
         data = put_in(data.conn, conn)
         {data, actions} = handle_responses(data, responses)
 
-        if HTTP2.open?(conn, :read) do
+        # Same as above, if we're still waiting on responses, we should stay in
+        # this state. Otherwise, we should enter the disconnected state and try
+        # to re-establish a connection.
+        if HTTP2.open?(conn, :read) && Enum.any?(data.requests) do
           {:keep_state, data, actions}
         else
           {:next_state, :disconnected, data, actions}
@@ -343,13 +362,19 @@ defmodule Finch.HTTP2.Pool do
     # We might get a request timeout that fired in the moment when we received the
     # whole request, so we don't have the request in the state but we get the
     # timer event anyways. In those cases, we don't do anything.
-    case pop_in(data.requests[ref]) do
-      {nil, _data} ->
-        :keep_state_and_data
+    {from, data} = pop_in(data.requests[ref])
 
-      {from, data} ->
-        send(from, {:error, ref, :request_timeout})
-        {:keep_state, data}
+    # Its possible that the request doesn't exist so we guard against that here.
+    if from != nil do
+      send(from, {:error, ref, :request_timeout})
+    end
+
+    # If we're out of requests then we should enter the disconnected state.
+    # Otherwise wait for the remaining responses.
+    if Enum.empty?(data.requests) do
+      {:next_state, :disconnected, data}
+    else
+      {:keep_state, data}
     end
   end
 

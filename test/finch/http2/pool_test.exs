@@ -84,16 +84,22 @@ defmodule Finch.HTTP2.PoolTest do
 
     hbf = server_encode_headers([{":status", "200"}])
 
+    # Force the connection to enter read only mode
     server_send_frames([
       goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "all good"),
+    ])
+
+    :timer.sleep(10)
+
+    # We can't send any more requests since the connection is closed for writing.
+    assert {:error, %{reason: :read_only}} = request(pool, req, [])
+
+    server_send_frames([
       headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
       data(stream_id: stream_id, data: "hello", flags: set_flags(:data, [:end_stream]))
     ])
 
     assert_receive {:resp, {:ok, {200, [], "hello"}}}
-
-    # We can't send any more requests since the connection is closed for writing.
-    assert {:error, %{reason: :read_only}} = request(pool, req, [])
 
     # If the server now closes the socket, we actually shut down.
     :ok = :ssl.close(server_socket())
