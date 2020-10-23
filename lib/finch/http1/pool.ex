@@ -14,8 +14,11 @@ defmodule Finch.HTTP1.Pool do
   end
 
   def start_link({shp, registry_name, pool_size, conn_opts}) do
-    opts = [worker: {__MODULE__, {registry_name, shp, conn_opts}}, pool_size: pool_size]
-    NimblePool.start_link(opts)
+    NimblePool.start_link(
+      worker: {__MODULE__, {registry_name, shp, conn_opts}},
+      pool_size: pool_size,
+      strategy: :lifo
+    )
   end
 
   @impl Finch.Pool
