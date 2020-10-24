@@ -20,22 +20,12 @@ defmodule Finch do
     ],
     size: [
       type: :pos_integer,
-      doc: """
-      Number of connections to maintain in each pool. Used only by HTTP1 pools \
-      since HTTP2 is able to multiplex requests through a single connection. In \
-      other words, for HTTP2, the size is always 1.
-      """,
+      doc: "Number of connections to maintain in each pool.",
       default: @default_pool_size
     ],
     count: [
       type: :pos_integer,
-      doc: """
-      Number of pools to start. HTTP1 pools are able to re-use connections in the \
-      same pool and establish new ones only when necessary. However, if there is a \
-      high pool count and few requests are made, these requests will be scattered \
-      across pools, reducing connection reuse. It is recommended to increase the pool \
-      count for HTTP1 only if you are experiencing high checkout times.
-      """,
+      doc: "Number of pools to start.",
       default: @default_pool_count
     ],
     max_idle_time: [
