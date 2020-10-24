@@ -12,6 +12,7 @@ defmodule Finch.Conn do
       opts: opts.conn_opts,
       parent: parent,
       last_checkin: System.monotonic_time(),
+      max_idle_time: opts.max_idle_time,
       mint: nil
     }
   end
@@ -63,6 +64,18 @@ defmodule Finch.Conn do
 
   def open?(%{mint: nil}), do: false
   def open?(%{mint: mint}), do: HTTP1.open?(mint)
+
+  def idle_time(conn, unit \\ :native) do
+    idle_time = System.monotonic_time() - conn.last_checkin
+
+    System.convert_time_unit(idle_time, :native, unit)
+  end
+
+  def reusable?(%{max_idle_time: :infinity}), do: true
+
+  def reusable?(conn) do
+    idle_time(conn, :millisecond) < conn.max_idle_time
+  end
 
   def set_mode(conn, mode) when mode in [:active, :passive] do
     case HTTP1.set_mode(conn.mint, mode) do

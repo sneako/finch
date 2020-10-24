@@ -38,6 +38,12 @@ defmodule Finch do
       """,
       default: @default_pool_count
     ],
+    max_idle_time: [
+      type: :timeout,
+      doc:
+        "The maxiumum number of milliseconds an HTTP1 connection is allowed to be idle before being closed during a checkout attempt",
+      default: :infinity
+    ],
     conn_opts: [
       type: :keyword_list,
       doc:
@@ -145,7 +151,8 @@ defmodule Finch do
       size: valid[:size],
       count: valid[:count],
       conn_opts: valid[:conn_opts],
-      protocol: valid[:protocol]
+      protocol: valid[:protocol],
+      max_idle_time: valid[:max_idle_time]
     }
   end
 
