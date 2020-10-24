@@ -17,6 +17,10 @@ defmodule Finch.Conn do
     }
   end
 
+  def reset(conn) do
+    %{conn | mint: nil}
+  end
+
   def connect(%{mint: mint} = conn) when not is_nil(mint) do
     meta = %{
       scheme: conn.scheme,

@@ -43,7 +43,7 @@ defmodule Finch.HTTP1.Pool do
           Telemetry.stop(:queue, start_time, metadata, %{idle_time: idle_time})
 
           with {:ok, conn} <- Conn.connect(conn),
-               {:ok, conn, acc} <- Conn.request(conn, req, acc, fun, receive_timeout) do
+               {:ok, conn, acc} <- attempt_request(conn, req, acc, fun, receive_timeout) do
             {{:ok, acc}, transfer_if_open(conn, state, from)}
           else
             {:error, conn, error} ->
@@ -56,6 +56,24 @@ defmodule Finch.HTTP1.Pool do
       :exit, data ->
         Telemetry.exception(:queue, start_time, :exit, data, __STACKTRACE__, metadata)
         exit(data)
+    end
+  end
+
+  defp attempt_request(conn, req, acc, fun, receive_timeout) do
+    # Its possible to hit a race condition where we try to initiate a request
+    # and the connection is closed at the same time. When this happens,
+    # the request hasn't made it to the server, so we can attempt to re-open
+    # a connection immediately and re-issue the request. If that doesn't work
+    # we bail out. If the request works or we see any other errors we let them fall through.
+    case Conn.request(conn, req, acc, fun, receive_timeout) do
+      {:error, conn, %{reason: :closed}} ->
+        conn = Conn.reset(conn)
+        with {:ok, conn} <- Conn.connect(conn) do
+          Conn.request(conn, req, acc, fun, receive_timeout)
+        end
+
+      other ->
+        other
     end
   end
 
