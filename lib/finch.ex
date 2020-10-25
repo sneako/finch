@@ -152,9 +152,12 @@ defmodule Finch do
       count: valid[:count],
       conn_opts: valid[:conn_opts],
       protocol: valid[:protocol],
-      max_idle_time: valid[:max_idle_time]
+      max_idle_time: to_native(valid[:max_idle_time])
     }
   end
+
+  defp to_native(:infinity), do: :infinity
+  defp to_native(time), do: System.convert_time_unit(time, :millisecond, :native)
 
   defp supervisor_name(name), do: :"#{name}.Supervisor"
   defp manager_name(name), do: :"#{name}.PoolManager"
