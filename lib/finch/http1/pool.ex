@@ -17,7 +17,7 @@ defmodule Finch.HTTP1.Pool do
     NimblePool.start_link(
       worker: {__MODULE__, {registry_name, shp, conn_opts}},
       pool_size: pool_size,
-      strategy: :lifo
+      lazy: true
     )
   end
 
