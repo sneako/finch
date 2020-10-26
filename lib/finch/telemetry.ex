@@ -20,6 +20,7 @@ defmodule Finch.Telemetry do
       * `:port` - the port to connect on.
 
   * `[:finch, :queue, :stop]` - Executed after a connection is retrieved from the pool.
+
     #### Measurements
 
     * `:duration` - Duration to check out a pool connection.
@@ -33,6 +34,7 @@ defmodule Finch.Telemetry do
     * `:port` - the port to connect on.
 
   * `[:finch, :queue, :exception]` - Executed if checking out a connection throws an exception.
+
     #### Measurements
 
     * `:duration` - The time it took before raising an exception
@@ -124,6 +126,18 @@ defmodule Finch.Telemetry do
     * `:scheme` - The scheme used in the connection. either `http` or `https`
     * `:host` - The host address
     * `:port` - the port to connect on.
+
+  * `[:finch, :max_idle_time_exceeded]` - Executed if a connection was discarded because the max_idle_time had been reached.
+
+    #### Measurements:
+    * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
+
+    #### Metadata
+
+    * `:scheme` - The scheme used in the connection. either `http` or `https`
+    * `:host` - The host address
+    * `:port` - the port to connect on.
+
   """
 
   @doc false

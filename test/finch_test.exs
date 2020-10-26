@@ -40,9 +40,13 @@ defmodule FinchTest do
     end
 
     test "raises when invalid configuration is provided" do
-      assert_raise(NimbleOptions.ValidationError, ~r/expected :count to be a positive integer/, fn ->
-        Finch.start_link(name: MyFinch, pools: %{default: [count: :dog]})
-      end)
+      assert_raise(
+        NimbleOptions.ValidationError,
+        ~r/expected :count to be a positive integer/,
+        fn ->
+          Finch.start_link(name: MyFinch, pools: %{default: [count: :dog]})
+        end
+      )
 
       assert_raise(ArgumentError, ~r/invalid destination/, fn ->
         Finch.start_link(name: MyFinch, pools: %{invalid: [count: 5, size: 5]})
@@ -502,6 +506,102 @@ defmodule FinchTest do
       assert {:ok, %{status: 200}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(client)
       assert_receive {^ref, :start}
       assert_receive {^ref, :stop}
+
+      :telemetry.detach(to_string(test_name))
+    end
+  end
+
+  describe "telemetry events which require multiple requests" do
+    setup %{bypass: bypass} do
+      Bypass.expect(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      client = MyFinch
+      start_supervised!({Finch, name: client, pools: %{default: [max_idle_time: 10]}})
+
+      {:ok, client: client}
+    end
+
+    test "reports reused connections", %{bypass: bypass, client: client} do
+      {test_name, _arity} = __ENV__.function
+      parent = self()
+      ref = make_ref()
+
+      handler = fn event, _measurements, meta, _config ->
+        case event do
+          [:finch, :connect, :start] ->
+            send(parent, {ref, :start})
+
+          [:finch, :connect, :stop] ->
+            send(parent, {ref, :stop})
+
+          [:finch, :reused_connection] ->
+            assert is_atom(meta.scheme)
+            assert is_binary(meta.host)
+            assert is_integer(meta.port)
+            send(parent, {ref, :reused})
+
+          _ ->
+            flunk("Unknown event")
+        end
+      end
+
+      :telemetry.attach_many(
+        to_string(test_name),
+        [
+          [:finch, :connect, :start],
+          [:finch, :connect, :stop],
+          [:finch, :reused_connection]
+        ],
+        handler,
+        nil
+      )
+
+      request = Finch.build(:get, endpoint(bypass))
+      assert {:ok, %{status: 200}} = Finch.request(request, client)
+      assert_receive {^ref, :start}
+      assert_receive {^ref, :stop}
+
+      assert {:ok, %{status: 200}} = Finch.request(request, client)
+      assert_receive {^ref, :reused}
+
+      :telemetry.detach(to_string(test_name))
+    end
+
+    test "reports max_idle_time_exceeded", %{bypass: bypass, client: client} do
+      {test_name, _arity} = __ENV__.function
+      parent = self()
+      ref = make_ref()
+
+      handler = fn event, measurements, meta, _config ->
+        case event do
+          [:finch, :max_idle_time_exceeded] ->
+            assert is_integer(measurements.idle_time)
+            assert is_atom(meta.scheme)
+            assert is_binary(meta.host)
+            assert is_integer(meta.port)
+            send(parent, {ref, :max_idle_time_exceeded})
+
+          _ ->
+            flunk("Unknown event")
+        end
+      end
+
+      :telemetry.attach_many(
+        to_string(test_name),
+        [
+          [:finch, :max_idle_time_exceeded]
+        ],
+        handler,
+        nil
+      )
+
+      request = Finch.build(:get, endpoint(bypass))
+      assert {:ok, %{status: 200}} = Finch.request(request, client)
+      Process.sleep(15)
+      assert {:ok, %{status: 200}} = Finch.request(request, client)
+      assert_receive {^ref, :max_idle_time_exceeded}
 
       :telemetry.detach(to_string(test_name))
     end

@@ -85,7 +85,20 @@ defmodule Finch.HTTP1.Pool do
          {:ok, conn} <- Conn.set_mode(conn, :passive) do
       {:ok, {:reuse, conn, idle_time}, conn, pool_state}
     else
-      _ -> {:remove, :closed, pool_state}
+      false ->
+        {{scheme, host, port}, _opts} = pool_state
+
+        meta = %{
+          scheme: scheme,
+          host: host,
+          port: port
+        }
+
+        Telemetry.event(:max_idle_time_exceeded, %{idle_time: idle_time}, meta)
+        {:remove, :closed, pool_state}
+
+      _ ->
+        {:remove, :closed, pool_state}
     end
   end
 
