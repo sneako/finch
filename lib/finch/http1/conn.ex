@@ -71,7 +71,7 @@ defmodule Finch.Conn do
     System.convert_time_unit(idle_time, :native, unit)
   end
 
-  def reusable?(%{max_idle_time: :infinity}, idle_time), do: true
+  def reusable?(%{max_idle_time: :infinity}, _idle_time), do: true
   def reusable?(%{max_idle_time: max_idle_time}, idle_time), do: idle_time <= max_idle_time
 
   def set_mode(conn, mode) when mode in [:active, :passive] do
