@@ -74,6 +74,7 @@ defmodule Finch.Telemetry do
 
     #### Measurements:
     * `:system_time` - The system time
+    * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata:
     * `:scheme` - The scheme used in the connection. either `http` or `https`
@@ -86,6 +87,7 @@ defmodule Finch.Telemetry do
 
     #### Measurements:
     * `:duration` - Duration to make the request.
+    * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata:
     * `:scheme` - The scheme used in the connection. either `http` or `https`
@@ -99,6 +101,7 @@ defmodule Finch.Telemetry do
 
     #### Measurements:
     * `:system_time` - The system time
+    * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata:
     * `:scheme` - The scheme used in the connection. either `http` or `https`
@@ -111,6 +114,7 @@ defmodule Finch.Telemetry do
 
     #### Measurements:
     * `:duration` - Duration to receive the response.
+    * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata:
     * `:scheme` - The scheme used in the connection. either `http` or `https`

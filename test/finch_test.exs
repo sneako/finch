@@ -424,6 +424,7 @@ defmodule FinchTest do
         case event do
           [:finch, :request, :start] ->
             assert is_integer(measurements.system_time)
+            assert is_integer(measurements.idle_time)
             assert is_binary(meta.path)
             assert is_atom(meta.scheme)
             assert is_integer(meta.port)
@@ -433,6 +434,7 @@ defmodule FinchTest do
 
           [:finch, :request, :stop] ->
             assert is_integer(measurements.duration)
+            assert is_integer(measurements.idle_time)
             assert is_binary(meta.path)
             assert is_atom(meta.scheme)
             assert is_integer(meta.port)
@@ -472,6 +474,7 @@ defmodule FinchTest do
         case event do
           [:finch, :response, :start] ->
             assert is_integer(measurements.system_time)
+            assert is_integer(measurements.idle_time)
             assert is_binary(meta.path)
             assert is_atom(meta.scheme)
             assert is_integer(meta.port)
@@ -481,6 +484,7 @@ defmodule FinchTest do
 
           [:finch, :response, :stop] ->
             assert is_integer(measurements.duration)
+            assert is_integer(measurements.idle_time)
             assert is_binary(meta.path)
             assert is_atom(meta.scheme)
             assert is_integer(meta.port)

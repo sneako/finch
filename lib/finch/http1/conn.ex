@@ -91,9 +91,9 @@ defmodule Finch.Conn do
     end
   end
 
-  def request(%{mint: nil} = conn, _, _, _, _), do: {:error, conn, "Could not connect"}
+  def request(%{mint: nil} = conn, _, _, _, _, _), do: {:error, conn, "Could not connect"}
 
-  def request(conn, req, acc, fun, receive_timeout) do
+  def request(conn, req, acc, fun, receive_timeout, idle_time) do
     full_path = Finch.Request.request_path(req)
 
     metadata = %{
@@ -104,27 +104,29 @@ defmodule Finch.Conn do
       method: req.method
     }
 
-    start_time = Telemetry.start(:request, metadata)
+    extra_measurements = %{idle_time: idle_time}
+
+    start_time = Telemetry.start(:request, metadata, extra_measurements)
 
     case HTTP1.request(conn.mint, req.method, full_path, req.headers, req.body) do
       {:ok, mint, ref} ->
-        Telemetry.stop(:request, start_time, metadata)
-        start_time = Telemetry.start(:response, metadata)
+        Telemetry.stop(:request, start_time, metadata, extra_measurements)
+        start_time = Telemetry.start(:response, metadata, extra_measurements)
 
         case receive_response([], acc, fun, mint, ref, receive_timeout) do
           {:ok, mint, acc} ->
-            Telemetry.stop(:response, start_time, metadata)
+            Telemetry.stop(:response, start_time, metadata, extra_measurements)
             {:ok, %{conn | mint: mint}, acc}
 
           {:error, mint, error} ->
             metadata = Map.put(metadata, :error, error)
-            Telemetry.stop(:response, start_time, metadata)
+            Telemetry.stop(:response, start_time, metadata, extra_measurements)
             {:error, %{conn | mint: mint}, error}
         end
 
       {:error, mint, error} ->
         metadata = Map.put(metadata, :error, error)
-        Telemetry.stop(:request, start_time, metadata)
+        Telemetry.stop(:request, start_time, metadata, extra_measurements)
         {:error, %{conn | mint: mint}, error}
     end
   end
