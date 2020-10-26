@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.0 (2020-10-26)
+* Add `:max_idle_time` option for http1 pools
+* Optimize http2 connection closing.
+* Use new lazy pools in NimblePool
+* Additional `idle_time` measurements for all http1 connection telemetry
+
 ## v0.4.0 (2020-10-2)
 * Update all dependencies. This includes bug fixes for Mint.
 
