@@ -182,14 +182,22 @@ defmodule Finch.HTTP2.Pool do
     {:keep_state_and_data, {:reply, from, {:error, %{reason: :disconnected}}}}
   end
 
- # We cancel all request timeouts as soon as we enter the :disconnected state, but
- # some timeouts might fire while changing states, so we need to handle them here.
- # Since we replied to all pending requests when entering the :disconnected state,
- # we can just do nothing here.
- def disconnected({:timeout, {:request_timeout, _ref}}, _content, _data) do
-   :keep_state_and_data
- end
+  # We cancel all request timeouts as soon as we enter the :disconnected state, but
+  # some timeouts might fire while changing states, so we need to handle them here.
+  # Since we replied to all pending requests when entering the :disconnected state,
+  # we can just do nothing here.
+  def disconnected({:timeout, {:request_timeout, _ref}}, _content, _data) do
+    :keep_state_and_data
+  end
 
+  # Its possible that we can receive an info message telling us that a socket
+  # has been closed. This happens after we enter a disconnected state from a
+  # read_only state but we don't have any requests that are open. We've already
+  # closed the connection and thrown it away at this point so we can just retain
+  # our current state.
+  def disconnected(:info, _message, _data) do
+    :keep_state_and_data
+  end
 
   @doc false
   def connected(event, content, data)
