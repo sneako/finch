@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.5.1 (2020-10-27)
+* Fix crash in http2 pools when a message is received in disconnected state.
+
 ## v0.5.0 (2020-10-26)
 * Add `:max_idle_time` option for http1 pools
 * Optimize http2 connection closing.
