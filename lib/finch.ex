@@ -14,7 +14,7 @@ defmodule Finch do
 
   @pool_config_schema [
     protocol: [
-      type: {:one_of, [:http2, :http1]},
+      type: {:in, [:http2, :http1]},
       doc: "The type of connection and pool to use",
       default: :http1
     ],
