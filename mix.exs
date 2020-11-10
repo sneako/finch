@@ -33,9 +33,9 @@ defmodule Finch.MixProject do
   defp deps do
     [
       {:mint, "~> 1.2"},
-      {:castore, "~> 0.1.5"},
-      {:nimble_pool, "~> 0.2.3"},
-      {:nimble_options, "~> 0.3"},
+      {:castore, "~> 0.1"},
+      {:nimble_pool, "~> 0.2"},
+      {:nimble_options, "~> 0.3.5"},
       {:telemetry, "~> 0.4"},
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
       {:credo, "~> 1.3", only: [:dev, :test]},
