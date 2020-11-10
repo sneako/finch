@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.5.2 (2020-11-10)
+* Fix deprecation in nimble_options.
+
 ## v0.5.1 (2020-10-27)
 * Fix crash in http2 pools when a message is received in disconnected state.
 
