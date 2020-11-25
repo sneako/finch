@@ -6,7 +6,6 @@ if Code.ensure_loaded?(Plug) do
       * `connection.type` - type of connection (Sent or Chunked);
       * `connection.method` - HTTP request method;
       * `connection.request_path` - HTTP request path;
-      * `connection.request_id` - value of `X-Request-ID` response header (see `Plug.RequestId`);
       * `connection.status` - HTTP status code sent to a client;
       * `client.user_agent` - value of `User-Agent` header;
       * `client.ip' - value of `X-Forwarded-For` header if present, otherwise - remote IP of a connected client;
