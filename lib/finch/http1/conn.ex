@@ -108,28 +108,107 @@ defmodule Finch.Conn do
 
     start_time = Telemetry.start(:request, metadata, extra_measurements)
 
-    case HTTP1.request(conn.mint, req.method, full_path, req.headers, req.body) do
-      {:ok, mint, ref} ->
-        Telemetry.stop(:request, start_time, metadata, extra_measurements)
-        start_time = Telemetry.start(:response, metadata, extra_measurements)
+    body =
+      case req.body do
+        {:stream, _} ->
+          :stream
 
-        case receive_response([], acc, fun, mint, ref, receive_timeout) do
-          {:ok, mint, acc} ->
-            Telemetry.stop(:response, start_time, metadata, extra_measurements)
-            {:ok, %{conn | mint: mint}, acc}
+        _ ->
+          req.body
+      end
+
+    case HTTP1.request(conn.mint, req.method, full_path, req.headers, body) do
+      {:ok, mint, ref} ->
+        case maybe_stream_body(mint, ref, req.body, receive_timeout) do
+          {:ok, mint} ->
+            Telemetry.stop(:request, start_time, metadata, extra_measurements)
+            start_time = Telemetry.start(:response, metadata, extra_measurements)
+
+            case receive_response([], acc, fun, mint, ref, receive_timeout) do
+              {:ok, mint, acc} ->
+                Telemetry.stop(:response, start_time, metadata, extra_measurements)
+                {:ok, %{conn | mint: mint}, acc}
+
+              {:error, mint, error} ->
+                metadata = Map.put(metadata, :error, error)
+                Telemetry.stop(:response, start_time, metadata, extra_measurements)
+                {:error, %{conn | mint: mint}, error}
+            end
 
           {:error, mint, error} ->
-            metadata = Map.put(metadata, :error, error)
-            Telemetry.stop(:response, start_time, metadata, extra_measurements)
-            {:error, %{conn | mint: mint}, error}
+            handle_request_error(
+              :error,
+              conn,
+              mint,
+              error,
+              metadata,
+              start_time,
+              extra_measurements
+            )
         end
 
       {:error, mint, error} ->
-        metadata = Map.put(metadata, :error, error)
-        Telemetry.stop(:request, start_time, metadata, extra_measurements)
-        {:error, %{conn | mint: mint}, error}
+        handle_request_error(:error, conn, mint, error, metadata, start_time, extra_measurements)
     end
   end
+
+  defp handle_request_error(:error, conn, mint, error, metadata, start_time, extra_measurements) do
+    metadata = Map.put(metadata, :error, error)
+    Telemetry.stop(:request, start_time, metadata, extra_measurements)
+    {:error, %{conn | mint: mint}, error}
+  end
+
+  defp maybe_stream_body(mint, ref, {:stream, stream}, timeout) do
+    task =
+      Task.async(fn ->
+        fun = stream_to_fun(stream)
+        stream_request_body(mint, ref, fun)
+      end)
+
+    case Task.yield(task, timeout) || Task.shutdown(task) do
+      {:ok, result} ->
+        result
+
+      nil ->
+        {:error, mint, %{reason: :timeout}}
+    end
+  end
+
+  defp maybe_stream_body(mint, _, _, _), do: {:ok, mint}
+
+  defp stream_request_body(mint, ref, fun) do
+    do_stream_request_body(ref, {:ok, mint}, next_chunk(fun))
+  end
+
+  defp do_stream_request_body(ref, {:ok, mint}, {:ok, chunk, fun}) do
+    ref
+    |> do_stream_request_body(
+      HTTP1.stream_request_body(mint, ref, chunk),
+      next_chunk(fun)
+    )
+  end
+
+  defp do_stream_request_body(ref, {:ok, mint}, :eof) do
+    HTTP1.stream_request_body(mint, ref, :eof)
+  end
+
+  defp do_stream_request_body(_ref, error, _chunk) do
+    error
+  end
+
+  # Taken from Tesla.Adapter.Shared
+  defp stream_to_fun(stream) do
+    reductor = fn item, _acc -> {:suspend, item} end
+    {_, _, fun} = Enumerable.reduce(stream, {:suspend, nil}, reductor)
+
+    fun
+  end
+
+  defp next_chunk(fun), do: parse_chunk(fun.({:cont, nil}))
+
+  defp parse_chunk({:suspended, item, fun}), do: {:ok, item, fun}
+  defp parse_chunk(_), do: :eof
+
 
   def close(%{mint: nil} = conn), do: conn
 
