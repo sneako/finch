@@ -668,6 +668,57 @@ defmodule FinchTest do
                Finch.build(:get, endpoint(bypass, "?" <> query_string))
                |> Finch.stream(MyFinch, acc, fun)
     end
+
+    test "successful post request, with query string and string request body", %{bypass: bypass} do
+      start_supervised!({Finch, name: MyFinch})
+      query_string = "query=value"
+      req_headers = [{"content-type", "application/json"}]
+      req_body = "{hello:\"world\"}"
+      resp_body = "{hi:\"there\"}"
+
+      Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert conn.query_string == query_string
+        Plug.Conn.send_resp(conn, 200, resp_body)
+      end)
+
+      acc = {nil, [], ""}
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {value, headers, body}
+        {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
+        {:data, value}, {status, headers, body} -> {status, headers, body <> value}
+      end
+
+      assert {:ok, {200, [_ | _], ^resp_body}} =
+               Finch.build(:post, endpoint(bypass, "?" <> query_string), req_headers, req_body)
+               |> Finch.stream(MyFinch, acc, fun)
+    end
+
+    test "successful post request, with query string and streaming request body", %{bypass: bypass} do
+      start_supervised!({Finch, name: MyFinch})
+      query_string = "query=value"
+      req_headers = [{"content-type", "application/json"}]
+      req_stream = Stream.map(1..10_000, fn(_) -> "please" end)
+      req_body = req_stream |> Enum.join("")
+      resp_body = "{hi:\"there\"}"
+
+      Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert conn.query_string == query_string
+        Plug.Conn.send_resp(conn, 200, resp_body)
+      end)
+
+      acc = {nil, [], ""}
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {value, headers, body}
+        {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
+        {:data, value}, {status, headers, body} -> {status, headers, body <> value}
+      end
+
+      assert {:ok, {200, [_ | _], ^resp_body}} =
+               Finch.build(:post, endpoint(bypass, "?" <> query_string), req_headers, {:stream, req_stream})
+               |> Finch.stream(MyFinch, acc, fun)
+    end
   end
 
   defp get_pools(name, shp) do
