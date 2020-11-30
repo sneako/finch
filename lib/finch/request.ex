@@ -47,7 +47,7 @@ defmodule Finch.Request do
   @typedoc """
   Optional request body.
   """
-  @type body() :: iodata() | nil
+  @type body() :: iodata() | {:stream, Enumerable.t()} | nil
 
   @type t :: %Finch.Request{}
 
