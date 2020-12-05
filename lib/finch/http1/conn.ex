@@ -113,22 +113,12 @@ defmodule Finch.Conn do
         case maybe_stream_request_body(mint, ref, req.body, receive_timeout) do
           {:ok, mint} ->
             Telemetry.stop(:request, start_time, metadata, extra_measurements)
-            start_time = Telemetry.start(:response, metadata, extra_measurements)
-
-            case receive_response([], acc, fun, mint, ref, receive_timeout) do
-              {:ok, mint, acc} ->
-                Telemetry.stop(:response, start_time, metadata, extra_measurements)
-                {:ok, %{conn | mint: mint}, acc}
-
-              {:error, mint, error} ->
-                metadata = Map.put(metadata, :error, error)
-                Telemetry.stop(:response, start_time, metadata, extra_measurements)
-                {:error, %{conn | mint: mint}, error}
-            end
+            track_response_telemetry(conn, metadata, extra_measurements, fn ->
+              receive_response([], acc, fun, mint, ref, receive_timeout)
+            end)
 
           {:error, mint, error} ->
             handle_request_error(
-              :error,
               conn,
               mint,
               error,
@@ -139,14 +129,14 @@ defmodule Finch.Conn do
         end
 
       {:error, mint, error} ->
-        handle_request_error(:error, conn, mint, error, metadata, start_time, extra_measurements)
+        handle_request_error(conn, mint, error, metadata, start_time, extra_measurements)
     end
   end
 
   defp stream_or_body({:stream, _}), do: :stream
   defp stream_or_body(body), do: body
 
-  defp handle_request_error(:error, conn, mint, error, metadata, start_time, extra_measurements) do
+  defp handle_request_error(conn, mint, error, metadata, start_time, extra_measurements) do
     metadata = Map.put(metadata, :error, error)
     Telemetry.stop(:request, start_time, metadata, extra_measurements)
     {:error, %{conn | mint: mint}, error}
@@ -190,6 +180,21 @@ defmodule Finch.Conn do
   def close(conn) do
     {:ok, mint} = HTTP1.close(conn.mint)
     %{conn | mint: mint}
+  end
+
+  defp track_response_telemetry(conn, metadata, extra_measurements, response_handler) do
+    start_time = Telemetry.start(:response, metadata, extra_measurements)
+
+    case response_handler.() do
+      {:ok, mint, acc} ->
+        Telemetry.stop(:response, start_time, metadata, extra_measurements)
+        {:ok, %{conn | mint: mint}, acc}
+
+      {:error, mint, error} ->
+        metadata = Map.put(metadata, :error, error)
+        Telemetry.stop(:response, start_time, metadata, extra_measurements)
+        {:error, %{conn | mint: mint}, error}
+    end
   end
 
   defp receive_response([], acc, fun, mint, ref, timeout) do
