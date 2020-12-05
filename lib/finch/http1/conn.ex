@@ -143,37 +143,19 @@ defmodule Finch.Conn do
   end
 
   defp maybe_stream_request_body(mint, ref, {:stream, stream}, _timeout) do
-    {_, _, stream_generator} = Enumerable.reduce(stream, {:suspend, nil}, fn
-      data, _acc -> {:suspend, data}
+    Enumerable.reduce(stream, {:cont, {:ok, mint}}, fn
+      (chunk, {:ok, mint}) -> {:cont, HTTP1.stream_request_body(mint, ref, chunk)}
+      (_chunk, error) -> {:halt, error}
     end)
-
-    stream_request_body_chunk(ref, {:ok, mint}, fetch_request_body_chunk(stream_generator))
+    |> case do
+      {_, {:ok, mint}} ->
+        HTTP1.stream_request_body(mint, ref, :eof)
+      {_, error} ->
+        error
+    end
   end
 
   defp maybe_stream_request_body(mint, _, _, _), do: {:ok, mint}
-
-  defp stream_request_body_chunk(ref, {:ok, mint}, {:ok, chunk, stream_generator}) do
-    stream_request_body_chunk(
-      ref,
-      HTTP1.stream_request_body(mint, ref, chunk),
-      fetch_request_body_chunk(stream_generator)
-    )
-  end
-
-  defp stream_request_body_chunk(ref, {:ok, mint}, :eof) do
-    HTTP1.stream_request_body(mint, ref, :eof)
-  end
-
-  defp stream_request_body_chunk(_ref, error, _chunk), do: error
-
-  defp fetch_request_body_chunk(stream_generator) do
-    {:cont, nil}
-    |> stream_generator.()
-    |> case do
-      {:suspended, item, next_stream_generator} -> {:ok, item, next_stream_generator}
-      _ -> :eof
-    end
-  end
 
   def close(%{mint: nil} = conn), do: conn
 

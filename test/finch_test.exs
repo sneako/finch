@@ -699,7 +699,6 @@ defmodule FinchTest do
       query_string = "query=value"
       req_headers = [{"content-type", "application/json"}]
       req_stream = Stream.map(1..10_000, fn(_) -> "please" end)
-      req_body = req_stream |> Enum.join("")
       resp_body = "{hi:\"there\"}"
 
       Bypass.expect_once(bypass, "POST", "/", fn conn ->
