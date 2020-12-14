@@ -113,7 +113,7 @@ defmodule Finch.Conn do
         case maybe_stream_request_body(mint, ref, req.body, receive_timeout) do
           {:ok, mint} ->
             Telemetry.stop(:request, start_time, metadata, extra_measurements)
-            track_response_telemetry(conn, metadata, extra_measurements, fn ->
+            handle_response(conn, metadata, extra_measurements, fn ->
               receive_response([], acc, fun, mint, ref, receive_timeout)
             end)
 
@@ -143,14 +143,14 @@ defmodule Finch.Conn do
   end
 
   defp maybe_stream_request_body(mint, ref, {:stream, stream}, _timeout) do
-    Enumerable.reduce(stream, {:cont, {:ok, mint}}, fn
+    Enum.reduce_while(stream, {:ok, mint}, fn
       (chunk, {:ok, mint}) -> {:cont, HTTP1.stream_request_body(mint, ref, chunk)}
       (_chunk, error) -> {:halt, error}
     end)
     |> case do
-      {_, {:ok, mint}} ->
+      {:ok, mint} ->
         HTTP1.stream_request_body(mint, ref, :eof)
-      {_, error} ->
+      error ->
         error
     end
   end
@@ -164,7 +164,7 @@ defmodule Finch.Conn do
     %{conn | mint: mint}
   end
 
-  defp track_response_telemetry(conn, metadata, extra_measurements, response_handler) do
+  defp handle_response(conn, metadata, extra_measurements, response_handler) do
     start_time = Telemetry.start(:response, metadata, extra_measurements)
 
     case response_handler.() do
