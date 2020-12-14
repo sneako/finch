@@ -166,7 +166,7 @@ defmodule Finch do
   @doc """
   Builds an HTTP request to be sent with `request/3` or `stream/4`.
 
-  When making HTTP/1.x requests, it is possible to send request body in a streaming fashion.
+  When making HTTP/1.x requests, it is possible to send the request body in a streaming fashion.
   In order to do so, the `body` parameter needs to take form of a tuple `{:stream, body_stream}`,
   where `body_stream` is a [Stream](https://hexdocs.pm/elixir/Stream.html). This functionality
   is not yet supported for HTTP/2 requests.
