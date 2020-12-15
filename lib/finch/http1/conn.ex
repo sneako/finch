@@ -113,9 +113,9 @@ defmodule Finch.Conn do
         case maybe_stream_request_body(mint, ref, req.body, receive_timeout) do
           {:ok, mint} ->
             Telemetry.stop(:request, start_time, metadata, extra_measurements)
-            handle_response(conn, metadata, extra_measurements, fn ->
-              receive_response([], acc, fun, mint, ref, receive_timeout)
-            end)
+            start_time = Telemetry.start(:response, metadata, extra_measurements)
+            response = receive_response([], acc, fun, mint, ref, receive_timeout)
+            handle_response(response, conn, metadata, start_time, extra_measurements)
 
           {:error, mint, error} ->
             handle_request_error(
@@ -143,19 +143,19 @@ defmodule Finch.Conn do
   end
 
   defp maybe_stream_request_body(mint, ref, {:stream, stream}, _timeout) do
-    Enum.reduce_while(stream, {:ok, mint}, fn
-      (chunk, {:ok, mint}) -> {:cont, HTTP1.stream_request_body(mint, ref, chunk)}
-      (_chunk, error) -> {:halt, error}
-    end)
-    |> case do
-      {:ok, mint} ->
-        HTTP1.stream_request_body(mint, ref, :eof)
-      error ->
-        error
+    with {:ok, mint} <- stream_request_body(mint, ref, stream) do
+      HTTP1.stream_request_body(mint, ref, :eof)
     end
   end
 
   defp maybe_stream_request_body(mint, _, _, _), do: {:ok, mint}
+
+  defp stream_request_body(mint, ref, stream) do
+    Enum.reduce_while(stream, {:ok, mint}, fn
+      chunk, {:ok, mint} -> {:cont, HTTP1.stream_request_body(mint, ref, chunk)}
+      _chunk, error -> {:halt, error}
+    end)
+  end
 
   def close(%{mint: nil} = conn), do: conn
 
@@ -164,10 +164,8 @@ defmodule Finch.Conn do
     %{conn | mint: mint}
   end
 
-  defp handle_response(conn, metadata, extra_measurements, response_handler) do
-    start_time = Telemetry.start(:response, metadata, extra_measurements)
-
-    case response_handler.() do
+  defp handle_response(response, conn, metadata, start_time, extra_measurements) do
+    case response do
       {:ok, mint, acc} ->
         Telemetry.stop(:response, start_time, metadata, extra_measurements)
         {:ok, %{conn | mint: mint}, acc}
