@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.6.0 (2020-12-15)
+* Add ability to stream the request body for HTTP/1.x requests.
+
 ## v0.5.2 (2020-11-10)
 * Fix deprecation in nimble_options.
 
