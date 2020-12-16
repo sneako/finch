@@ -6,7 +6,7 @@ defmodule Finch.Telemetry do
 
   Finch executes the following events:
 
-    * `[:finch, :queue, :start]` - Executed before checking out a connection from the pool.
+  * `[:finch, :queue, :start]` - Executed before checking out a connection from the pool.
 
     #### Measurements
 
