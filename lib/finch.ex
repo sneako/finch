@@ -46,8 +46,12 @@ defmodule Finch do
     ],
     conn_opts: [
       type: :keyword_list,
-      doc:
-        "These options are passed to `Mint.HTTP.connect/4` whenever a new connection is established. `:mode` is not configurable as Finch must control this setting. Typically these options are used to configure proxying, https settings, or connect timeouts.",
+      doc: """
+      These options are passed to `Mint.HTTP.connect/4` whenever a new connection is \
+      established. `:mode` is not configurable as Finch must control this setting. \
+      Typically these options are used to configure proxying, https settings, or connect \
+      timeouts.
+      """,
       default: []
     ]
   ]
@@ -80,6 +84,22 @@ defmodule Finch do
   ### Pool Configuration Options
 
   #{NimbleOptions.docs(@pool_config_schema)}
+
+  ## Example
+
+    {
+      Finch,
+      name: MyFinch,
+      pools: %{
+        default: [
+          size: 10,
+          count: 1,
+          protocol: :http1,
+          max_idle_time: :infinity,
+          conn_opts: [transport_opts: [ciphers: :ssl.cipher_suits(:all, :"tlsv1.2")]]
+        ]
+      }
+    }
   """
   def start_link(opts) do
     name = Keyword.get(opts, :name) || raise ArgumentError, "must supply a name"
