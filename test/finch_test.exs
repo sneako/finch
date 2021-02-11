@@ -288,20 +288,17 @@ defmodule FinchTest do
       start_supervised!({Finch, name: MyFinch})
       expect_any(bypass)
 
-      timeout = 100
       {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch)
 
-      Bypass.down(bypass)
+      :sys.suspend(MyFinch)
 
-      try do
-        Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch, pool_timeout: timeout)
-      catch
-        :exit, reason ->
-          assert {:timeout, _} = reason
-      end
+      assert {:timeout, _} = catch_exit(
+        Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch, pool_timeout: 0)
+      )
 
-      Bypass.up(bypass)
-      assert {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch)
+      :sys.resume(MyFinch)
+
+      assert {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch, pool_timeout: 1)
     end
   end
 
