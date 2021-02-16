@@ -112,10 +112,6 @@ defmodule LoggerJSON do
     {:ok, :ok, init(config, state)}
   end
 
-  def handle_event({_level, gl, _event}, state) when node(gl) != node() do
-    {:ok, state}
-  end
-
   def handle_event({level, _gl, {Logger, msg, ts, md}}, state) do
     %{level: log_level, ref: ref, buffer_size: buffer_size, max_buffer: max_buffer} = state
 

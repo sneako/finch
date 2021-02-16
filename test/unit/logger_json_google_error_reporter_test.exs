@@ -28,7 +28,9 @@ defmodule LoggerJSONGoogleErrorReporterTest do
   end
 
   test "google_error_reporter metadata" do
-    :ok = Application.put_env(:logger_json, :google_error_reporter, service_context: [service: "myapp", version: "abc123"])
+    :ok =
+      Application.put_env(:logger_json, :google_error_reporter, service_context: [service: "myapp", version: "abc123"])
+
     log =
       capture_log(fn -> GoogleErrorReporter.report(:error, %RuntimeError{message: "oops"}, []) end)
       |> Jason.decode!()

@@ -12,33 +12,28 @@ if Code.ensure_loaded?(Plug) do
     @doc false
     def build_metadata(conn, latency, client_version_header) do
       client_metadata(conn, client_version_header) ++
-      phoenix_metadata(conn) ++
-      [
-        duration: native_to_nanoseconds(latency),
-        http:
-          json_map(
-            url: request_url(conn),
-            status_code: conn.status,
-            method: conn.method,
-            referer: LoggerJSON.Plug.get_header(conn, "referer"),
-            request_id: Keyword.get(Logger.metadata(), :request_id),
-            useragent: LoggerJSON.Plug.get_header(conn, "user-agent"),
-            url_details: json_map(
-              host: conn.host,
-              port: conn.port,
-              path: conn.request_path,
-              queryString: conn.query_string,
-              scheme: conn.scheme
-            )
-          ),
-        network:
-          json_map(
-            client:
-              json_map(
-                ip: remote_ip(conn)
-              )
-          )
-      ]
+        phoenix_metadata(conn) ++
+        [
+          duration: native_to_nanoseconds(latency),
+          http:
+            json_map(
+              url: request_url(conn),
+              status_code: conn.status,
+              method: conn.method,
+              referer: LoggerJSON.Plug.get_header(conn, "referer"),
+              request_id: Keyword.get(Logger.metadata(), :request_id),
+              useragent: LoggerJSON.Plug.get_header(conn, "user-agent"),
+              url_details:
+                json_map(
+                  host: conn.host,
+                  port: conn.port,
+                  path: conn.request_path,
+                  queryString: conn.query_string,
+                  scheme: conn.scheme
+                )
+            ),
+          network: json_map(client: json_map(ip: remote_ip(conn)))
+        ]
     end
 
     defp native_to_nanoseconds(nil) do
