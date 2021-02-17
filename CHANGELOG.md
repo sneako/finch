@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.1 (2021-02-17)
+* Update Mint to 1.2.1, which properly handles HTTP/1.0 style responses that close
+the connection at the same time as sending the response.
+* Update NimblePool to 0.2.4 which includes a bugfix that prevents extra connections
+being opened.
+* Fix the typespec for Finch.stream/5.
+* Fix assertion that was not actually being called in a test case.
+
 ## v0.6.0 (2020-12-15)
 * Add ability to stream the request body for HTTP/1.x requests.
 
