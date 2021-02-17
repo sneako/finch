@@ -196,7 +196,7 @@ defmodule Finch do
       Default value is `15_000`.
 
   """
-  @spec stream(Request.t(), name(), acc, stream(acc), keyword) :: acc when acc: term()
+  @spec stream(Request.t(), name(), acc, stream(acc), keyword) :: {:ok, acc} when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
     %{scheme: scheme, host: host, port: port} = req
     {pool, pool_mod} = PoolManager.get_pool(name, {scheme, host, port})
