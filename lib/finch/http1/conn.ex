@@ -39,13 +39,7 @@ defmodule Finch.Conn do
 
     # We have to use Mint's top-level connect function or else proxying won't work. So we
     # force the connection to use http1 and call it in this roundabout way.
-    default_transport_opts = [
-      keepalive: true,
-      nodelay: true,
-    ]
     conn_opts = Keyword.merge(conn.opts, mode: :passive, protocols: [:http1])
-    transport_opts = Keyword.merge(default_transport_opts, conn_opts[:transport_opts] || [])
-    conn_opts = Keyword.put(conn_opts, :transport_opts, transport_opts)
 
     case Mint.HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts) do
       {:ok, mint} ->
