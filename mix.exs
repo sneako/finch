@@ -22,6 +22,7 @@ defmodule Finch.MixProject do
   end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(:dev), do: ["lib", "test/support/test_usage.ex"]
   defp elixirc_paths(_), do: ["lib"]
 
   def application do
@@ -39,6 +40,7 @@ defmodule Finch.MixProject do
       {:telemetry, "~> 0.4"},
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
       {:credo, "~> 1.3", only: [:dev, :test]},
+      {:dialyxir, "~> 1.0", only: [:dev, :test]},
       {:bypass, "~> 1.0", only: :test},
       {:cowboy, "~> 2.0", only: [:dev, :test]},
       {:plug_cowboy, "~> 2.0", only: [:dev, :test]},
