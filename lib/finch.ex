@@ -12,6 +12,8 @@ defmodule Finch do
   @default_pool_size 10
   @default_pool_count 1
 
+  @default_connect_timeout 5_000
+
   @pool_config_schema [
     protocol: [
       type: {:in, [:http2, :http1]},
@@ -147,10 +149,24 @@ defmodule Finch do
   end
 
   defp valid_opts_to_map(valid) do
+    # We need to enable keepalive and set the nodelay flag to true by default.
+    transport_opts =
+      valid
+      |> get_in([:conn_opts, :transport_opts])
+      |> List.wrap()
+      |> Keyword.put_new(:timeout, @default_connect_timeout)
+      |> Keyword.put_new(:nodelay, true)
+      |> Keyword.put(:keepalive, true)
+
+    conn_opts =
+      valid[:conn_opts]
+      |> List.wrap()
+      |> Keyword.put(:transport_opts, transport_opts)
+
     %{
       size: valid[:size],
       count: valid[:count],
-      conn_opts: valid[:conn_opts],
+      conn_opts: conn_opts,
       protocol: valid[:protocol],
       max_idle_time: to_native(valid[:max_idle_time])
     }
