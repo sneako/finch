@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.6.2 (2021-02-19)
+* Fix incorrect type spec for stream/5
+* Add default transport options for keepalive, timeouts, and nodelay.
+
 ## v0.6.1 (2021-02-17)
 * Update Mint to 1.2.1, which properly handles HTTP/1.0 style responses that close
 the connection at the same time as sending the response.
