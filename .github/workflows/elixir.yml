@@ -26,7 +26,7 @@ jobs:
          key: ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-build-${{ hashFiles(format('{0}{1}', github.workspace, '/mix.lock')) }}
          restore-keys: |
            ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-
-     - uses: actions/setup-elixir@v1
+     - uses: erlef/setup-elixir@v1
        with:
          otp-version: ${{ matrix.otp }}
          elixir-version: ${{ matrix.elixir }}
@@ -34,5 +34,18 @@ jobs:
        run: mix deps.get
      - name: Run Credo
        run: mix credo
+     - name: Retrieve PLT Cache
+       uses: actions/cache@v1
+       id: plt-cache
+       with:
+         path: priv/plts
+         key: ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-plts-${{ hashFiles(format('{0}{1}', github.workspace, '/mix.lock')) }}
+     - name: Create PLTs
+       if: steps.plt-cache.outputs.cache-hit != 'true'
+       run: |
+         mkdir -p priv/plts
+         mix dialyzer --plt
+     - name: Run dialyzer
+       run: mix dialyzer --no-check --halt-exit-status      
      - name: Run Tests
        run: mix test

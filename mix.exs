@@ -14,6 +14,7 @@ defmodule Finch.MixProject do
       package: package(),
       docs: docs(),
       elixirc_paths: elixirc_paths(Mix.env()),
+      dialyzer: dialyzer(),
       start_permanent: Mix.env() == :prod,
       name: @name,
       source_url: @repo_url,
@@ -24,6 +25,13 @@ defmodule Finch.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(:dev), do: ["lib", "test/support/test_usage.ex"]
   defp elixirc_paths(_), do: ["lib"]
+
+  defp dialyzer do
+    [
+      plt_core_path: "priv/plts",
+      plt_file: {:no_warn, "priv/plts/dialyzer.plt"}
+    ]
+  end
 
   def application do
     [
