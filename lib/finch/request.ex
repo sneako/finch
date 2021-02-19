@@ -77,12 +77,22 @@ defmodule Finch.Request do
   end
 
   def parse_url(%URI{} = parsed_uri) do
-    normalize_uri(parsed_uri)
-  end
-
-  defp normalize_uri(parsed_uri) do
     normalized_path = parsed_uri.path || "/"
-    scheme = normalize_scheme(parsed_uri.scheme)
+
+    scheme = case parsed_uri.scheme do
+      "https" ->
+        :https
+
+      "http" ->
+        :http
+
+      nil ->
+        raise ArgumentError, "scheme is required for url: #{URI.to_string(parsed_uri)}"
+
+      scheme ->
+        raise ArgumentError, "invalid scheme \"#{scheme}\" for url: #{URI.to_string(parsed_uri)}"
+    end
+
     {scheme, parsed_uri.host, parsed_uri.port, normalized_path, parsed_uri.query}
   end
 
@@ -97,18 +107,5 @@ defmodule Finch.Request do
     Only the following methods can be provided as atoms: #{supported}.
     Otherwise you must pass a binary.
     """
-  end
-
-  defp normalize_scheme(scheme) do
-    case scheme do
-      "https" ->
-        :https
-
-      "http" ->
-        :http
-
-      scheme ->
-        raise ArgumentError, "invalid scheme #{inspect(scheme)}"
-    end
   end
 end
