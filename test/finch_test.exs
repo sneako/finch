@@ -75,7 +75,7 @@ defmodule FinchTest do
     end
 
     test "pools with an invalid URL cannot be started" do
-      assert_raise(ArgumentError, ~r/invalid scheme nil/, fn ->
+      assert_raise(ArgumentError, ~r/scheme is required for url: example.com/, fn ->
         Finch.start_link(
           name: MyFinch,
           pools: %{
@@ -84,7 +84,7 @@ defmodule FinchTest do
         )
       end)
 
-      assert_raise(ArgumentError, ~r/invalid scheme nil/, fn ->
+      assert_raise(ArgumentError, ~r/scheme is required for url: example/, fn ->
         Finch.start_link(
           name: MyFinch,
           pools: %{
@@ -93,7 +93,7 @@ defmodule FinchTest do
         )
       end)
 
-      assert_raise(ArgumentError, ~r/invalid scheme nil/, fn ->
+      assert_raise(ArgumentError, ~r/scheme is required for url: :443/, fn ->
         Finch.start_link(
           name: MyFinch,
           pools: %{
@@ -135,7 +135,7 @@ defmodule FinchTest do
     end
 
     test "raises when requesting a URL with an invalid scheme" do
-      assert_raise ArgumentError, ~r"invalid scheme \"ftp\"", fn ->
+      assert_raise ArgumentError, ~r"invalid scheme \"ftp\" for url: ftp://example.com", fn ->
         Finch.build(:get, "ftp://example.com")
       end
     end
