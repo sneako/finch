@@ -133,7 +133,7 @@ defmodule Finch do
         cast_binary_destination(url)
 
       _ ->
-        {:error, %ArgumentError{message: "invalid destination"}}
+        {:error, %ArgumentError{message: "invalid destination: #{inspect destination}"}}
     end
   end
 
