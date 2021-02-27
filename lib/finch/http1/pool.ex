@@ -55,7 +55,23 @@ defmodule Finch.HTTP1.Pool do
     catch
       :exit, data ->
         Telemetry.exception(:queue, start_time, :exit, data, __STACKTRACE__, metadata)
-        exit(data)
+
+        # Provide helpful error messages for known errors
+        case data do
+          {:timeout, {NimblePool, :checkout, pids}} ->
+            reraise(
+              "
+            Timeout while waiting to checkout an http connection for process(es): #{inspect(pids)}.
+            Consider:
+            1. Increasing your poolsize (recommended).
+            2. Increasing your pool_timeout. Current timeout is: #{inspect(pool_timeout)}.
+            ",
+              __STACKTRACE__
+            )
+
+          _ ->
+            exit(data)
+        end
     end
   end
 
