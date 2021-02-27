@@ -9,7 +9,9 @@ defmodule Finch do
 
   use Supervisor
 
-  @default_pool_size 10
+  # We find that a default pool_size of 50 will provide
+  # similar request thoroughput to other http clients (hackney, httpc, etc.)
+  @default_pool_size 50
   @default_pool_count 1
 
   @default_connect_timeout 5_000
@@ -25,7 +27,9 @@ defmodule Finch do
       doc: """
       Number of connections to maintain in each pool. Used only by HTTP1 pools \
       since HTTP2 is able to multiplex requests through a single connection. In \
-      other words, for HTTP2, the size is always 1.
+      other words, for HTTP2, the size is always 1. We find a pool size of 50 will\
+      provide a simliar Request Per Second thoroughput as other http clients like\
+      hackney and httpc.
       """,
       default: @default_pool_size
     ],
@@ -133,7 +137,7 @@ defmodule Finch do
         cast_binary_destination(url)
 
       _ ->
-        {:error, %ArgumentError{message: "invalid destination: #{inspect destination}"}}
+        {:error, %ArgumentError{message: "invalid destination: #{inspect(destination)}"}}
     end
   end
 
@@ -212,7 +216,9 @@ defmodule Finch do
       Default value is `15_000`.
 
   """
-  @spec stream(Request.t(), name(), acc, stream(acc), keyword) :: {:ok, acc} | {:error, Mint.Types.error()} when acc: term()
+  @spec stream(Request.t(), name(), acc, stream(acc), keyword) ::
+          {:ok, acc} | {:error, Mint.Types.error()}
+        when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
     %{scheme: scheme, host: host, port: port} = req
     {pool, pool_mod} = PoolManager.get_pool(name, {scheme, host, port})
@@ -231,8 +237,9 @@ defmodule Finch do
       Default value is `15_000`.
 
   """
-  @spec request(Request.t(), name(), keyword()) :: {:ok, Response.t()}
-                                                 | {:error, Mint.Types.error()}
+  @spec request(Request.t(), name(), keyword()) ::
+          {:ok, Response.t()}
+          | {:error, Mint.Types.error()}
   def request(req, name, opts \\ [])
 
   def request(%Request{} = req, name, opts) do
