@@ -58,13 +58,12 @@ defmodule Finch.HTTP1.Pool do
 
         # Provide helpful error messages for known errors
         case data do
-          {:timeout, {NimblePool, :checkout, pids}} ->
+          {:timeout, {NimblePool, :checkout, _affected_pids}} ->
             reraise(
               "
-            Timeout while waiting to checkout an http connection for process(es): #{inspect(pids)}.
-            Consider:
-            1. Increasing your poolsize (recommended).
-            2. Increasing your pool_timeout. Current timeout is: #{inspect(pool_timeout)}.
+              Finch was unable to provide a connection within the timeout due to excess queueing for connections.
+              This could be because the downstream system can't keep up with the amount of requests being sent or
+                because you have an insufficient number of connections and need to increase your pool counts.
             ",
               __STACKTRACE__
             )

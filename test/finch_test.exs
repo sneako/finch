@@ -299,7 +299,7 @@ defmodule FinchTest do
           Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch, pool_timeout: 0)
         end
 
-      assert e.message =~ "waiting to checkout"
+      assert e.message =~ "Finch was unable to provide a connection within the timeout"
 
       :sys.resume(MyFinch)
 
@@ -400,7 +400,7 @@ defmodule FinchTest do
         Finch.build(:get, endpoint(bypass)) |> Finch.request(client, pool_timeout: 0)
       rescue
         e in RuntimeError ->
-          assert e.message =~ "waiting to checkout"
+          assert e.message =~ "Finch was unable to provide a connection within the timeout"
       end
 
       assert_receive {^ref, :start}
