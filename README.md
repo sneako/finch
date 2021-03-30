@@ -1,5 +1,7 @@
 <img alt="Finch" height="350px" src="assets/Finch_logo_onWhite.png?raw=true">
 
+[![Build Status](https://github.com/keathley/finch/workflows/CI/badge.svg?branch=master)](https://github.com/keathley/finch/actions) [![Hex pm](https://img.shields.io/hexpm/v/finch.svg?style=flat)](https://hex.pm/packages/finch) [![Hexdocs.pm](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/finch/)
+
 <!-- MDOC !-->
 
 An HTTP client with a focus on performance, built on top of
