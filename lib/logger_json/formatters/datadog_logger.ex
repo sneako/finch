@@ -1,6 +1,8 @@
 defmodule LoggerJSON.Formatters.DatadogLogger do
   @moduledoc """
-  DataDog formatter. Adhears to the DataDog
+  DataDog formatter.
+
+  Adhere to the
   [default standard attribute list](https://docs.datadoghq.com/logs/processing/attributes_naming_convention/#default-standard-attribute-list).
   """
   import Jason.Helpers, only: [json_map: 1]

@@ -1,6 +1,12 @@
 # LoggerJSON
 
-[![Hex.pm Downloads](https://img.shields.io/hexpm/dw/logger_json.svg?maxAge=3600)](https://hex.pm/packages/logger_json) [![Latest Version](https://img.shields.io/hexpm/v/logger_json.svg?maxAge=3600)](https://hex.pm/packages/logger_json) [![License](https://img.shields.io/hexpm/l/logger_json.svg?maxAge=3600)](https://hex.pm/packages/logger_json) [![Build Status](https://travis-ci.org/Nebo15/logger_json.svg?branch=master)](https://travis-ci.org/Nebo15/logger_json) [![Coverage Status](https://coveralls.io/repos/github/Nebo15/logger_json/badge.svg?branch=master)](https://coveralls.io/github/Nebo15/logger_json?branch=master) [![SourceLevel](https://app.sourcelevel.io/github/Nebo15/logger_json.svg)](https://app.sourcelevel.io/github/Nebo15/logger_json)
+[![Build Status](https://travis-ci.org/Nebo15/logger_json.svg?branch=master)](https://travis-ci.org/Nebo15/logger_json)
+[![Coverage Status](https://coveralls.io/repos/github/Nebo15/logger_json/badge.svg?branch=master)](https://coveralls.io/github/Nebo15/logger_json?branch=master)
+[![Module Version](https://img.shields.io/hexpm/v/logger_json.svg)](https://hex.pm/packages/logger_json)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/logger_json/)
+[![Total Download](https://img.shields.io/hexpm/dt/logger_json.svg)](https://hex.pm/packages/logger_json)
+[![License](https://img.shields.io/hexpm/l/logger_json.svg)](https://github.com/Nebo15/logger_json/blob/master/LICENSE)
+[![Last Updated](https://img.shields.io/github/last-commit/Nebo15/logger_json.svg)](https://github.com/Nebo15/logger_json/commits/master)
 
 JSON console back-end for Elixir Logger.
 
@@ -192,3 +198,9 @@ Many source code has been taken from original Elixir Logger `:console` back-end 
 
 Part of `LoggerJSON.Plug` module have origins from `plug_logger_json` by @bleacherreport,
 originally licensed under Apache License 2.0. Part of `LoggerJSON.PlugTest` are from Elixir's Plug licensed under Apache 2.
+
+## Copyright and License
+
+Copyright (c) 2016 Nebo #15
+
+Released under the MIT License, which can be found in [LICENSE.md](./LICENSE.md).

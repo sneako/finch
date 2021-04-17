@@ -8,6 +8,7 @@ defmodule LoggerJSON.Formatter do
 
   @doc """
   Format event callback.
+
   Returned map will be encoded to JSON.
   """
   @callback format_event(

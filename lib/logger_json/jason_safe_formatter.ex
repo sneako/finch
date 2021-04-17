@@ -1,19 +1,20 @@
 defmodule LoggerJSON.JasonSafeFormatter do
   @moduledoc """
-  Utilities for converting metadata into datastructures that can be safely passed to Jason.encode!/1
+  Utilities for converting metadata into data structures that can be safely passed to `Jason.encode!/1`.
   """
 
   @doc """
   Produces metadata that is "safe" for calling Jason.encode!/1 on without errors.
   This means that unexpected Logger metadata won't cause logging crashes.
+
   Current formatting is...
-  - Maps: as is
-  - Printable binaries: as is
-  - Numbers: as is
-  - Structs that don't implement Jason.Encoder: converted to maps
-  - Tuples: converted to lists
-  - Keyword lists: converted to Maps
-  - everything else: inspected
+    * Maps: as is
+    * Printable binaries: as is
+    * Numbers: as is
+    * Structs that don't implement Jason.Encoder: converted to maps
+    * Tuples: converted to lists
+    * Keyword lists: converted to Maps
+    * everything else: inspected
   """
   @spec format(any()) :: any()
   def format(%Jason.Fragment{} = data) do

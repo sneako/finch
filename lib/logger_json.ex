@@ -13,10 +13,8 @@ defmodule LoggerJSON do
   name to `:formatter` config option. Example implementations can be found in `LoggerJSON.Formatters.GoogleCloudLogger`
   and `LoggerJSON.Formatters.BasicLogger`.
 
-    ```elixir
-    config :logger_json, :backend,
-      formatter: MyFormatterImplementation
-    ```
+      config :logger_json, :backend,
+        formatter: MyFormatterImplementation
 
   ## Encoders support
 
@@ -39,10 +37,9 @@ defmodule LoggerJSON do
   would like to disable the `:on_init` callback function dynamically, you
   can pass in `:disabled` and no callback function will be called.
 
-    ```elixir
-    config :logger_json, :backend,
-      on_init: {YourApp.Logger, :load_from_system_env, []}
-    ```
+      config :logger_json, :backend,
+        on_init: {YourApp.Logger, :load_from_system_env, []}
+
   """
   @behaviour :gen_event
 
@@ -74,7 +71,7 @@ defmodule LoggerJSON do
   @doc """
   Changes Logger log level at runtime.
 
-  Notice that settings this valie below `compile_time_purge_level` would not work,
+  Notice that settings this value below `compile_time_purge_level` would not work,
   because Logger calls would be already stripped at compile-time.
   """
   def configure_log_level!(nil), do: :ok

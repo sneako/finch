@@ -1,6 +1,6 @@
 defmodule LoggerJSON.Formatters.BasicLogger do
   @moduledoc """
-  Basic JSON log formatter with no vender specific formatting
+  Basic JSON log formatter with no vendor specific formatting.
   """
 
   import Jason.Helpers, only: [json_map: 1]

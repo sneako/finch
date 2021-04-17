@@ -7,7 +7,7 @@ defmodule LoggerJSON.FormatterUtils do
   import Jason.Helpers, only: [json_map: 1]
 
   @doc """
-  Format an exception for use within a log entry
+  Format an exception for use within a log entry.
   """
   def format_process_crash(md) do
     if crash_reason = Keyword.get(md, :crash_reason) do
@@ -21,7 +21,7 @@ defmodule LoggerJSON.FormatterUtils do
   end
 
   @doc """
-  RFC3339 UTC "Zulu" format
+  RFC3339 UTC "Zulu" format.
   """
   def format_timestamp({date, time}) do
     [format_date(date), ?T, format_time(time), ?Z]
@@ -29,13 +29,14 @@ defmodule LoggerJSON.FormatterUtils do
   end
 
   @doc """
-  Provide a string output of the MFA log entry
+  Provide a string output of the MFA log entry.
   """
   def format_function(nil, function), do: function
   def format_function(module, function), do: "#{module}.#{function}"
   def format_function(module, function, arity), do: "#{module}.#{function}/#{arity}"
 
   @doc """
+  Optionally put a value to a map.
   """
   def maybe_put(map, _key, nil), do: map
   def maybe_put(map, key, value), do: Map.put(map, key, value)
