@@ -11,7 +11,7 @@ defmodule Finch.HTTP1.IntegrationTest do
 
     {:ok, _} = HTTP1Server.start(port)
 
-    {:ok, url: "https://localhost:#{port}", ssl_version: ssl_version()}
+    {:ok, url: "https://localhost:#{port}", ssl_version: Finch.TestUtils.ssl_version()}
   end
 
   @tag :capture_log
@@ -73,12 +73,5 @@ defmodule Finch.HTTP1.IntegrationTest do
     else
       :ok
     end
-  end
-
-  defp ssl_version() do
-    Application.spec(:ssl, :vsn)
-    |> List.to_string()
-    |> String.split(".")
-    |> Enum.map(&String.to_integer/1)
   end
 end

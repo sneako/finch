@@ -12,7 +12,7 @@ defmodule Finch.HTTP2.IntegrationTest do
 
     {:ok, _} = HTTP2Server.start(port)
 
-    {:ok, url: "https://localhost:#{port}", ssl_version: ssl_version()}
+    {:ok, url: "https://localhost:#{port}", ssl_version: Finch.TestUtils.ssl_version()}
   end
 
   test "sends http2 requests", %{url: url} do
@@ -138,12 +138,5 @@ defmodule Finch.HTTP2.IntegrationTest do
     else
       :ok
     end
-  end
-
-  defp ssl_version() do
-    Application.spec(:ssl, :vsn)
-    |> List.to_string()
-    |> String.split(".")
-    |> Enum.map(&String.to_integer/1)
   end
 end
