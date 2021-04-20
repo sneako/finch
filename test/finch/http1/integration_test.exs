@@ -49,7 +49,9 @@ defmodule Finch.HTTP1.IntegrationTest do
            protocol: :http1,
            conn_opts: [
              transport_opts: [
-               verify: :verify_none
+               verify: :verify_none,
+               keep_secrets: true,
+               versions: [:"tlsv1.2", :"tlsv1.3"]
              ]
            ]
          ]

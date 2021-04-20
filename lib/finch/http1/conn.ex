@@ -44,6 +44,7 @@ defmodule Finch.Conn do
     case Mint.HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts) do
       {:ok, mint} ->
         Telemetry.stop(:connect, start_time, meta)
+        maybe_log_secrets(conn.scheme, mint)
         {:ok, %{conn | mint: mint}}
 
       {:error, error} ->
@@ -204,5 +205,24 @@ defmodule Finch.Conn do
       {:error, ^ref, error} ->
         {:error, mint, error}
     end
+  end
+
+  defp maybe_log_secrets(:https, mint) do
+    with ssl_key_log_file <- System.get_env("SSLKEYLOGFILE"),
+         socket <- HTTP1.get_socket(mint),
+         {:ok, [{:keylog, keylog_items}]} <- :ssl.connection_information(socket, [:keylog]),
+         {:ok, f} <- File.open(ssl_key_log_file, [:append]) do
+      try do
+        for keylog_item <- keylog_items do
+          :ok = IO.puts(f, keylog_item)
+        end
+      after
+        File.close(f)
+      end
+    end
+  end
+
+  defp maybe_log_secrets(_scheme, _mint) do
+    :ok
   end
 end
