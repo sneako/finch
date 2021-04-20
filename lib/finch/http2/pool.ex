@@ -155,6 +155,7 @@ defmodule Finch.HTTP2.Pool do
     case HTTP2.connect(data.scheme, data.host, data.port, data.connect_opts) do
       {:ok, conn} ->
         Telemetry.stop(:connect, start, metadata)
+        maybe_log_secrets(data.scheme, conn)
         data = %{data | conn: conn}
         {:next_state, :connected, data}
 
@@ -432,5 +433,31 @@ defmodule Finch.HTTP2.Pool do
     factor = :math.pow(2, failure_count)
     max_sleep = trunc(min(max_backoff, base_backoff * factor))
     :rand.uniform(max_sleep)
+  end
+
+  defp maybe_log_secrets(:https, conn) do
+    maybe_log_secrets(:https, System.get_env("SSLKEYLOGFILE"), conn)
+  end
+
+  defp maybe_log_secrets(_scheme, _mint) do
+    :ok
+  end
+
+  defp maybe_log_secrets(:https, nil, _conn) do
+    :ok
+  end
+
+  defp maybe_log_secrets(:https, ssl_key_log_file, conn) do
+    with socket <- HTTP2.get_socket(conn),
+         {:ok, [{:keylog, keylog_items}]} <- :ssl.connection_information(socket, [:keylog]),
+         {:ok, f} <- File.open(ssl_key_log_file, [:append]) do
+      try do
+        for keylog_item <- keylog_items do
+          :ok = IO.puts(f, keylog_item)
+        end
+      after
+        File.close(f)
+      end
+    end
   end
 end

@@ -207,9 +207,9 @@ defmodule Finch.Conn do
     end
   end
 
-  defp maybe_log_secrets(:https, mint) do
+  defp maybe_log_secrets(:https, conn) do
     with ssl_key_log_file <- System.get_env("SSLKEYLOGFILE"),
-         socket <- HTTP1.get_socket(mint),
+         socket <- HTTP1.get_socket(conn),
          {:ok, [{:keylog, keylog_items}]} <- :ssl.connection_information(socket, [:keylog]),
          {:ok, f} <- File.open(ssl_key_log_file, [:append]) do
       try do
