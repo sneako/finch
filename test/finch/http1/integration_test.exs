@@ -2,8 +2,6 @@ defmodule Finch.HTTP1.IntegrationTest do
   use ExUnit.Case, async: false
   import ExUnit.CaptureLog
 
-  require Logger
-
   alias Finch.HTTP1Server
   alias Finch.TestUtil
 
@@ -41,7 +39,6 @@ defmodule Finch.HTTP1.IntegrationTest do
     if ssl_version >= [10, 2] do
       assert tmp_dir = System.tmp_dir()
       log_file = Path.join(tmp_dir, "ssl-key-file.log")
-      Logger.debug("SSLKEYLOGFILE: #{log_file}")
 
       start_supervised!(
         {Finch,
