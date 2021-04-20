@@ -36,7 +36,7 @@ defmodule Finch.HTTP1.IntegrationTest do
            end) =~ "ALPN protocol not negotiated"
   end
 
-  test "write TLS secrets to SSLKEYLOGFILE file", %{url: url, ssl_version: ssl_version} do
+  test "writes TLS secrets to SSLKEYLOGFILE file", %{url: url, ssl_version: ssl_version} do
     if ssl_version >= [10, 2] do
       assert tmp_dir = System.tmp_dir()
       log_file = Path.join(tmp_dir, "ssl-key-file.log")
