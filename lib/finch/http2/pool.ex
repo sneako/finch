@@ -7,6 +7,7 @@ defmodule Finch.HTTP2.Pool do
   alias Mint.HTTP2
   alias Mint.HTTPError
   alias Finch.Telemetry
+  alias Finch.Util
 
   require Logger
 
@@ -435,29 +436,8 @@ defmodule Finch.HTTP2.Pool do
     :rand.uniform(max_sleep)
   end
 
-  defp maybe_log_secrets(:https, conn) do
-    maybe_log_secrets(:https, System.get_env("SSLKEYLOGFILE"), conn)
-  end
-
-  defp maybe_log_secrets(_scheme, _mint) do
-    :ok
-  end
-
-  defp maybe_log_secrets(:https, nil, _conn) do
-    :ok
-  end
-
-  defp maybe_log_secrets(:https, ssl_key_log_file, conn) do
-    with socket <- HTTP2.get_socket(conn),
-         {:ok, [{:keylog, keylog_items}]} <- :ssl.connection_information(socket, [:keylog]),
-         {:ok, f} <- File.open(ssl_key_log_file, [:append]) do
-      try do
-        for keylog_item <- keylog_items do
-          :ok = IO.puts(f, keylog_item)
-        end
-      after
-        File.close(f)
-      end
-    end
+  defp maybe_log_secrets(scheme, mint_conn) do
+    socket = HTTP2.get_socket(mint_conn)
+    Util.maybe_log_secrets(scheme, socket)
   end
 end

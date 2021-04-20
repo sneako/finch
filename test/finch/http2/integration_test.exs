@@ -4,6 +4,7 @@ defmodule Finch.HTTP2.IntegrationTest do
   require Logger
 
   alias Finch.HTTP2Server
+  alias Finch.TestUtil
 
   @moduletag :capture_log
 
@@ -12,7 +13,7 @@ defmodule Finch.HTTP2.IntegrationTest do
 
     {:ok, _} = HTTP2Server.start(port)
 
-    {:ok, url: "https://localhost:#{port}", ssl_version: Finch.TestUtils.ssl_version()}
+    {:ok, url: "https://localhost:#{port}", ssl_version: TestUtil.ssl_version()}
   end
 
   test "sends http2 requests", %{url: url} do

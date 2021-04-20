@@ -5,13 +5,14 @@ defmodule Finch.HTTP1.IntegrationTest do
   require Logger
 
   alias Finch.HTTP1Server
+  alias Finch.TestUtil
 
   setup_all do
     port = 4001
 
     {:ok, _} = HTTP1Server.start(port)
 
-    {:ok, url: "https://localhost:#{port}", ssl_version: Finch.TestUtils.ssl_version()}
+    {:ok, url: "https://localhost:#{port}", ssl_version: TestUtil.ssl_version()}
   end
 
   @tag :capture_log

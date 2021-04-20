@@ -3,6 +3,7 @@ defmodule Finch.Conn do
 
   alias Mint.HTTP1
   alias Finch.Telemetry
+  alias Finch.Util
 
   def new(scheme, host, port, opts, parent) do
     %{
@@ -207,22 +208,8 @@ defmodule Finch.Conn do
     end
   end
 
-  defp maybe_log_secrets(:https, conn) do
-    with ssl_key_log_file <- System.get_env("SSLKEYLOGFILE"),
-         socket <- HTTP1.get_socket(conn),
-         {:ok, [{:keylog, keylog_items}]} <- :ssl.connection_information(socket, [:keylog]),
-         {:ok, f} <- File.open(ssl_key_log_file, [:append]) do
-      try do
-        for keylog_item <- keylog_items do
-          :ok = IO.puts(f, keylog_item)
-        end
-      after
-        File.close(f)
-      end
-    end
-  end
-
-  defp maybe_log_secrets(_scheme, _mint) do
-    :ok
+  defp maybe_log_secrets(scheme, mint_conn) do
+    socket = HTTP1.get_socket(mint_conn)
+    Util.maybe_log_secrets(scheme, socket)
   end
 end

@@ -1,7 +1,7 @@
 ExUnit.start()
 Application.ensure_all_started(:bypass)
 
-defmodule Finch.TestUtils do
+defmodule Finch.TestUtil do
   def ssl_version() do
     Application.spec(:ssl, :vsn)
     |> List.to_string()
