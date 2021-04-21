@@ -14,6 +14,8 @@ defmodule Finch.Util do
   end
 
   defp maybe_log_secrets(:https, ssl_key_log_file, socket) do
+    # Note: not every ssl library version returns information for :keylog. By using `with` here,
+    # anything other than the expected return value is silently ignored.
     with {:ok, [{:keylog, keylog_items}]} <- :ssl.connection_information(socket, [:keylog]),
          {:ok, f} <- File.open(ssl_key_log_file, [:append]) do
       try do
