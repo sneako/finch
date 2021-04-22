@@ -45,7 +45,7 @@ defmodule Finch.Conn do
     case Mint.HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts) do
       {:ok, mint} ->
         Telemetry.stop(:connect, start_time, meta)
-        SSL.maybe_log_secrets(conn.scheme, mint)
+        SSL.maybe_log_secrets(conn.scheme, conn_opts, mint)
         {:ok, %{conn | mint: mint}}
 
       {:error, error} ->

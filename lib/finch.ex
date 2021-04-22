@@ -5,7 +5,7 @@ defmodule Finch do
              |> String.split("<!-- MDOC !-->")
              |> Enum.fetch!(1)
 
-  alias Finch.{PoolManager, Request, Response}
+  alias Finch.{PoolManager, Request, Response, SSL}
 
   use Supervisor
 
@@ -161,9 +161,13 @@ defmodule Finch do
       |> Keyword.put_new(:nodelay, true)
       |> Keyword.put(:keepalive, true)
 
+    {:ok, ssl_key_log_file, keep_secrets} = SSL.get_conn_opts()
+
     conn_opts =
       valid[:conn_opts]
       |> List.wrap()
+      |> Keyword.put_new(:ssl_key_log_file, ssl_key_log_file)
+      |> Keyword.put_new(:keep_secrets, keep_secrets)
       |> Keyword.put(:transport_opts, transport_opts)
 
     %{

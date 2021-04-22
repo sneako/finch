@@ -40,6 +40,8 @@ defmodule Finch.HTTP1.IntegrationTest do
       assert tmp_dir = System.tmp_dir()
       log_file = Path.join(tmp_dir, "ssl-key-file.log")
 
+      assert :ok = System.put_env("SSLKEYLOGFILE", log_file)
+
       start_supervised!(
         {Finch,
          name: H2Finch,
@@ -58,10 +60,7 @@ defmodule Finch.HTTP1.IntegrationTest do
       )
 
       try do
-        assert :ok = System.put_env("SSLKEYLOGFILE", log_file)
-
         assert {:ok, _} = Finch.build(:get, url) |> Finch.request(H2Finch)
-
         assert {:ok, log_file_stat} = File.stat(log_file)
         assert log_file_stat.size > 0
       after
