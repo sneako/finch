@@ -1,15 +1,18 @@
-defmodule Finch.Util do
+defmodule Finch.SSL do
   @moduledoc false
 
-  def maybe_log_secrets(:https, socket) do
+  alias Mint.HTTP
+
+  def maybe_log_secrets(:https, mint) do
+    socket = HTTP.get_socket(mint)
     maybe_log_secrets(:https, System.get_env("SSLKEYLOGFILE"), socket)
   end
 
-  def maybe_log_secrets(_scheme, _socket) do
+  def maybe_log_secrets(_scheme, _mint) do
     :ok
   end
 
-  defp maybe_log_secrets(:https, nil, _socket) do
+  defp maybe_log_secrets(:https, nil, _mint) do
     :ok
   end
 

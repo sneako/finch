@@ -3,7 +3,7 @@ defmodule Finch.Conn do
 
   alias Mint.HTTP1
   alias Finch.Telemetry
-  alias Finch.Util
+  alias Finch.SSL
 
   def new(scheme, host, port, opts, parent) do
     %{
@@ -45,7 +45,7 @@ defmodule Finch.Conn do
     case Mint.HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts) do
       {:ok, mint} ->
         Telemetry.stop(:connect, start_time, meta)
-        maybe_log_secrets(conn.scheme, mint)
+        SSL.maybe_log_secrets(conn.scheme, mint)
         {:ok, %{conn | mint: mint}}
 
       {:error, error} ->
@@ -206,10 +206,5 @@ defmodule Finch.Conn do
       {:error, ^ref, error} ->
         {:error, mint, error}
     end
-  end
-
-  defp maybe_log_secrets(scheme, mint_conn) do
-    socket = Mint.HTTP.get_socket(mint_conn)
-    Util.maybe_log_secrets(scheme, socket)
   end
 end
