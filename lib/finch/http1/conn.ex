@@ -209,7 +209,7 @@ defmodule Finch.Conn do
   end
 
   defp maybe_log_secrets(scheme, mint_conn) do
-    socket = HTTP1.get_socket(mint_conn)
+    socket = Mint.HTTP.get_socket(mint_conn)
     Util.maybe_log_secrets(scheme, socket)
   end
 end
