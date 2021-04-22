@@ -2,15 +2,17 @@ defmodule Finch.HTTP1.IntegrationTest do
   use ExUnit.Case, async: false
   import ExUnit.CaptureLog
 
+  require Logger
+
   alias Finch.HTTP1Server
-  alias Finch.TestUtil
+  alias Finch.TestHelper
 
   setup_all do
     port = 4001
 
     {:ok, _} = HTTP1Server.start(port)
 
-    {:ok, url: "https://localhost:#{port}", ssl_version: TestUtil.ssl_version()}
+    {:ok, url: "https://localhost:#{port}"}
   end
 
   @tag :capture_log
@@ -35,40 +37,63 @@ defmodule Finch.HTTP1.IntegrationTest do
            end) =~ "ALPN protocol not negotiated"
   end
 
-  test "writes TLS secrets to SSLKEYLOGFILE file", %{url: url, ssl_version: ssl_version} do
-    if ssl_version >= [10, 2] do
-      assert tmp_dir = System.tmp_dir()
-      log_file = Path.join(tmp_dir, "ssl-key-file.log")
+  @tag skip: TestHelper.ssl_version() < [10, 2]
+  test "writes TLS secrets to SSLKEYLOGFILE file", %{url: url} do
+    tmp_dir = System.tmp_dir()
+    log_file = Path.join(tmp_dir, "ssl-key-file.log")
+    :ok = System.put_env("SSLKEYLOGFILE", log_file)
 
-      assert :ok = System.put_env("SSLKEYLOGFILE", log_file)
+    start_finch([:"tlsv1.2", :"tlsv1.3"])
 
-      start_supervised!(
-        {Finch,
-         name: H2Finch,
-         pools: %{
-           default: [
-             protocol: :http1,
-             conn_opts: [
-               transport_opts: [
-                 verify: :verify_none,
-                 keep_secrets: true,
-                 versions: [:"tlsv1.2", :"tlsv1.3"]
-               ]
+    try do
+      assert {:ok, _} = Finch.build(:get, url) |> Finch.request(H2Finch)
+      assert File.stat!(log_file).size > 0
+    after
+      File.rm!(log_file)
+      System.delete_env("SSLKEYLOGFILE")
+    end
+  end
+
+  @tag skip: TestHelper.ssl_version() < [10, 2]
+  test "writes TLS secrets to SSLKEYLOGFILE file using TLS 1.3" do
+    tmp_dir = System.tmp_dir()
+    log_file = Path.join(tmp_dir, "ssl-key-file.log")
+    :ok = System.put_env("SSLKEYLOGFILE", log_file)
+
+    start_finch([:"tlsv1.3"])
+
+    try do
+      case Finch.build(:get, "https://rabbitmq.com") |> Finch.request(H2Finch) do
+        {:ok, _} ->
+          assert File.stat!(log_file).size > 0
+
+        {:error, %Mint.TransportError{reason: {:options, :dependency, _}}} ->
+          Logger.warn(
+            "NOTE: remove this :error case when mint is updated to version 1.3 (https://github.com/elixir-mint/mint/pull/314)"
+          )
+      end
+    after
+      File.rm!(log_file)
+      System.delete_env("SSLKEYLOGFILE")
+    end
+  end
+
+  defp start_finch(tls_versions) do
+    start_supervised!(
+      {Finch,
+       name: H2Finch,
+       pools: %{
+         default: [
+           protocol: :http1,
+           conn_opts: [
+             transport_opts: [
+               reuse_sessions: false,
+               verify: :verify_none,
+               versions: tls_versions
              ]
            ]
-         }}
-      )
-
-      try do
-        assert {:ok, _} = Finch.build(:get, url) |> Finch.request(H2Finch)
-        assert {:ok, log_file_stat} = File.stat(log_file)
-        assert log_file_stat.size > 0
-      after
-        File.rm(log_file)
-        System.delete_env("SSLKEYLOGFILE")
-      end
-    else
-      :ok
-    end
+         ]
+       }}
+    )
   end
 end
