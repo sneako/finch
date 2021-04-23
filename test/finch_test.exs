@@ -39,6 +39,24 @@ defmodule FinchTest do
       assert length(pools) == 5
     end
 
+    test "TLS options will be dropped from default if it connects to http", %{bypass: bypass} do
+      {:ok, _} =
+        Finch.start_link(
+          name: MyFinch,
+          pools: %{
+            default: [
+              count: 5, size: 5,
+              conn_opts: [transport_opts: [verify: :verify_none]]
+            ]
+          }
+        )
+
+      expect_any(bypass)
+
+      # you will get badarg error if the verify option is applied to the connection.
+      assert {:ok, %Response{}} = Finch.build("GET", endpoint(bypass)) |> Finch.request(MyFinch)
+    end
+
     test "raises when invalid configuration is provided" do
       assert_raise(
         NimbleOptions.ValidationError,
