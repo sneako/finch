@@ -81,8 +81,8 @@ defmodule Finch.PoolManager do
     end
   end
 
-  # Make sure dropping TLS options from :conn_opts for http scheme config
-  # Otherwise you will get :badarg error from Mint/:gen_tcp
+  # Drop TLS options from :conn_opts for default pools with :http scheme,
+  # otherwise you will get :badarg error from :gen_tcp
   defp maybe_drop_tls_options({:http, _, _} = _shp, config) when is_map(config) do
     with conn_opts when is_list(conn_opts) <- config[:conn_opts],
          trns_opts when is_list(trns_opts) <- conn_opts[:transport_opts] do
