@@ -9,8 +9,6 @@ defmodule Finch do
 
   use Supervisor
 
-  # We find that a default pool_size of 50 will provide
-  # similar request thoroughput to other http clients (hackney, httpc, etc.)
   @default_pool_size 50
   @default_pool_count 1
 
@@ -19,7 +17,7 @@ defmodule Finch do
   @pool_config_schema [
     protocol: [
       type: {:in, [:http2, :http1]},
-      doc: "The type of connection and pool to use",
+      doc: "The type of connection and pool to use.",
       default: :http1
     ],
     size: [
@@ -27,9 +25,8 @@ defmodule Finch do
       doc: """
       Number of connections to maintain in each pool. Used only by HTTP1 pools \
       since HTTP2 is able to multiplex requests through a single connection. In \
-      other words, for HTTP2, the size is always 1. We find a pool size of 50 will\
-      provide a simliar Request Per Second thoroughput as other http clients like\
-      hackney and httpc.
+      other words, for HTTP2, the size is always 1 and the `:count` should be \
+      configured in order to increase capacity.
       """,
       default: @default_pool_size
     ],
@@ -46,8 +43,10 @@ defmodule Finch do
     ],
     max_idle_time: [
       type: :timeout,
-      doc:
-        "The maxiumum number of milliseconds an HTTP1 connection is allowed to be idle before being closed during a checkout attempt",
+      doc: """
+      The maxiumum number of milliseconds an HTTP1 connection is allowed to be idle \
+      before being closed during a checkout attempt.
+      """,
       default: :infinity
     ],
     conn_opts: [
