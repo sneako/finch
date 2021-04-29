@@ -2,6 +2,12 @@ defmodule Finch.PoolManager do
   @moduledoc false
   use GenServer
 
+  @mint_tls_opts [
+    :cacertfile, :ciphers, :depth, :partial_chain, :reuse_sessions,
+    :secure_renegotiate, :server_name_indication, :verify, :verify_fun,
+    :versions
+  ]
+
   def start_link(config) do
     GenServer.start_link(__MODULE__, config, name: config.manager_name)
   end
@@ -70,10 +76,25 @@ defmodule Finch.PoolManager do
 
   defp pool_config(%{pools: config, default_pool_config: default}, shp) do
     case Map.get(config, shp, config[:default]) do
-      nil -> default
+      nil -> maybe_drop_tls_options(shp, default)
       config -> config
     end
   end
+
+  # Drop TLS options from :conn_opts for default pools with :http scheme,
+  # otherwise you will get :badarg error from :gen_tcp
+  defp maybe_drop_tls_options({:http, _, _} = _shp, config) when is_map(config) do
+    with conn_opts when is_list(conn_opts) <- config[:conn_opts],
+         trns_opts when is_list(trns_opts) <- conn_opts[:transport_opts] do
+      trns_opts = Keyword.drop(trns_opts, @mint_tls_opts)
+      conn_opts = Keyword.put(conn_opts, :transport_opts, trns_opts)
+      Map.put(config, :conn_opts, conn_opts)
+    else
+      _ -> config
+    end
+  end
+
+  defp maybe_drop_tls_options(_, config), do: config
 
   defp pool_mod(:http1), do: Finch.HTTP1.Pool
   defp pool_mod(:http2), do: Finch.HTTP2.Pool
