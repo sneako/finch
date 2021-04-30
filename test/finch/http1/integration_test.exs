@@ -89,11 +89,25 @@ defmodule Finch.HTTP1.IntegrationTest do
              transport_opts: [
                reuse_sessions: false,
                verify: :verify_none,
-               versions: tls_versions
+               versions: tls_versions,
+               ciphers: get_ciphers_for_tls_versions(tls_versions)
              ]
            ]
          ]
        }}
     )
+  end
+
+  def get_ciphers_for_tls_versions(tls_versions) do
+    if TestHelper.ssl_version() >= [8, 2, 4] do
+      # Note: :ssl.filter_cipher_suites/2 is available
+      tls_versions
+      |> List.foldl([], fn v, acc ->
+        [:ssl.filter_cipher_suites(:ssl.cipher_suites(:all, v), []) | acc]
+      end)
+      |> List.flatten()
+    else
+      :ssl.cipher_suites(:all)
+    end
   end
 end
