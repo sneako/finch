@@ -71,6 +71,11 @@ defmodule Finch.HTTP1.IntegrationTest do
           Logger.warn(
             "NOTE: remove this :error case when mint is updated to version 1.3 (https://github.com/elixir-mint/mint/pull/314)"
           )
+
+        {:error, %Mint.TransportError{reason: {:options, {:insufficient_crypto_support, _}}}} ->
+          Logger.warn(
+            "NOTE: remove this :error case when mint is updated to version 1.3 (https://github.com/elixir-mint/mint/pull/314)"
+          )
       end
     after
       File.rm!(log_file)
