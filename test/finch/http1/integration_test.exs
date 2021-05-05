@@ -63,20 +63,8 @@ defmodule Finch.HTTP1.IntegrationTest do
     start_finch([:"tlsv1.3"])
 
     try do
-      case Finch.build(:get, "https://rabbitmq.com") |> Finch.request(H2Finch) do
-        {:ok, _} ->
-          assert File.stat!(log_file).size > 0
-
-        {:error, %Mint.TransportError{reason: {:options, :dependency, _}}} ->
-          Logger.warn(
-            "NOTE: remove this :error case when mint is updated to version 1.3 (https://github.com/elixir-mint/mint/pull/314)"
-          )
-
-        {:error, %Mint.TransportError{reason: {:options, {:insufficient_crypto_support, _}}}} ->
-          Logger.warn(
-            "NOTE: remove this :error case when mint is updated to version 1.3 (https://github.com/elixir-mint/mint/pull/314)"
-          )
-      end
+      {:ok, _} = Finch.build(:get, "https://rabbitmq.com") |> Finch.request(H2Finch)
+      assert File.stat!(log_file).size > 0
     after
       File.rm!(log_file)
       System.delete_env("SSLKEYLOGFILE")
