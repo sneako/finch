@@ -33,7 +33,7 @@ defmodule Finch.MixProject do
 
   defp deps do
     [
-      {:mint, "~> 1.2"},
+      {:mint, "~> 1.3"},
       {:castore, "~> 0.1"},
       {:nimble_pool, "~> 0.2"},
       {:nimble_options, "~> 0.3.5"},
@@ -41,7 +41,7 @@ defmodule Finch.MixProject do
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
       {:credo, "~> 1.3", only: [:dev, :test]},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:bypass, "~> 1.0", only: :test},
+      {:bypass, "~> 2.0", only: :test},
       {:cowboy, "~> 2.0", only: [:dev, :test]},
       {:plug_cowboy, "~> 2.0", only: [:dev, :test]},
       {:x509, "~> 0.8", only: [:dev, :test]}
