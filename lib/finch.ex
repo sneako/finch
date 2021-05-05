@@ -54,11 +54,7 @@ defmodule Finch do
       doc: """
       These options are passed to `Mint.HTTP.connect/4` whenever a new connection is established. \
       `:mode` is not configurable as Finch must control this setting. Typically these options are \
-      used to configure proxying, https settings, or connect timeouts. The `ssl_key_log_file` \
-      connection option specifies a file into which all TLS secrets are logged for later use in a \
-      tool like Wireshark to decrypt https sessions. Setting the `SSLKEYLOGFILE` environment \
-      variable also enables this feature. If you are using TLSv1.3 you must also add \
-      `keep_secrets: true` to `transport_opts:`
+      used to configure proxying, https settings, or connect timeouts.
       """,
       default: []
     ]
@@ -85,9 +81,7 @@ defmodule Finch do
     * `:pools` - A map specifying the configuration for your pools. The keys should be URLs
     provided as binaries, or the atom `:default` to provide a catch-all configuration to be used
     for any unspecified URLs. See "Pool Configuration Options" below for details on the possible
-    map values. Default value is `%{default: [size: #{@default_pool_size}, count: #{
-    @default_pool_count
-  }]}`.
+    map values. Default value is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
 
   ### Pool Configuration Options
 
@@ -170,7 +164,9 @@ defmodule Finch do
 
     conn_opts = valid[:conn_opts] |> List.wrap()
 
-    ssl_key_log_file = Keyword.get(conn_opts, :ssl_key_log_file) || System.get_env("SSLKEYLOGFILE")
+    ssl_key_log_file =
+      Keyword.get(conn_opts, :ssl_key_log_file) || System.get_env("SSLKEYLOGFILE")
+
     ssl_key_log_file_device = ssl_key_log_file && File.open!(ssl_key_log_file, [:append])
 
     conn_opts =
