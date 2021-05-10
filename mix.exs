@@ -44,8 +44,9 @@ defmodule LoggerJSON.Mixfile do
 
   defp package do
     [
-      description: "Console Logger back-end, Plug and Ecto.LogEntry adapter "
-        <> "that writes logs in JSON format.",
+      description:
+        "Console Logger back-end, Plug and Ecto.LogEntry adapter " <>
+          "that writes logs in JSON format.",
       contributors: ["Nebo #15"],
       maintainers: ["Nebo #15"],
       licenses: ["MIT"],

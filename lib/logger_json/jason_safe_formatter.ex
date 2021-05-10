@@ -50,7 +50,7 @@ defmodule LoggerJSON.JasonSafeFormatter do
 
   def format({key, data}) when is_binary(key) or is_atom(key), do: %{key => format(data)}
 
-  def format(data) when is_tuple(data), do: Tuple.to_list(data)
+  def format(data) when is_tuple(data), do: data |> Tuple.to_list() |> format()
 
   def format(data) when is_number(data), do: data
 

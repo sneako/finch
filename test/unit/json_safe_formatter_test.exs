@@ -39,6 +39,10 @@ defmodule LoggerJSON.JasonSafeFormatterTest do
       assert [1, 2, 3] == Formatter.format({1, 2, 3})
     end
 
+    test "converts nested tuples to nested lists" do
+      assert [[2000, 1, 1], [13, 30, 15]] == Formatter.format({{2000, 1, 1}, {13, 30, 15}})
+    end
+
     test "converts Keyword lists to maps" do
       assert %{a: 1, b: 2} == Formatter.format(a: 1, b: 2)
     end
