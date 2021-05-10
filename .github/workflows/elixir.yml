@@ -28,10 +28,10 @@ jobs:
          key: ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-build-${{ hashFiles(format('{0}{1}', github.workspace, '/mix.lock')) }}
          restore-keys: |
            ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-
-     - uses: actions/setup-elixir@v1
+     - uses: erlef/setup-elixir@v1
        with:
-         otp-version: ${{ matrix.otp }}
-         elixir-version: ${{ matrix.elixir }}
+         otp-version: ${{matrix.otp}}
+         elixir-version: ${{matrix.elixir}}
      - name: Install Dependencies
        run: mix deps.get
      - name: Run Credo
