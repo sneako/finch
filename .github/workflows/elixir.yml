@@ -7,10 +7,14 @@ jobs:
      matrix:
        elixir: ['1.7.4', '1.11.4']
        include:
-         - elixir: '1.7.4'
-           otp: '19.x'
-         - elixir: '1.11.4'
-           otp: '23.x'
+         - pair:
+             elixir: '1.7.4'
+             otp: '19.x'
+         - pair:
+             elixir: '1.11.4'
+             otp: '23.x'
+           lint: lint
+
    runs-on: ubuntu-18.04
    steps:
      - uses: actions/checkout@v2
@@ -22,15 +26,16 @@ jobs:
      - uses: actions/cache@v2
        with:
          path: _build
-         key: build-${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-${{ hashFiles('**/mix.lock') }}
-         restore-keys: build-${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-
+         key: build-${{ runner.os }}-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}-${{ hashFiles('**/mix.lock') }}
+         restore-keys: build-${{ runner.os }}-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}-
      - uses: erlef/setup-elixir@v1
        with:
-         otp-version: ${{matrix.otp}}
-         elixir-version: ${{matrix.elixir}}
+         otp-version: ${{matrix.pair.otp}}
+         elixir-version: ${{matrix.pair.elixir}}
      - name: Install Dependencies
        run: mix deps.get
      - name: Run Credo
        run: mix credo
+       if: ${{ matrix.lint }}
      - name: Run Tests
        run: mix test
