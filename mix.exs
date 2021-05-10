@@ -41,8 +41,8 @@ defmodule Finch.MixProject do
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
       {:credo, "~> 1.3", only: [:dev, :test]},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:bypass, "~> 1.0", only: :test},
-      {:cowboy, "~> 2.0", only: [:dev, :test]},
+      {:bypass, "~> 2.0", only: :test},
+      {:cowboy, "== 2.7.0", only: [:dev, :test]},
       {:plug_cowboy, "~> 2.0", only: [:dev, :test]},
       {:x509, "~> 0.8", only: [:dev, :test]}
     ]
