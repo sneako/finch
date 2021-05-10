@@ -2,8 +2,8 @@ name: CI
 on: [pull_request, push]
 jobs:
  mix_test:
-   name: mix test (Elixir ${{ matrix.elixir }} OTP ${{ matrix.otp }})
    strategy:
+     fail-fast: false
      matrix:
        elixir: ['1.7.4', '1.11.4']
        include:
@@ -34,6 +34,11 @@ jobs:
          elixir-version: ${{matrix.pair.elixir}}
      - name: Install Dependencies
        run: mix deps.get
+     - run: mix deps.unlock --check-unused
+       if: ${{ matrix.lint }}
+     - run: mix deps.compile
+     - run: mix compile --warnings-as-errors
+       if: ${{ matrix.lint }}
      - name: Run Credo
        run: mix credo
        if: ${{ matrix.lint }}
