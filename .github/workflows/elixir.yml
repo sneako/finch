@@ -28,7 +28,7 @@ jobs:
          path: _build
          key: build-${{ runner.os }}-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}-${{ hashFiles('**/mix.lock') }}
          restore-keys: build-${{ runner.os }}-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}-
-     - uses: erlef/setup-elixir@v1
+     - uses: erlef/setup-beam@v1
        with:
          otp-version: ${{matrix.pair.otp}}
          elixir-version: ${{matrix.pair.elixir}}
