@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.7.0 (2021-05-10)
+* Add support for SSLKEYLOGFILE.
+* Drop HTTPS options for default HTTP pools to avoid `:badarg` errors.
+
+## v0.6.3 (2021-02-22)
+* Return more verbose errors when finch is configured with bad URLs.
+
 ## v0.6.2 (2021-02-19)
 * Fix incorrect type spec for stream/5
 * Add default transport options for keepalive, timeouts, and nodelay.
