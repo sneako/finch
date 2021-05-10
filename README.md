@@ -60,6 +60,39 @@ Finch is best suited when you are requesting a known list of static hosts.
 Finch uses Telemetry to provide instrumentation. See the `Finch.Telemetry`
 module for details on specific events.
 
+## Logging TLS Secrets
+
+Finch supports logging TLS secrets to a file. These can be later used in a tool such as
+Wireshark to decrypt HTTPS sessions. To use this feature you must specify the file to
+which the secrets should be written. If you are using TLSv1.3 you must also add
+`keep_secrets: true` to your pool `:transport_opts`. For example:
+
+```elixir
+{Finch,
+ name: MyFinch,
+ pools: %{
+   default: [conn_opts: [transport_opts: [keep_secrets: true]]]
+ }}
+```
+
+There are two different ways to specify this file:
+
+1. The `:ssl_key_log_file` connection option in your pool configuration. For example:
+
+```elixir
+{Finch,
+ name: MyFinch,
+ pools: %{
+   default: [
+     conn_opts: [
+       ssl_key_log_file: "/writable/path/to/the/sslkey.log"
+     ]
+   ]
+ }}
+```
+
+2. Alternatively, you could also set the `SSLKEYLOGFILE` environment variable.
+
 <!-- MDOC !-->
 
 ## Installation

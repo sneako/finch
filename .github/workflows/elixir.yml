@@ -5,13 +5,15 @@ jobs:
    name: mix test (Elixir ${{ matrix.elixir }} OTP ${{ matrix.otp }})
    strategy:
      matrix:
-       elixir: ['1.7.4', '1.10.3']
+       elixir: ['1.7.4', '1.10.3', '1.11.4']
        include:
          - elixir: '1.7.4'
            otp: '19.x'
          - elixir: '1.10.3'
            otp: '23.x'
-   runs-on: ubuntu-16.04
+         - elixir: '1.11.4'
+           otp: '23.x'
+   runs-on: ubuntu-18.04
    steps:
      - uses: actions/checkout@v2
      - uses: actions/cache@v1
@@ -26,10 +28,10 @@ jobs:
          key: ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-build-${{ hashFiles(format('{0}{1}', github.workspace, '/mix.lock')) }}
          restore-keys: |
            ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-
-     - uses: actions/setup-elixir@v1
+     - uses: erlef/setup-elixir@v1
        with:
-         otp-version: ${{ matrix.otp }}
-         elixir-version: ${{ matrix.elixir }}
+         otp-version: ${{matrix.otp}}
+         elixir-version: ${{matrix.elixir}}
      - name: Install Dependencies
        run: mix deps.get
      - name: Run Credo

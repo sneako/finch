@@ -51,8 +51,11 @@ defmodule Finch do
     ],
     conn_opts: [
       type: :keyword_list,
-      doc:
-        "These options are passed to `Mint.HTTP.connect/4` whenever a new connection is established. `:mode` is not configurable as Finch must control this setting. Typically these options are used to configure proxying, https settings, or connect timeouts.",
+      doc: """
+      These options are passed to `Mint.HTTP.connect/4` whenever a new connection is established. \
+      `:mode` is not configurable as Finch must control this setting. Typically these options are \
+      used to configure proxying, https settings, or connect timeouts.
+      """,
       default: []
     ]
   ]
@@ -78,9 +81,7 @@ defmodule Finch do
     * `:pools` - A map specifying the configuration for your pools. The keys should be URLs
     provided as binaries, or the atom `:default` to provide a catch-all configuration to be used
     for any unspecified URLs. See "Pool Configuration Options" below for details on the possible
-    map values. Default value is `%{default: [size: #{@default_pool_size}, count: #{
-    @default_pool_count
-  }]}`.
+    map values. Default value is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
 
   ### Pool Configuration Options
 
@@ -161,9 +162,16 @@ defmodule Finch do
       |> Keyword.put_new(:nodelay, true)
       |> Keyword.put(:keepalive, true)
 
+    conn_opts = valid[:conn_opts] |> List.wrap()
+
+    ssl_key_log_file =
+      Keyword.get(conn_opts, :ssl_key_log_file) || System.get_env("SSLKEYLOGFILE")
+
+    ssl_key_log_file_device = ssl_key_log_file && File.open!(ssl_key_log_file, [:append])
+
     conn_opts =
-      valid[:conn_opts]
-      |> List.wrap()
+      conn_opts
+      |> Keyword.put(:ssl_key_log_file_device, ssl_key_log_file_device)
       |> Keyword.put(:transport_opts, transport_opts)
 
     %{

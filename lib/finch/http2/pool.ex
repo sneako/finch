@@ -7,6 +7,7 @@ defmodule Finch.HTTP2.Pool do
   alias Mint.HTTP2
   alias Mint.HTTPError
   alias Finch.Telemetry
+  alias Finch.SSL
 
   require Logger
 
@@ -155,6 +156,7 @@ defmodule Finch.HTTP2.Pool do
     case HTTP2.connect(data.scheme, data.host, data.port, data.connect_opts) do
       {:ok, conn} ->
         Telemetry.stop(:connect, start, metadata)
+        SSL.maybe_log_secrets(data.scheme, data.connect_opts, conn)
         data = %{data | conn: conn}
         {:next_state, :connected, data}
 
