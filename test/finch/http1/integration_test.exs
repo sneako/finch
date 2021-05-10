@@ -82,6 +82,7 @@ defmodule Finch.HTTP1.IntegrationTest do
              transport_opts: [
                reuse_sessions: false,
                verify: :verify_none,
+               keep_secrets: true,
                versions: tls_versions,
                ciphers: get_ciphers_for_tls_versions(tls_versions)
              ]
