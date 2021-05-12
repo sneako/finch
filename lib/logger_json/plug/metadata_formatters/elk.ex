@@ -21,9 +21,9 @@ if Code.ensure_loaded?(Plug) do
     @doc false
     def build_metadata(conn, latency, client_version_header) do
       latency_μs = System.convert_time_unit(latency, :native, :microsecond)
-      user_agent = LoggerJSON.Plug.get_header(conn, "user-agent")
-      ip = remote_ip(conn)
-      api_version = LoggerJSON.Plug.get_header(conn, client_version_header)
+      user_agent = LoggerJSON.PlugUtils.get_header(conn, "user-agent")
+      ip = LoggerJSON.PlugUtils.remote_ip(conn)
+      api_version = LoggerJSON.PlugUtils.get_header(conn, client_version_header)
       {hostname, vm_pid} = node_metadata()
 
       phoenix_metadata(conn) ++
@@ -48,10 +48,6 @@ if Code.ensure_loaded?(Plug) do
 
     defp connection_type(%{state: :set_chunked}), do: "chunked"
     defp connection_type(_), do: "sent"
-
-    defp remote_ip(conn) do
-      LoggerJSON.Plug.get_header(conn, "x-forwarded-for") || to_string(:inet_parse.ntoa(conn.remote_ip))
-    end
 
     defp phoenix_metadata(%{private: %{phoenix_controller: controller, phoenix_action: action}}) do
       [phoenix: %{controller: controller, action: action}]

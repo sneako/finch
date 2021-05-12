@@ -45,13 +45,5 @@ if Code.ensure_loaded?(Plug) do
         conn
       end)
     end
-
-    @doc false
-    def get_header(conn, header) do
-      case Conn.get_req_header(conn, header) do
-        [] -> nil
-        [val | _] -> val
-      end
-    end
   end
 end
