@@ -4,9 +4,10 @@
 [![Coverage Status](https://coveralls.io/repos/github/Nebo15/logger_json/badge.svg?branch=master)](https://coveralls.io/github/Nebo15/logger_json?branch=master)
 [![Module Version](https://img.shields.io/hexpm/v/logger_json.svg)](https://hex.pm/packages/logger_json)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/logger_json/)
-[![Total Download](https://img.shields.io/hexpm/dt/logger_json.svg)](https://hex.pm/packages/logger_json)
+[![Hex Download Total](https://img.shields.io/hexpm/dt/logger_json.svg)](https://hex.pm/packages/logger_json)
 [![License](https://img.shields.io/hexpm/l/logger_json.svg)](https://github.com/Nebo15/logger_json/blob/master/LICENSE)
 [![Last Updated](https://img.shields.io/github/last-commit/Nebo15/logger_json.svg)](https://github.com/Nebo15/logger_json/commits/master)
+[![Static Analysis Status](https://app.sourcelevel.io/github/Nebo15/-/logger_json.svg)](https://app.sourcelevel.io/github/Nebo15/-/logger_json)
 
 JSON console back-end for Elixir Logger.
 
