@@ -110,6 +110,50 @@ defmodule Finch.HTTP2.PoolTest do
     assert {:error, %{reason: :disconnected}} = request(pool, req, [])
   end
 
+  test "errors are not always {:error, Mint.Types.error()}", %{request: req} do
+    us = self()
+    {:ok, pool} =
+      start_server_and_connect_with(fn port ->
+        start_pool(port)
+      end)
+
+    spawn(fn ->
+      result = request(pool, req, [])
+      send(us, {:resp, result})
+    end)
+
+    assert_recv_frames [headers(stream_id: stream_id)]
+
+    hbf = server_encode_headers([{":status", "200"}])
+
+    # Force the connection to enter read only mode
+    server_send_frames([
+      goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "all good"),
+    ])
+
+    :timer.sleep(10)
+
+    # We can't send any more requests since the connection is closed for writing.
+    assert {:error, %{reason: :read_only}=error_read_only} = request(pool, req, [])
+    Exception.message(error_read_only)
+
+    server_send_frames([
+      headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
+      data(stream_id: stream_id, data: "hello", flags: set_flags(:data, [:end_stream]))
+    ])
+
+    assert_receive {:resp, {:ok, {200, [], "hello"}}}
+
+    # If the server now closes the socket, we actually shut down.
+    :ok = :ssl.close(server_socket())
+
+    Process.sleep(50)
+
+    # If we try to make a request now that the server shut down, we get an error.
+    assert {:error, %{reason: :disconnected}=error_disconnected} = request(pool, req, [])
+    Exception.message(error_disconnected)
+  end
+
   test "if server disconnects while there are waiting clients, we notify those clients", %{request: req} do
     us = self()
     {:ok, pool} =
