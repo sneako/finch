@@ -110,7 +110,7 @@ defmodule Finch.HTTP2.PoolTest do
     assert {:error, %{reason: :disconnected}} = request(pool, req, [])
   end
 
-  test "errors are not always {:error, Mint.Types.error()}", %{request: req} do
+  test "http2 pool errors are %Finch.Error{}", %{request: req} do
     us = self()
     {:ok, pool} =
       start_server_and_connect_with(fn port ->
@@ -135,6 +135,7 @@ defmodule Finch.HTTP2.PoolTest do
 
     # We can't send any more requests since the connection is closed for writing.
     assert {:error, %{reason: :read_only}=error_read_only} = request(pool, req, [])
+    assert %Finch.Error{} = error_read_only
     Exception.message(error_read_only)
 
     server_send_frames([
@@ -151,6 +152,7 @@ defmodule Finch.HTTP2.PoolTest do
 
     # If we try to make a request now that the server shut down, we get an error.
     assert {:error, %{reason: :disconnected}=error_disconnected} = request(pool, req, [])
+    assert %Finch.Error{} = error_disconnected
     Exception.message(error_disconnected)
   end
 
