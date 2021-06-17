@@ -1,5 +1,6 @@
 defmodule LoggerJSON.JasonSafeFormatterTest do
   use Logger.Case, async: true
+  use ExUnitProperties
 
   alias LoggerJSON.JasonSafeFormatter, as: Formatter
 
@@ -35,6 +36,10 @@ defmodule LoggerJSON.JasonSafeFormatterTest do
       assert %{id: "hello"} == Formatter.format(%IDStruct{id: "hello"})
     end
 
+    test "does not strip structs for which Jason.Encoder is derived" do
+      assert %NameStruct{name: "B"} == Formatter.format(%NameStruct{name: "B"})
+    end
+
     test "converts tuples to lists" do
       assert [1, 2, 3] == Formatter.format({1, 2, 3})
     end
@@ -45,6 +50,14 @@ defmodule LoggerJSON.JasonSafeFormatterTest do
 
     test "converts Keyword lists to maps" do
       assert %{a: 1, b: 2} == Formatter.format(a: 1, b: 2)
+    end
+
+    test "converts non-string map keys" do
+      assert Formatter.format(%{1 => 2}) == %{1 => 2}
+      assert Formatter.format(%{:a => 1}) == %{:a => 1}
+      assert Formatter.format(%{{"a", "b"} => 1}) == %{"{\"a\", \"b\"}" => 1}
+      assert Formatter.format(%{%{a: 1, b: 2} => 3}) == %{"%{a: 1, b: 2}" => 3}
+      assert Formatter.format(%{[{:a, :b}] => 3}) == %{"[a: :b]" => 3}
     end
 
     test "inspects functions" do
@@ -75,6 +88,12 @@ defmodule LoggerJSON.JasonSafeFormatterTest do
                },
                self: inspect(self())
              } == Formatter.format(input)
+    end
+
+    property "converts any term so that it can be encoded with Jason" do
+      check all value <- term() do
+        assert {:ok, _} = value |> Formatter.format() |> Jason.encode()
+      end
     end
   end
 end

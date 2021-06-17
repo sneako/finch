@@ -278,7 +278,7 @@ defmodule LoggerJSONGoogleTest do
     assert %{"severity" => "WARNING"} = log
   end
 
-  test "logs crash reason when present" do
+  test "logs crash reason for exceptions when present" do
     Logger.configure_backend(LoggerJSON, metadata: [:crash_reason])
     Logger.metadata(crash_reason: {%RuntimeError{message: "oops"}, []})
 
@@ -288,6 +288,30 @@ defmodule LoggerJSONGoogleTest do
 
     assert is_nil(log["error"]["initial_call"])
     assert log["error"]["reason"] == "** (RuntimeError) oops"
+  end
+
+  test "logs crash reason for throws when present" do
+    Logger.configure_backend(LoggerJSON, metadata: [:crash_reason])
+    Logger.metadata(crash_reason: {:throw, {:error, :whatever}})
+
+    log =
+      capture_log(fn -> Logger.debug("hello") end)
+      |> Jason.decode!()
+
+    assert is_nil(log["error"]["initial_call"])
+    assert log["error"]["reason"] == "** (throw) {:error, :whatever}"
+  end
+
+  test "logs crash reason for exits when present" do
+    Logger.configure_backend(LoggerJSON, metadata: [:crash_reason])
+    Logger.metadata(crash_reason: {:exit, :abnormal})
+
+    log =
+      capture_log(fn -> Logger.debug("hello") end)
+      |> Jason.decode!()
+
+    assert is_nil(log["error"]["initial_call"])
+    assert log["error"]["reason"] == "** (exit) :abnormal"
   end
 
   test "logs erlang style crash reasons" do

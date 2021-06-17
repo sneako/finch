@@ -235,14 +235,13 @@ defmodule LoggerJSONDatadogTest do
   end
 
   test "contains source location" do
-    %{module: mod, function: {name, arity}, file: file, line: line} = __ENV__
+    %{module: mod, function: {name, arity}, file: _file, line: _line} = __ENV__
 
     log =
       fn -> Logger.debug("hello") end
       |> capture_log()
       |> Jason.decode!()
 
-    line = line + 3
     function = "Elixir.#{inspect(mod)}.#{name}/#{arity}"
 
     assert %{

@@ -37,35 +37,39 @@ defmodule LoggerJSON.JasonSafeFormatter do
   end
 
   def format(%{} = data) do
-    for {key, value} <- data, into: %{}, do: {key, format(value)}
+    for {key, value} <- data, into: %{}, do: {format_map_key(key), format(value)}
   end
 
   def format([{key, _} | _] = data) when is_atom(key) do
     Enum.into(data, %{}, fn
-      {key, value} -> {key, format(value)}
+      {key, value} -> {format_map_key(key), format(value)}
     end)
   rescue
     _ -> for(d <- data, do: format(d))
   end
 
-  def format({key, data}) when is_binary(key) or is_atom(key), do: %{key => format(data)}
+  def format({key, data}) when is_binary(key) or is_atom(key), do: %{format_map_key(key) => format(data)}
 
   def format(data) when is_tuple(data), do: data |> Tuple.to_list() |> format()
 
   def format(data) when is_number(data), do: data
 
-  def format(data) when is_binary(data) do
+  def format(data) when is_binary(data), do: format_binary(data)
+
+  def format(data) when is_list(data), do: for(d <- data, do: format(d))
+
+  def format(data), do: inspect(data, pretty: true, width: 80)
+
+  defp format_map_key(key) when is_binary(key), do: format_binary(key)
+  defp format_map_key(key) when is_atom(key) or is_number(key), do: key
+  defp format_map_key(key), do: inspect(key)
+
+  defp format_binary(data) when is_binary(data) do
     if String.valid?(data) && String.printable?(data) do
       data
     else
       inspect(data)
     end
-  end
-
-  def format(data) when is_list(data), do: for(d <- data, do: format(d))
-
-  def format(data) do
-    inspect(data, pretty: true, width: 80)
   end
 
   def jason_implemented?(data) do

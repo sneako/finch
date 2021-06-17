@@ -1,7 +1,7 @@
 language: elixir
 cache:
   directories:
-  - deps
+    - deps
 elixir:
   - 1.9.4
 otp_release:
@@ -16,6 +16,8 @@ matrix:
       elixir: 1.9.4
     - otp_release: 22.2
       elixir: 1.10.4
+    - otp_release: 23.3.1
+      elixir: 1.11.4
 env:
   global:
     - MIX_ENV=test
@@ -26,5 +28,8 @@ script:
   - "mix test --exclude pending --trace"
   # Submit code coverage report to Coveralls
   - "mix coveralls.travis"
-  # Ensure code is formatter
-  - "mix format --check-formatted --dry-run"
+  # Ensure code is formatted
+  - >
+    if [[ $(elixir -v) == *"Elixir 1.11.4"* ]]; then
+      mix format --check-formatted
+    fi

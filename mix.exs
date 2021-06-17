@@ -17,7 +17,10 @@ defmodule LoggerJSON.Mixfile do
       deps: deps(),
       docs: docs(),
       test_coverage: [tool: ExCoveralls],
-      preferred_cli_env: [coveralls: :test]
+      preferred_cli_env: [coveralls: :test, "coveralls.travis": :test, "coveralls.html": :test],
+      dialyzer: [
+        plt_add_apps: [:plug]
+      ]
     ]
   end
 
@@ -38,7 +41,8 @@ defmodule LoggerJSON.Mixfile do
       {:telemetry, "~> 0.4.0", optional: true},
       {:ex_doc, ">= 0.15.0", only: [:dev, :test], runtime: false},
       {:excoveralls, ">= 0.5.0", only: [:dev, :test]},
-      {:dialyxir, "~> 0.5", only: [:dev], runtime: false}
+      {:dialyxir, "~> 1.1.0", only: [:dev], runtime: false},
+      {:stream_data, "~> 0.5", only: [:dev, :test]}
     ]
   end
 

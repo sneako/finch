@@ -16,6 +16,6 @@ defmodule LoggerJSON.Formatter do
               msg :: Logger.message(),
               ts :: Logger.Formatter.time(),
               md :: [atom] | :all,
-              state :: Map.t()
-            ) :: Map.t() | iodata() | Jason.Fragment.t()
+              state :: map
+            ) :: map | iodata() | %Jason.Fragment{}
 end
