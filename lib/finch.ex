@@ -224,7 +224,7 @@ defmodule Finch do
 
   """
   @spec stream(Request.t(), name(), acc, stream(acc), keyword) ::
-          {:ok, acc} | {:error, Mint.Types.error()}
+          {:ok, acc} | {:error, Mint.Types.error()} | {:error, Finch.Error.t()}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
     %{scheme: scheme, host: host, port: port} = req
@@ -247,6 +247,7 @@ defmodule Finch do
   @spec request(Request.t(), name(), keyword()) ::
           {:ok, Response.t()}
           | {:error, Mint.Types.error()}
+          | {:error, Finch.Error.t()}
   def request(req, name, opts \\ [])
 
   def request(%Request{} = req, name, opts) do

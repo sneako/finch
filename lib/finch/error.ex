@@ -12,26 +12,22 @@ defmodule Finch.Error do
   If you want to convert an error reason to a human-friendly message (for example
   for using in logs), you can use `Exception.message/1`:
 
-      iex> {:error, %Finch.Error{} = error} = Mint.HTTP.connect(:http, "badresponse.com", 80)
+      iex> {:error, %Finch.Error{} = error} = request...
       iex> Exception.message(error)
 
   """
 
-  @type proxy_reason() ::
-          {:proxy,
-           HTTP1.error_reason()
-           | HTTP2.error_reason()
-           | :tunnel_timeout
-           | {:unexpected_status, non_neg_integer()}
-           | {:unexpected_trailing_responses, list()}}
-
-  @type t() :: %__MODULE__{
-          reason: HTTP1.error_reason() | HTTP2.error_reason() | proxy_reason() | term()
-        }
+  @type t() :: %__MODULE__{reason: atom()}
 
   defexception [:reason]
 
-  def message(%__MODULE__{reason: reason, module: module}) do
-    module.format_error(reason)
+  @impl true
+  def exception(reason) do
+    %__MODULE__{reason: reason}
+  end
+
+  @impl true
+  def message(%__MODULE__{reason: reason}) do
+    "error: #{inspect(reason)}"
   end
 end

@@ -6,6 +6,7 @@ defmodule Finch.HTTP2.Pool do
 
   alias Mint.HTTP2
   alias Mint.HTTPError
+  alias Finch.Error
   alias Finch.Telemetry
   alias Finch.SSL
 
@@ -125,7 +126,7 @@ defmodule Finch.HTTP2.Pool do
   # requests
   def disconnected(:enter, _, data) do
     :ok = Enum.each(data.requests, fn {ref, from} ->
-      send(from, {:error, ref, %{reason: :connection_closed}})
+      send(from, {:error, ref, Error.exception(:connection_closed)})
     end)
 
     # It's possible that we're entering this state before we are alerted of the
@@ -181,7 +182,7 @@ defmodule Finch.HTTP2.Pool do
 
   # Immediately fail a request if we're disconnected
   def disconnected({:call, from}, {:request, _, _}, _data) do
-    {:keep_state_and_data, {:reply, from, {:error, %{reason: :disconnected}}}}
+    {:keep_state_and_data, {:reply, from, {:error, Error.exception(:disconnected)}}}
   end
 
   # We cancel all request timeouts as soon as we enter the :disconnected state, but
@@ -289,7 +290,7 @@ defmodule Finch.HTTP2.Pool do
     with {:pop, {from, data}} when not is_nil(from) <- {:pop, pop_in(data.requests[ref])},
          {:ok, conn} <- HTTP2.cancel_request(data.conn, ref) do
       data = put_in(data.conn, conn)
-      send(from, {:error, ref, %{reason: :request_timeout}})
+      send(from, {:error, ref, Error.exception(:request_timeout)})
       {:keep_state, data}
     else
       {:error, conn, _error} ->
@@ -324,7 +325,7 @@ defmodule Finch.HTTP2.Pool do
 
   # If we're in a read only state than respond with an error immediately
   def connected_read_only({:call, from}, {:request, _, _}, _) do
-    {:keep_state_and_data, {:reply, from, {:error, %{reason: :read_only}}}}
+    {:keep_state_and_data, {:reply, from, {:error, Error.exception(:read_only)}}}
   end
 
   def connected_read_only(:info, message, data) do

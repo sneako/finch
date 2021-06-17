@@ -92,7 +92,7 @@ defmodule Finch.HTTP2.PoolTest do
     :timer.sleep(10)
 
     # We can't send any more requests since the connection is closed for writing.
-    assert {:error, %{reason: :read_only}} = request(pool, req, [])
+    assert {:error, %Finch.Error{reason: :read_only}} = request(pool, req, [])
 
     server_send_frames([
       headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
@@ -107,7 +107,7 @@ defmodule Finch.HTTP2.PoolTest do
     Process.sleep(50)
 
     # If we try to make a request now that the server shut down, we get an error.
-    assert {:error, %{reason: :disconnected}} = request(pool, req, [])
+    assert {:error, %Finch.Error{reason: :disconnected}} = request(pool, req, [])
   end
 
   test "http2 pool errors are %Finch.Error{}", %{request: req} do
@@ -134,8 +134,7 @@ defmodule Finch.HTTP2.PoolTest do
     :timer.sleep(10)
 
     # We can't send any more requests since the connection is closed for writing.
-    assert {:error, %{reason: :read_only}=error_read_only} = request(pool, req, [])
-    assert %Finch.Error{} = error_read_only
+    assert {:error, %Finch.Error{reason: :read_only}=error_read_only} = request(pool, req, [])
     Exception.message(error_read_only)
 
     server_send_frames([
@@ -151,8 +150,7 @@ defmodule Finch.HTTP2.PoolTest do
     Process.sleep(50)
 
     # If we try to make a request now that the server shut down, we get an error.
-    assert {:error, %{reason: :disconnected}=error_disconnected} = request(pool, req, [])
-    assert %Finch.Error{} = error_disconnected
+    assert {:error, %Finch.Error{reason: :disconnected}=error_disconnected} = request(pool, req, [])
     Exception.message(error_disconnected)
   end
 
@@ -178,7 +176,7 @@ defmodule Finch.HTTP2.PoolTest do
 
     :ok = :ssl.close(server_socket())
 
-    assert_receive {:resp, {:error, %{reason: :connection_closed}}}
+    assert_receive {:resp, {:error, %Finch.Error{reason: :connection_closed}}}
   end
 
   test "if connections reaches max concurrent streams, we return an error", %{request: req} do
@@ -195,7 +193,7 @@ defmodule Finch.HTTP2.PoolTest do
 
     assert_recv_frames [headers(stream_id: _stream_id)]
 
-    assert {:error, %{reason: :too_many_concurrent_requests}} = request(pool, req, [])
+    assert {:error, %Mint.HTTPError{reason: :too_many_concurrent_requests}} = request(pool, req, [])
   end
 
   test "request timeout with timeout of 0", %{request: req} do
@@ -212,7 +210,7 @@ defmodule Finch.HTTP2.PoolTest do
 
     assert_recv_frames [headers(stream_id: stream_id), rst_stream(stream_id: stream_id)]
 
-    assert_receive {:resp, {:error, %{reason: :request_timeout}}}
+    assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}}}
   end
 
   test "request timeout with timeout > 0", %{request: req} do
@@ -235,7 +233,7 @@ defmodule Finch.HTTP2.PoolTest do
       headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers]))
     ])
 
-    assert_receive {:resp, {:error, %{reason: :request_timeout}}}
+    assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}}}
   end
 
   test "request timeout with timeout > 0 that fires after request is done", %{request: req} do
@@ -293,7 +291,7 @@ defmodule Finch.HTTP2.PoolTest do
     # When there's a timeout, we cancel the request.
     assert_recv_frames [rst_stream(stream_id: ^stream_id, error_code: :cancel)]
 
-    assert_receive {:resp, {:error, %{reason: :request_timeout}}}
+    assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}}}
   end
 
   @pdict_key {__MODULE__, :http2_test_server}
