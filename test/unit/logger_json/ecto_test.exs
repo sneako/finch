@@ -17,7 +17,7 @@ defmodule LoggerJSON.EctoTest do
 
     diff = :erlang.convert_time_unit(1, :microsecond, :native)
 
-    entry = %Ecto.LogEntry{
+    entry = %{
       query: fn -> "done" end,
       result: {:ok, []},
       params: [1, 2, 3, %Ecto.Query.Tagged{value: 1}],

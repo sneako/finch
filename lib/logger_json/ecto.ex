@@ -19,7 +19,7 @@ if Code.ensure_loaded?(Ecto) do
     @doc """
     Logs query string with metadata from `Ecto.LogEntry` in with debug level.
     """
-    @spec log(entry :: Ecto.LogEntry.t()) :: Ecto.LogEntry.t()
+    @spec log(entry :: map()) :: map()
     def log(entry) do
       {query, metadata} = query_and_metadata(entry)
 
@@ -35,7 +35,7 @@ if Code.ensure_loaded?(Ecto) do
 
     Logs the given entry in the given level.
     """
-    @spec log(entry :: Ecto.LogEntry.t(), level :: Logger.level()) :: Ecto.LogEntry.t()
+    @spec log(entry :: map(), level :: Logger.level()) :: map()
     def log(entry, level) do
       {query, metadata} = query_and_metadata(entry)
 
@@ -76,7 +76,7 @@ if Code.ensure_loaded?(Ecto) do
               decode_time: non_neg_integer(),
               total_time: non_neg_integer()
             },
-            log_entry :: Ecto.LogEntry.t(),
+            log_entry :: map(),
             level :: Logger.level()
           ) :: :ok
     def telemetry_logging_handler(_event_name, time, %{query: query, repo: repo}, level) do
