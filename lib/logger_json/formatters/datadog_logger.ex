@@ -36,13 +36,7 @@ defmodule LoggerJSON.Formatters.DatadogLogger do
   defp format_metadata(md, md_keys) do
     LoggerJSON.take_metadata(md, md_keys, @processed_metadata_keys)
     |> JasonSafeFormatter.format()
-    |> FormatterUtils.maybe_put(:error, format_error(md))
-  end
-
-  defp format_error(md) do
-    with %{reason: reason} <- FormatterUtils.format_process_crash(md) do
-      json_map(stack: reason)
-    end
+    |> FormatterUtils.maybe_put(:error, FormatterUtils.format_process_crash(md))
   end
 
   defp method_name(metadata) do
