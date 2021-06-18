@@ -44,7 +44,6 @@ defmodule LoggerJSON.PlugTest do
                "referer" => nil,
                "remoteIp" => "127.0.0.1",
                "requestMethod" => "GET",
-               "requestPath" => "/",
                "requestUrl" => "http://www.example.com/",
                "status" => 200,
                "userAgent" => nil
