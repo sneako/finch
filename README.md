@@ -122,7 +122,7 @@ It's [available on Hex](https://hex.pm/packages/logger_json), the package can be
 
   ```ex
   def deps do
-    [{:logger_json, "~> 4.0"}]
+    [{:logger_json, "~> 4.2"}]
   end
   ```
 
