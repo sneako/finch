@@ -92,8 +92,7 @@ defmodule Finch.HTTP2.PoolTest do
     :timer.sleep(10)
 
     # We can't send any more requests since the connection is closed for writing.
-    assert {:error, %Finch.Error{reason: :read_only}=error_read_only} = request(pool, req, [])
-    assert Exception.message(error_read_only)
+    assert {:error, %Finch.Error{reason: :read_only}} = request(pool, req, [])
 
     server_send_frames([
       headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
@@ -108,8 +107,7 @@ defmodule Finch.HTTP2.PoolTest do
     Process.sleep(50)
 
     # If we try to make a request now that the server shut down, we get an error.
-    assert {:error, %Finch.Error{reason: :disconnected}=error_disconnected} = request(pool, req, [])
-    assert Exception.message(error_disconnected)
+    assert {:error, %Finch.Error{reason: :disconnected}} = request(pool, req, [])
   end
 
   test "if server disconnects while there are waiting clients, we notify those clients", %{request: req} do
