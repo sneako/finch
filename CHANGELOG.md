@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.8.0 (2021-06-23)
+* HTTP2 connections will now always return Exceptions.
+
 ## v0.7.0 (2021-05-10)
 * Add support for SSLKEYLOGFILE.
 * Drop HTTPS options for default HTTP pools to avoid `:badarg` errors.
