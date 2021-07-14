@@ -53,6 +53,7 @@ defmodule Finch.Request do
 
   @doc false
   def request_path(%{path: path, query: nil}), do: path
+  def request_path(%{path: path, query: ""}), do: path
   def request_path(%{path: path, query: query}), do: "#{path}?#{query}"
 
   @doc false
