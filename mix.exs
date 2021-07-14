@@ -37,7 +37,7 @@ defmodule Finch.MixProject do
       {:castore, "~> 0.1"},
       {:nimble_pool, "~> 0.2"},
       {:nimble_options, "~> 0.3.5"},
-      {:telemetry, "~> 0.4"},
+      {:telemetry, "~> 0.4 or ~> 1.0"},
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
       {:credo, "~> 1.3", only: [:dev, :test]},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
