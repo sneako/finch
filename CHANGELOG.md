@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.8.1 (2021-07-27)
+- Update mix.exs to allow compatibility with Telemetry v1.0
+- Avoid appending "?" to request_path when query string is an empty string
+
 ## v0.8.0 (2021-06-23)
 * HTTP2 connections will now always return Exceptions.
 
