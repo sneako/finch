@@ -44,7 +44,7 @@ defmodule Finch do
     max_idle_time: [
       type: :timeout,
       doc: """
-      The maxiumum number of milliseconds an HTTP1 connection is allowed to be idle \
+      The maximum number of milliseconds an HTTP1 connection is allowed to be idle \
       before being closed during a checkout attempt.
       """,
       default: :infinity

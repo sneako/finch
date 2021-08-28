@@ -68,7 +68,7 @@ defmodule Finch.Telemetry do
     * `:scheme` - The scheme used in the connection. either `http` or `https`
     * `:host` - The host address
     * `:port` - the port to connect on.
-    * `:error` - This value is optional. It includes any errors that occured while opening the connection.
+    * `:error` - This value is optional. It includes any errors that occurred while opening the connection.
 
   * `[:finch, :request, :start]` - Executed before sending a request.
 
@@ -95,7 +95,7 @@ defmodule Finch.Telemetry do
     * `:port` - the port to connect on.
     * `:path` - The request path.
     * `:method` - The request method.
-    * `:error` - This value is optional. It includes any errors that occured while making the request.
+    * `:error` - This value is optional. It includes any errors that occurred while making the request.
 
   * `[:finch, :response, :start]` - Executed before receiving the response.
 
@@ -122,7 +122,7 @@ defmodule Finch.Telemetry do
     * `:port` - the port to connect on.
     * `:path` - The request path.
     * `:method` - The request method.
-    * `:error` - This value is optional. It includes any errors that occured while receiving the response.
+    * `:error` - This value is optional. It includes any errors that occurred while receiving the response.
 
   * `[:finch, :reused_connection]` - Executed if an existing connection is reused. There are no measurements provided with this event.
 
