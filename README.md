@@ -62,6 +62,7 @@ Usage in elixir CLI applications built with `mix escript.build` requires that CA
 $  cp deps/castore/priv/cacerts.pem priv/cacerts.pem
 
 Than, you'll need to configure Finch like this: 
+
 ```
 children = [ 
   {Finch,
@@ -76,7 +77,7 @@ children = [ 
          ]
        }}
 ]
-
+```
 
 ## Telemetry
 
