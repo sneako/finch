@@ -63,22 +63,6 @@ $  cp deps/castore/priv/cacerts.pem priv/cacerts.pem
 
 Than, you'll need to configure Finch like this: 
 
-```
-children = [ 
-  {Finch,
-       name: MyFinch,
-       pools: %{
-         default: [
-           conn_opts: [
-             transport_opts: [
-               cacertfile: "priv/cacerts.pem"
-             ]
-           ]
-         ]
-       }}
-]
-```
-
 ## Telemetry
 
 Finch uses Telemetry to provide instrumentation. See the `Finch.Telemetry`
