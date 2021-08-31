@@ -55,6 +55,29 @@ For any unconfigured `{scheme, host, port}`, the pool will be started the first 
 it is requested. Note pools are not automatically terminated if they are unused, so
 Finch is best suited when you are requesting a known list of static hosts.
 
+## Use in escript command line applications
+
+Usage in elixir CLI applications built with `mix escript.build` requires that CAS `cacerts.pem` file is located somewhere sensible within the root applications' tree. For  example, it can be copied from within CAStore's priv/ folder to the "root" application's priv folder. Like so (from the root path of the application): 
+```
+$  cp deps/castore/priv/cacerts.pem priv/cacerts.pem
+
+Than, you'll need to configure Finch like this: 
+```
+children = [ 
+  {Finch,
+       name: MyFinch,
+       pools: %{
+         default: [
+           conn_opts: [
+             transport_opts: [
+               cacertfile: "priv/cacerts.pem"
+             ]
+           ]
+         ]
+       }}
+]
+
+
 ## Telemetry
 
 Finch uses Telemetry to provide instrumentation. See the `Finch.Telemetry`
