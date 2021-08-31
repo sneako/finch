@@ -58,10 +58,28 @@ Finch is best suited when you are requesting a known list of static hosts.
 ## Use in escript command line applications
 
 Usage in elixir CLI applications built with `mix escript.build` requires that CAS `cacerts.pem` file is located somewhere sensible within the root applications' tree. For  example, it can be copied from within CAStore's priv/ folder to the "root" application's priv folder. Like so (from the root path of the application): 
-```
+```bash
 $  cp deps/castore/priv/cacerts.pem priv/cacerts.pem
+```
 
-Than, you'll need to configure Finch like this: 
+Then, you'll need to configure Finch like this: 
+```elixir
+
+children = [ 
+  {Finch,
+       name: MyFinch,
+       pools: %{
+         default: [
+           conn_opts: [
+             transport_opts: [
+               cacertfile: "priv/cacerts.pem"
+             ]
+           ]
+         ]
+       }}
+]
+
+```
 
 ## Telemetry
 
