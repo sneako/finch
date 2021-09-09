@@ -81,12 +81,15 @@ defmodule Finch.HTTP2.Pool do
         response_waiting_loop(fun.({kind, value}, acc), fun, ref, monitor_ref, fail_safe_timeout)
 
       {:done, _ref} ->
+        Process.demonitor(monitor_ref)
         {:ok, acc}
 
       {:error, ^ref, error} ->
+        Process.demonitor(monitor_ref)
         {:error, error}
     after
       fail_safe_timeout ->
+        Process.demonitor(monitor_ref)
         raise "no response was received even after waiting #{fail_safe_timeout}ms. " <>
                 "This is likely a bug in Finch, but we're raising so that your system doesn't " <>
                 "get stuck in an infinite receive."
