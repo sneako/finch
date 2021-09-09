@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.8.2 (2021-09-09)
+- Demonitor http/2 connections when the request is done.
+
 ## v0.8.1 (2021-07-27)
 - Update mix.exs to allow compatibility with Telemetry v1.0
 - Avoid appending "?" to request_path when query string is an empty string
