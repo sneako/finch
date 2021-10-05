@@ -64,10 +64,15 @@ defmodule Finch.HTTP2.Pool do
             Telemetry.stop(:response, start_time, metadata)
             result
         end
-      rescue
-        error ->
-          Telemetry.exception(:response, start_time, :error, error, __STACKTRACE__, metadata)
-          reraise error, __STACKTRACE__
+      catch
+        kind, error ->
+          Telemetry.exception(:response, start_time, kind, error, __STACKTRACE__, metadata)
+
+          :gen_statem.call(pool, {:cancel, ref})
+          clean_responses(ref)
+          Process.demonitor(monitor)
+
+          :erlang.raise(kind, error, __STACKTRACE__)
       end
     end
   end
@@ -80,7 +85,7 @@ defmodule Finch.HTTP2.Pool do
       {kind, ^ref, value} when kind in [:status, :headers, :data] ->
         response_waiting_loop(fun.({kind, value}, acc), fun, ref, monitor_ref, fail_safe_timeout)
 
-      {:done, _ref} ->
+      {:done, ^ref} ->
         Process.demonitor(monitor_ref)
         {:ok, acc}
 
@@ -93,6 +98,22 @@ defmodule Finch.HTTP2.Pool do
         raise "no response was received even after waiting #{fail_safe_timeout}ms. " <>
                 "This is likely a bug in Finch, but we're raising so that your system doesn't " <>
                 "get stuck in an infinite receive."
+    end
+  end
+
+  defp clean_responses(ref) do
+    receive do
+      {kind, ^ref, _value} when kind in [:status, :headers, :data] ->
+        clean_responses(ref)
+
+      {:done, ^ref} ->
+        :ok
+
+      {:error, ^ref, _error} ->
+        :ok
+    after
+      0 ->
+        :ok
     end
   end
 
@@ -188,6 +209,11 @@ defmodule Finch.HTTP2.Pool do
     {:keep_state_and_data, {:reply, from, {:error, Error.exception(:disconnected)}}}
   end
 
+  # Ignore cancel requests if we are disconnected
+  def disconnected({:call, _from}, {:cancel, _ref}, _data) do
+    :keep_state_and_data
+  end
+
   # We cancel all request timeouts as soon as we enter the :disconnected state, but
   # some timeouts might fire while changing states, so we need to handle them here.
   # Since we replied to all pending requests when entering the :disconnected state,
@@ -249,6 +275,18 @@ defmodule Finch.HTTP2.Pool do
           {:next_state, :disconnected, data, actions}
         end
     end
+  end
+
+  def connected({:call, from}, {:cancel, ref}, data) do
+    conn =
+      case HTTP2.cancel_request(data.conn, ref) do
+        {:ok, conn} -> conn
+        {:error, conn, _error} -> conn
+      end
+
+    data = put_in(data.conn, conn)
+    {_from, data} = pop_in(data.requests[ref])
+    {:keep_state, data, {:reply, from, :ok}}
   end
 
   def connected(:info, message, data) do
@@ -331,6 +369,11 @@ defmodule Finch.HTTP2.Pool do
     {:keep_state_and_data, {:reply, from, {:error, Error.exception(:read_only)}}}
   end
 
+  def connected_read_only({:call, from}, {:cancel, ref}, data) do
+    {_from, data} = pop_in(data.requests[ref])
+    {:keep_state, data, {:reply, from, :ok}}
+  end
+
   def connected_read_only(:info, message, data) do
     case HTTP2.stream(data.conn, message) do
       {:ok, conn, responses} ->
@@ -400,19 +443,22 @@ defmodule Finch.HTTP2.Pool do
 
   defp handle_response(data, {kind, ref, _value} = response, actions)
        when kind in [:status, :headers, :data] do
-    send(data.requests[ref], response)
+    if from = data.requests[ref] do
+      send(from, response)
+    end
+
     {data, actions}
   end
 
   defp handle_response(data, {:done, ref} = response, actions) do
     {pid, data} = pop_in(data.requests[ref])
-    send(pid, response)
+    if pid, do: send(pid, response)
     {data, [cancel_request_timeout_action(ref) | actions]}
   end
 
   defp handle_response(data, {:error, ref, _error} = response, actions) do
     {pid, data} = pop_in(data.requests[ref])
-    send(pid, response)
+    if pid, do: send(pid, response)
     {data, [cancel_request_timeout_action(ref) | actions]}
   end
 
