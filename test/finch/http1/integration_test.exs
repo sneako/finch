@@ -73,6 +73,17 @@ defmodule Finch.HTTP1.IntegrationTest do
     end
   end
 
+  @tag :capture_log
+  test "cancel streaming response", %{url: url} do
+    start_finch([:"tlsv1.2", :"tlsv1.3"])
+
+    assert catch_throw(
+      Finch.stream(Finch.build(:get, url), H2Finch, :ok, fn {:status, _}, :ok ->
+        throw :error
+      end)
+    ) == :error
+  end
+
   defp start_finch(tls_versions) do
     start_supervised!(
       {Finch,
