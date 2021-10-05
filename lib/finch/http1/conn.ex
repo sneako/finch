@@ -110,28 +110,35 @@ defmodule Finch.Conn do
 
     start_time = Telemetry.start(:request, metadata, extra_measurements)
 
-    case HTTP1.request(conn.mint, req.method, full_path, req.headers, stream_or_body(req.body)) do
-      {:ok, mint, ref} ->
-        case maybe_stream_request_body(mint, ref, req.body, receive_timeout) do
-          {:ok, mint} ->
-            Telemetry.stop(:request, start_time, metadata, extra_measurements)
-            start_time = Telemetry.start(:response, metadata, extra_measurements)
-            response = receive_response([], acc, fun, mint, ref, receive_timeout)
-            handle_response(response, conn, metadata, start_time, extra_measurements)
+    try do
+      case HTTP1.request(conn.mint, req.method, full_path, req.headers, stream_or_body(req.body)) do
+        {:ok, mint, ref} ->
+          case maybe_stream_request_body(mint, ref, req.body, receive_timeout) do
+            {:ok, mint} ->
+              Telemetry.stop(:request, start_time, metadata, extra_measurements)
+              start_time = Telemetry.start(:response, metadata, extra_measurements)
+              response = receive_response([], acc, fun, mint, ref, receive_timeout)
+              handle_response(response, conn, metadata, start_time, extra_measurements)
 
-          {:error, mint, error} ->
-            handle_request_error(
-              conn,
-              mint,
-              error,
-              metadata,
-              start_time,
-              extra_measurements
-            )
-        end
+            {:error, mint, error} ->
+              handle_request_error(
+                conn,
+                mint,
+                error,
+                metadata,
+                start_time,
+                extra_measurements
+              )
+          end
 
-      {:error, mint, error} ->
-        handle_request_error(conn, mint, error, metadata, start_time, extra_measurements)
+        {:error, mint, error} ->
+          handle_request_error(conn, mint, error, metadata, start_time, extra_measurements)
+      end
+    catch
+      kind, error ->
+        close(conn)
+        Telemetry.exception(:response, start_time, kind, error, __STACKTRACE__, metadata)
+        :erlang.raise(kind, error, __STACKTRACE__)
     end
   end
 

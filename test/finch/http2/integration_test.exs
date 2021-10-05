@@ -131,4 +131,29 @@ defmodule Finch.HTTP2.IntegrationTest do
       System.delete_env("SSLKEYLOGFILE")
     end
   end
+
+  test "cancel streaming response", %{url: url} do
+    start_supervised!(
+      {Finch,
+       name: TestFinch,
+       pools: %{
+         default: [
+           protocol: :http2,
+           conn_opts: [
+             transport_opts: [
+               verify: :verify_none
+             ]
+           ]
+         ]
+       }}
+    )
+
+    assert catch_throw(
+      Finch.stream(Finch.build(:get, url), TestFinch, :ok, fn {:status, _}, :ok ->
+        throw :error
+      end)
+    ) == :error
+
+    refute_receive _
+  end
 end

@@ -109,7 +109,7 @@ defmodule Finch.MockHTTP2Server do
 
   defp accept(listen_socket, parent, server_settings) do
     {:ok, socket} = :ssl.transport_accept(listen_socket)
-    :ok = :ssl.ssl_accept(socket)
+    {:ok, socket} = :ssl.handshake(socket)
 
     :ok = perform_http2_handshake(socket, server_settings)
 
