@@ -37,6 +37,7 @@ defmodule Finch.HTTP1.IntegrationTest do
            end) =~ "ALPN protocol not negotiated"
   end
 
+  @tag :capture_log
   @tag skip: TestHelper.ssl_version() < [10, 2]
   test "writes TLS secrets to SSLKEYLOGFILE file", %{url: url} do
     tmp_dir = System.tmp_dir()
@@ -54,6 +55,7 @@ defmodule Finch.HTTP1.IntegrationTest do
     end
   end
 
+  @tag :capture_log
   @tag skip: TestHelper.ssl_version() < [10, 2]
   test "writes TLS secrets to SSLKEYLOGFILE file using TLS 1.3" do
     tmp_dir = System.tmp_dir()
@@ -101,7 +103,7 @@ defmodule Finch.HTTP1.IntegrationTest do
       end)
       |> List.flatten()
     else
-      :ssl.cipher_suites(:all)
+      :ssl.cipher_suites(:all, :"tlsv1.2")
     end
   end
 end
