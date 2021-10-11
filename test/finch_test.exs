@@ -75,18 +75,21 @@ defmodule FinchTest do
          %{bypass: bypass} do
       other_bypass = Bypass.open()
       default_bypass = Bypass.open()
+      unix_socket = {:local, "/my/unix/socket"}
 
       start_supervised!(
         {Finch,
          name: MyFinch,
          pools: %{
            endpoint(bypass, "/some-path") => [count: 5, size: 5],
-           endpoint(other_bypass, "/some-other-path") => [count: 10, size: 10]
+           endpoint(other_bypass, "/some-other-path") => [count: 10, size: 10],
+           unix_socket => [count: 5, size: 5, conn_opts: [hostname: "localhost"]]
          }}
       )
 
       assert get_pools(MyFinch, shp(bypass)) |> length() == 5
       assert get_pools(MyFinch, shp(other_bypass)) |> length() == 10
+      assert get_pools(MyFinch, shp(unix_socket)) |> length() == 5
 
       # no pool has been started for this unconfigured shp
       assert get_pools(MyFinch, shp(default_bypass)) |> length() == 0
@@ -742,6 +745,7 @@ defmodule FinchTest do
   defp endpoint(%{port: port}, path \\ "/"), do: "http://localhost:#{port}#{path}"
 
   defp shp(%{port: port}), do: {:http, "localhost", port}
+  defp shp({:local, unix_socket}), do: {:http, {:local, unix_socket}, 0}
 
   defp expect_any(bypass) do
     Bypass.expect(bypass, fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)

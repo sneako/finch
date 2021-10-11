@@ -133,6 +133,9 @@ defmodule Finch do
       :default ->
         {:ok, destination}
 
+      {:local, path} ->
+        {:ok, {:http, {:local, path}, 0}}
+
       url when is_binary(url) ->
         cast_binary_destination(url)
 
