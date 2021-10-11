@@ -3,6 +3,7 @@ defmodule FinchTest do
   doctest Finch
 
   alias Finch.Response
+  alias Finch.MockSocketServer
 
   setup do
     {:ok, bypass: Bypass.open()}
@@ -148,7 +149,7 @@ defmodule FinchTest do
     end
   end
 
-  describe "build/4" do
+  describe "build/5" do
     test "raises if unsupported atom request method provided", %{bypass: bypass} do
       assert_raise ArgumentError, ~r/got unsupported atom method :gimme/, fn ->
         Finch.build(:gimme, endpoint(bypass))
@@ -256,6 +257,23 @@ defmodule FinchTest do
       end)
 
       assert {:ok, %{status: 200}} = Finch.build(:get, uri) |> Finch.request(MyFinch)
+    end
+
+    test "successful get request when host is a unix socket" do
+      {:ok, socket_address} = MockSocketServer.start()
+
+      start_supervised!(
+        {Finch,
+          name: MyFinch,
+          pools: %{
+            socket_address => [conn_opts: [hostname: "localhost"]]
+          }}
+      )
+
+      {:local, socket_path} = socket_address
+
+      Finch.build(:get, "http://localhost/", [], nil, unix_socket: socket_path)
+      |> Finch.request(MyFinch)
     end
 
     test "properly handles connection: close", %{bypass: bypass} do

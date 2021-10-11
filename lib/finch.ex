@@ -201,7 +201,7 @@ defmodule Finch do
   where `body_stream` is a `Stream`. This feature is not yet supported for HTTP/2 requests.
   """
   @spec build(Request.method(), Request.url(), Request.headers(), Request.body()) :: Request.t()
-  defdelegate build(method, url, headers \\ [], body \\ nil), to: Request
+  defdelegate build(method, url, headers \\ [], body \\ nil, opts \\ []), to: Request
 
   @doc """
   Streams an HTTP request and returns the accumulator.
@@ -230,9 +230,17 @@ defmodule Finch do
           {:ok, acc} | {:error, Exception.t()}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
-    %{scheme: scheme, host: host, port: port} = req
-    {pool, pool_mod} = PoolManager.get_pool(name, {scheme, host, port})
+    shp = build_shp(req)
+    {pool, pool_mod} = PoolManager.get_pool(name, shp)
     pool_mod.request(pool, req, acc, fun, opts)
+  end
+
+  defp build_shp(%Request{unix_socket: unix_socket}) when is_binary(unix_socket) do
+    {:http, {:local, unix_socket}, 0}
+  end
+
+  defp build_shp(%Request{scheme: scheme, host: host, port: port}) do
+    {scheme, host, port}
   end
 
   @doc """
