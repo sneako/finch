@@ -79,9 +79,10 @@ defmodule Finch do
     * `:name` - The name of your Finch instance. This field is required.
 
     * `:pools` - A map specifying the configuration for your pools. The keys should be URLs
-    provided as binaries, or the atom `:default` to provide a catch-all configuration to be used
-    for any unspecified URLs. See "Pool Configuration Options" below for details on the possible
-    map values. Default value is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
+    provided as binaries, a tuple `{:local, unix_socket}` where `unix_socket` is the path for 
+    the socket, or the atom `:default` to provide a catch-all configuration to be used for any
+    unspecified URLs. See "Pool Configuration Options" below for details on the possible map 
+    values. Default value is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
 
   ### Pool Configuration Options
 
