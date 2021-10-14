@@ -74,6 +74,7 @@ defmodule Finch.HTTP1.IntegrationTest do
   end
 
   @tag :capture_log
+  @tag skip: TestHelper.ssl_version() < [10, 2]
   test "cancel streaming response", %{url: url} do
     start_finch([:"tlsv1.2", :"tlsv1.3"])
 
