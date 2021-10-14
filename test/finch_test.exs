@@ -84,13 +84,15 @@ defmodule FinchTest do
          pools: %{
            endpoint(bypass, "/some-path") => [count: 5, size: 5],
            endpoint(other_bypass, "/some-other-path") => [count: 10, size: 10],
-           unix_socket => [count: 5, size: 5, conn_opts: [hostname: "localhost"]]
+           {:http, unix_socket} => [count: 5, size: 5, conn_opts: [hostname: "localhost"]],
+           {:https, unix_socket} => [count: 10, size: 10, conn_opts: [hostname: "localhost"]]
          }}
       )
 
       assert get_pools(MyFinch, shp(bypass)) |> length() == 5
       assert get_pools(MyFinch, shp(other_bypass)) |> length() == 10
-      assert get_pools(MyFinch, shp(unix_socket)) |> length() == 5
+      assert get_pools(MyFinch, shp({:http, unix_socket})) |> length() == 5
+      assert get_pools(MyFinch, shp({:https, unix_socket})) |> length() == 10
 
       # no pool has been started for this unconfigured shp
       assert get_pools(MyFinch, shp(default_bypass)) |> length() == 0
@@ -266,7 +268,7 @@ defmodule FinchTest do
         {Finch,
           name: MyFinch,
           pools: %{
-            socket_address => [conn_opts: [hostname: "localhost"]]
+            {:http, socket_address} => [conn_opts: [hostname: "localhost"]]
           }}
       )
 
@@ -763,7 +765,7 @@ defmodule FinchTest do
   defp endpoint(%{port: port}, path \\ "/"), do: "http://localhost:#{port}#{path}"
 
   defp shp(%{port: port}), do: {:http, "localhost", port}
-  defp shp({:local, unix_socket}), do: {:http, {:local, unix_socket}, 0}
+  defp shp({scheme, {:local, unix_socket}}), do: {scheme, {:local, unix_socket}, 0}
 
   defp expect_any(bypass) do
     Bypass.expect(bypass, fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)

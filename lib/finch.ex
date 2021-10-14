@@ -133,8 +133,8 @@ defmodule Finch do
       :default ->
         {:ok, destination}
 
-      {:local, path} ->
-        {:ok, {:http, {:local, path}, 0}}
+      {scheme, {:local, path}} when is_atom(scheme) and is_binary(path) ->
+        {:ok, {scheme, {:local, path}, 0}}
 
       url when is_binary(url) ->
         cast_binary_destination(url)
@@ -235,8 +235,8 @@ defmodule Finch do
     pool_mod.request(pool, req, acc, fun, opts)
   end
 
-  defp build_shp(%Request{unix_socket: unix_socket}) when is_binary(unix_socket) do
-    {:http, {:local, unix_socket}, 0}
+  defp build_shp(%Request{scheme: scheme, unix_socket: unix_socket}) when is_binary(unix_socket) do
+    {scheme, {:local, unix_socket}, 0}
   end
 
   defp build_shp(%Request{scheme: scheme, host: host, port: port}) do
