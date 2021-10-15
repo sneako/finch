@@ -261,13 +261,31 @@ defmodule FinchTest do
       assert {:ok, %{status: 200}} = Finch.build(:get, uri) |> Finch.request(MyFinch)
     end
 
-    test "successful get request when host is a unix socket" do
-      start_supervised!({Finch, name: MyFinch})
-
+    test "successful get request to a unix socket" do
       {:ok, {:local, socket_path}} = MockSocketServer.start()
 
-      Finch.build(:get, "http://localhost/", [], nil, unix_socket: socket_path)
-      |> Finch.request(MyFinch)
+      start_supervised!({Finch, name: MyFinch})
+
+      assert {:ok, %Response{status: 200}} = 
+        Finch.build(:get, "http://localhost/", [], nil, unix_socket: socket_path)
+        |> Finch.request(MyFinch)
+    end
+
+    @tag :capture_log
+    test "successful get request to a unix socket with tls" do
+      {:ok, socket_address = {:local, socket_path}} = MockSocketServer.start(ssl?: true)
+
+      start_supervised!(
+        {Finch,
+          name: MyFinch,
+          pools: %{
+            {:https, socket_address} => [conn_opts: [transport_opts: [verify: :verify_none]]]
+          }}
+      )
+
+      assert {:ok, %Response{status: 200}} = 
+        Finch.build(:get, "https://localhost/", [], nil, unix_socket: socket_path)
+        |> Finch.request(MyFinch)
     end
 
     test "properly handles connection: close", %{bypass: bypass} do
