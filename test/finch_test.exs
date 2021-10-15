@@ -786,6 +786,28 @@ defmodule FinchTest do
     end
   end
 
+  describe "request-transformer" do
+    test "adds headers to request", %{bypass: bypass} do
+      start_supervised!(
+        {Finch,
+         name: MyFinch,
+         request_transformer: fn req ->
+           %{req | headers: [{"injected-header", "123"} | req.headers]}
+         end}
+      )
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        assert Enum.member?(conn.req_headers, {"injected-header", "123"})
+        assert Enum.member?(conn.req_headers, {"build-header", "abc"})
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      assert {:ok, %{status: 200}} =
+               Finch.build(:get, endpoint(bypass), [{"build-header", "abc"}])
+               |> Finch.request(MyFinch)
+    end
+  end
+
   defp get_pools(name, shp) do
     Registry.lookup(name, shp)
   end

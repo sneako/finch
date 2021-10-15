@@ -79,18 +79,30 @@ defmodule Finch do
     * `:name` - The name of your Finch instance. This field is required.
 
     * `:pools` - A map specifying the configuration for your pools. The keys should be URLs
-    provided as binaries, a tuple `{scheme, {:local, unix_socket}}` where `unix_socket` is the path for 
+    provided as binaries, a tuple `{scheme, {:local, unix_socket}}` where `unix_socket` is the path for
     the socket, or the atom `:default` to provide a catch-all configuration to be used for any
-    unspecified URLs. See "Pool Configuration Options" below for details on the possible map 
+    unspecified URLs. See "Pool Configuration Options" below for details on the possible map
     values. Default value is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
 
+    * `:request_transformer` - A callback that can be used to modify Requests as they're being
+    made (for example, to inject distributed tracing headers). The arity-1 function will receive
+    the `t:Finch.Request.t/0` and must also return the transformed `t:Finch.Request.t/0`. Note that
+    this function will be called synchronously during every request, so care should be taken to ensure
+    that it does not introduce unnecessary latency.
   ### Pool Configuration Options
 
   #{NimbleOptions.docs(@pool_config_schema)}
+
+  ### Request Transformer Example
+
+      request_transformer: fn req ->
+        %{req | headers: [{"injected-header", "123"} | req.headers]}
+      end
   """
   def start_link(opts) do
     name = Keyword.get(opts, :name) || raise ArgumentError, "must supply a name"
     pools = Keyword.get(opts, :pools, []) |> pool_options!()
+    request_transformer = Keyword.get(opts, :request_transformer, nil)
     {default_pool_config, pools} = Map.pop(pools, :default)
 
     config = %{
@@ -98,7 +110,8 @@ defmodule Finch do
       manager_name: manager_name(name),
       supervisor_name: pool_supervisor_name(name),
       default_pool_config: default_pool_config,
-      pools: pools
+      pools: pools,
+      request_transformer: request_transformer
     }
 
     Supervisor.start_link(__MODULE__, config, name: supervisor_name(name))
@@ -231,6 +244,9 @@ defmodule Finch do
           {:ok, acc} | {:error, Exception.t()}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
+    {:ok, config} = Registry.meta(name, :config)
+    req = if config.request_transformer, do: config.request_transformer.(req), else: req
+
     shp = build_shp(req)
     {pool, pool_mod} = PoolManager.get_pool(name, shp)
     pool_mod.request(pool, req, acc, fun, opts)
