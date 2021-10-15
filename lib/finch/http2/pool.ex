@@ -423,7 +423,7 @@ defmodule Finch.HTTP2.Pool do
 
     # Its possible that the request doesn't exist so we guard against that here.
     if from != nil do
-      send(from, {:error, ref, :request_timeout})
+      send(from, {:error, ref, Error.exception(:request_timeout)})
     end
 
     # If we're out of requests then we should enter the disconnected state.
