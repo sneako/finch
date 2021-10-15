@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.8.3 (2021-10-15)
+- Return Error struct when HTTP2 connection is closed and a timeout occurs.
+- Do not leak messages/connections when cancelling streaming requests.
+
 ## v0.8.2 (2021-09-09)
 - Demonitor http/2 connections when the request is done.
 
