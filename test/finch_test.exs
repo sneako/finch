@@ -84,8 +84,8 @@ defmodule FinchTest do
          pools: %{
            endpoint(bypass, "/some-path") => [count: 5, size: 5],
            endpoint(other_bypass, "/some-other-path") => [count: 10, size: 10],
-           {:http, unix_socket} => [count: 5, size: 5, conn_opts: [hostname: "localhost"]],
-           {:https, unix_socket} => [count: 10, size: 10, conn_opts: [hostname: "localhost"]]
+           {:http, unix_socket} => [count: 5, size: 5],
+           {:https, unix_socket} => [count: 10, size: 10]
          }}
       )
 
@@ -262,17 +262,9 @@ defmodule FinchTest do
     end
 
     test "successful get request when host is a unix socket" do
-      {:ok, socket_address} = MockSocketServer.start()
+      start_supervised!({Finch, name: MyFinch})
 
-      start_supervised!(
-        {Finch,
-          name: MyFinch,
-          pools: %{
-            {:http, socket_address} => [conn_opts: [hostname: "localhost"]]
-          }}
-      )
-
-      {:local, socket_path} = socket_address
+      {:ok, {:local, socket_path}} = MockSocketServer.start()
 
       Finch.build(:get, "http://localhost/", [], nil, unix_socket: socket_path)
       |> Finch.request(MyFinch)

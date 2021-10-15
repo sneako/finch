@@ -8,6 +8,8 @@ defmodule Finch.PoolManager do
     :versions
   ]
 
+  @default_conn_hostname "localhost"
+
   def start_link(config) do
     GenServer.start_link(__MODULE__, config, name: config.manager_name)
   end
@@ -78,6 +80,7 @@ defmodule Finch.PoolManager do
     config
     |> Map.get(shp, default)
     |> maybe_drop_tls_options(shp)
+    |> maybe_add_hostname(shp)
   end
 
   # Drop TLS options from :conn_opts for default pools with :http scheme,
@@ -94,6 +97,17 @@ defmodule Finch.PoolManager do
   end
 
   defp maybe_drop_tls_options(config, _), do: config
+
+  # Hostname is required when the address is not a url (binary) so we need to specify
+  # a default value in case the configuration does not specify one.
+  defp maybe_add_hostname(config, {_scheme, {:local, _path}, _port} = _shp) when is_map(config) do
+    conn_opts =
+      config |> Map.get(:conn_opts, []) |> Keyword.put_new(:hostname, @default_conn_hostname)
+
+    Map.put(config, :conn_opts, conn_opts)
+  end
+
+  defp maybe_add_hostname(config, _), do: config
 
   defp pool_mod(:http1), do: Finch.HTTP1.Pool
   defp pool_mod(:http2), do: Finch.HTTP2.Pool
