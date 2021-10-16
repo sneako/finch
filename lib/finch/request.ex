@@ -4,7 +4,7 @@ defmodule Finch.Request do
   """
 
   @enforce_keys [:scheme, :host, :port, :method, :path, :headers, :body, :query]
-  defstruct [:scheme, :host, :port, :method, :path, :headers, :body, :query]
+  defstruct [:scheme, :host, :port, :method, :path, :headers, :body, :query, :unix_socket]
 
   @atom_methods [
     :get,
@@ -57,7 +57,8 @@ defmodule Finch.Request do
   def request_path(%{path: path, query: query}), do: "#{path}?#{query}"
 
   @doc false
-  def build(method, url, headers, body) do
+  def build(method, url, headers, body, opts) do
+    unix_socket = Keyword.get(opts, :unix_socket)
     {scheme, host, port, path, query} = parse_url(url)
 
     %Finch.Request{
@@ -68,7 +69,8 @@ defmodule Finch.Request do
       path: path,
       headers: headers,
       body: body,
-      query: query
+      query: query,
+      unix_socket: unix_socket
     }
   end
 

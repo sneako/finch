@@ -3,6 +3,7 @@ defmodule FinchTest do
   doctest Finch
 
   alias Finch.Response
+  alias Finch.MockSocketServer
 
   setup do
     {:ok, bypass: Bypass.open()}
@@ -75,18 +76,23 @@ defmodule FinchTest do
          %{bypass: bypass} do
       other_bypass = Bypass.open()
       default_bypass = Bypass.open()
+      unix_socket = {:local, "/my/unix/socket"}
 
       start_supervised!(
         {Finch,
          name: MyFinch,
          pools: %{
            endpoint(bypass, "/some-path") => [count: 5, size: 5],
-           endpoint(other_bypass, "/some-other-path") => [count: 10, size: 10]
+           endpoint(other_bypass, "/some-other-path") => [count: 10, size: 10],
+           {:http, unix_socket} => [count: 5, size: 5],
+           {:https, unix_socket} => [count: 10, size: 10]
          }}
       )
 
       assert get_pools(MyFinch, shp(bypass)) |> length() == 5
       assert get_pools(MyFinch, shp(other_bypass)) |> length() == 10
+      assert get_pools(MyFinch, shp({:http, unix_socket})) |> length() == 5
+      assert get_pools(MyFinch, shp({:https, unix_socket})) |> length() == 10
 
       # no pool has been started for this unconfigured shp
       assert get_pools(MyFinch, shp(default_bypass)) |> length() == 0
@@ -145,7 +151,7 @@ defmodule FinchTest do
     end
   end
 
-  describe "build/4" do
+  describe "build/5" do
     test "raises if unsupported atom request method provided", %{bypass: bypass} do
       assert_raise ArgumentError, ~r/got unsupported atom method :gimme/, fn ->
         Finch.build(:gimme, endpoint(bypass))
@@ -253,6 +259,33 @@ defmodule FinchTest do
       end)
 
       assert {:ok, %{status: 200}} = Finch.build(:get, uri) |> Finch.request(MyFinch)
+    end
+
+    test "successful get request to a unix socket" do
+      {:ok, {:local, socket_path}} = MockSocketServer.start()
+
+      start_supervised!({Finch, name: MyFinch})
+
+      assert {:ok, %Response{status: 200}} = 
+        Finch.build(:get, "http://localhost/", [], nil, unix_socket: socket_path)
+        |> Finch.request(MyFinch)
+    end
+
+    @tag :capture_log
+    test "successful get request to a unix socket with tls" do
+      {:ok, socket_address = {:local, socket_path}} = MockSocketServer.start(ssl?: true)
+
+      start_supervised!(
+        {Finch,
+          name: MyFinch,
+          pools: %{
+            {:https, socket_address} => [conn_opts: [transport_opts: [verify: :verify_none]]]
+          }}
+      )
+
+      assert {:ok, %Response{status: 200}} = 
+        Finch.build(:get, "https://localhost/", [], nil, unix_socket: socket_path)
+        |> Finch.request(MyFinch)
     end
 
     test "properly handles connection: close", %{bypass: bypass} do
@@ -742,6 +775,7 @@ defmodule FinchTest do
   defp endpoint(%{port: port}, path \\ "/"), do: "http://localhost:#{port}#{path}"
 
   defp shp(%{port: port}), do: {:http, "localhost", port}
+  defp shp({scheme, {:local, unix_socket}}), do: {scheme, {:local, unix_socket}, 0}
 
   defp expect_any(bypass) do
     Bypass.expect(bypass, fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)

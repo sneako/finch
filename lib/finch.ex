@@ -79,9 +79,10 @@ defmodule Finch do
     * `:name` - The name of your Finch instance. This field is required.
 
     * `:pools` - A map specifying the configuration for your pools. The keys should be URLs
-    provided as binaries, or the atom `:default` to provide a catch-all configuration to be used
-    for any unspecified URLs. See "Pool Configuration Options" below for details on the possible
-    map values. Default value is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
+    provided as binaries, a tuple `{scheme, {:local, unix_socket}}` where `unix_socket` is the path for 
+    the socket, or the atom `:default` to provide a catch-all configuration to be used for any
+    unspecified URLs. See "Pool Configuration Options" below for details on the possible map 
+    values. Default value is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
 
   ### Pool Configuration Options
 
@@ -132,6 +133,9 @@ defmodule Finch do
     case destination do
       :default ->
         {:ok, destination}
+
+      {scheme, {:local, path}} when is_atom(scheme) and is_binary(path) ->
+        {:ok, {scheme, {:local, path}, 0}}
 
       url when is_binary(url) ->
         cast_binary_destination(url)
@@ -198,7 +202,7 @@ defmodule Finch do
   where `body_stream` is a `Stream`. This feature is not yet supported for HTTP/2 requests.
   """
   @spec build(Request.method(), Request.url(), Request.headers(), Request.body()) :: Request.t()
-  defdelegate build(method, url, headers \\ [], body \\ nil), to: Request
+  defdelegate build(method, url, headers \\ [], body \\ nil, opts \\ []), to: Request
 
   @doc """
   Streams an HTTP request and returns the accumulator.
@@ -227,9 +231,17 @@ defmodule Finch do
           {:ok, acc} | {:error, Exception.t()}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
-    %{scheme: scheme, host: host, port: port} = req
-    {pool, pool_mod} = PoolManager.get_pool(name, {scheme, host, port})
+    shp = build_shp(req)
+    {pool, pool_mod} = PoolManager.get_pool(name, shp)
     pool_mod.request(pool, req, acc, fun, opts)
+  end
+
+  defp build_shp(%Request{scheme: scheme, unix_socket: unix_socket}) when is_binary(unix_socket) do
+    {scheme, {:local, unix_socket}, 0}
+  end
+
+  defp build_shp(%Request{scheme: scheme, host: host, port: port}) do
+    {scheme, host, port}
   end
 
   @doc """
@@ -274,7 +286,7 @@ defmodule Finch do
   end
 
   def request(name, method, url, headers, body \\ nil, opts \\ []) do
-    IO.warn("Finch.request/6 is deprecated, use Finch.build/4 + Finch.request/3 instead")
+    IO.warn("Finch.request/6 is deprecated, use Finch.build/5 + Finch.request/3 instead")
 
     build(method, url, headers, body)
     |> request(name, opts)
