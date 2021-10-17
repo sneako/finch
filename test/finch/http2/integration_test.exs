@@ -149,10 +149,10 @@ defmodule Finch.HTTP2.IntegrationTest do
     )
 
     assert catch_throw(
-      Finch.stream(Finch.build(:get, url), TestFinch, :ok, fn {:status, _}, :ok ->
-        throw :error
-      end)
-    ) == :error
+             Finch.stream(Finch.build(:get, url), TestFinch, :ok, fn {:status, _}, :ok ->
+               throw(:error)
+             end)
+           ) == :error
 
     refute_receive _
   end

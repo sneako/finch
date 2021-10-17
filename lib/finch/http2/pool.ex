@@ -51,6 +51,7 @@ defmodule Finch.HTTP2.Pool do
       # get the process unstuck.
       fail_safe_timeout = if is_integer(timeout), do: max(2000, timeout * 2), else: :infinity
       start_time = Telemetry.start(:response, metadata)
+
       try do
         result = response_waiting_loop(acc, fun, ref, monitor, fail_safe_timeout)
 
@@ -95,6 +96,7 @@ defmodule Finch.HTTP2.Pool do
     after
       fail_safe_timeout ->
         Process.demonitor(monitor_ref)
+
         raise "no response was received even after waiting #{fail_safe_timeout}ms. " <>
                 "This is likely a bug in Finch, but we're raising so that your system doesn't " <>
                 "get stuck in an infinite receive."
@@ -122,7 +124,7 @@ defmodule Finch.HTTP2.Pool do
   end
 
   @impl true
-  def init({{scheme, host, port}=shp, registry, _pool_size, pool_opts}) do
+  def init({{scheme, host, port} = shp, registry, _pool_size, pool_opts}) do
     {:ok, _} = Registry.register(registry, shp, __MODULE__)
 
     data = %{
@@ -133,7 +135,7 @@ defmodule Finch.HTTP2.Pool do
       requests: %{},
       backoff_base: 500,
       backoff_max: 10_000,
-      connect_opts: pool_opts[:conn_opts] || [],
+      connect_opts: pool_opts[:conn_opts] || []
     }
 
     {:ok, :disconnected, data, {:next_event, :internal, {:connect, 0}}}
@@ -149,9 +151,10 @@ defmodule Finch.HTTP2.Pool do
   # When entering a disconnected state we need to fail all of the pending
   # requests
   def disconnected(:enter, _, data) do
-    :ok = Enum.each(data.requests, fn {ref, from} ->
-      send(from, {:error, ref, Error.exception(:connection_closed)})
-    end)
+    :ok =
+      Enum.each(data.requests, fn {ref, from} ->
+        send(from, {:error, ref, Error.exception(:connection_closed)})
+      end)
 
     # It's possible that we're entering this state before we are alerted of the
     # fact that the socket is closed. This most often happens if we're in a read
@@ -175,9 +178,11 @@ defmodule Finch.HTTP2.Pool do
     metadata = %{
       scheme: data.scheme,
       host: data.host,
-      port: data.port,
+      port: data.port
     }
+
     start = Telemetry.start(:connect, metadata)
+
     case HTTP2.connect(data.scheme, data.host, data.port, data.connect_opts) do
       {:ok, conn} ->
         Telemetry.stop(:connect, start, metadata)
@@ -188,6 +193,7 @@ defmodule Finch.HTTP2.Pool do
       {:error, error} ->
         metadata = Map.put(metadata, :error, error)
         Telemetry.stop(:connect, start, metadata)
+
         Logger.error([
           "Failed to connect to #{data.scheme}://#{data.host}:#{data.port}: ",
           Exception.message(error)
@@ -240,8 +246,14 @@ defmodule Finch.HTTP2.Pool do
 
   # Issue request to the upstream server. We store a ref to the request so we
   # know who to respond to when we've completed everything
-  def connected({:call, {from_pid, _}=from}, {:request, req, opts}, data) do
-    case HTTP2.request(data.conn, req.method, Finch.Request.request_path(req), req.headers, req.body) do
+  def connected({:call, {from_pid, _} = from}, {:request, req, opts}, data) do
+    case HTTP2.request(
+           data.conn,
+           req.method,
+           Finch.Request.request_path(req),
+           req.headers,
+           req.body
+         ) do
       {:ok, conn, ref} ->
         data =
           data
@@ -259,6 +271,7 @@ defmodule Finch.HTTP2.Pool do
       {:error, conn, %HTTPError{reason: :closed_for_writing}} ->
         data = put_in(data.conn, conn)
         actions = [{:reply, from, {:error, "read_only"}}]
+
         if HTTP2.open?(conn, :read) && Enum.any?(data.requests) do
           {:next_state, :connected_read_only, data, actions}
         else
@@ -342,7 +355,7 @@ defmodule Finch.HTTP2.Pool do
             {:keep_state, data}
 
           # Don't bother entering read only mode if we don't have any pending requests.
-          HTTP2.open?(conn, :read) && Enum.any?(data.requests)  ->
+          HTTP2.open?(conn, :read) && Enum.any?(data.requests) ->
             {:next_state, :connected_read_only, data}
 
           true ->

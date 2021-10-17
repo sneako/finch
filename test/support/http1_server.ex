@@ -17,7 +17,7 @@ defmodule Finch.HTTP1Server do
           otp_app: :finch,
           protocol_options: [
             idle_timeout: 3_000,
-            request_timeout: 10_000,
+            request_timeout: 10_000
           ]
         ]
       )
@@ -38,9 +38,9 @@ defmodule Finch.HTTP1Server.PlugRouter do
 
   get "/" do
     name = conn.params["name"] || "world"
+
     conn
     |> send_resp(200, "Hello #{name}!")
     |> halt()
   end
-
 end

@@ -39,6 +39,9 @@ jobs:
      - name: Install Dependencies
        run: mix deps.get
 
+     - run: mix format --check-formatted
+       if: ${{ matrix.lint }}
+
      - run: mix deps.unlock --check-unused
        if: ${{ matrix.lint }}
 

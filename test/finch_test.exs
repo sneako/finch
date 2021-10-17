@@ -46,7 +46,8 @@ defmodule FinchTest do
           name: finch_name(),
           pools: %{
             default: [
-              count: 5, size: 5,
+              count: 5,
+              size: 5,
               conn_opts: [transport_opts: [verify: :verify_none]]
             ]
           }
@@ -55,7 +56,8 @@ defmodule FinchTest do
       expect_any(bypass)
 
       # you will get badarg error if the verify option is applied to the connection.
-      assert {:ok, %Response{}} = Finch.build("GET", endpoint(bypass)) |> Finch.request(finch_name())
+      assert {:ok, %Response{}} =
+               Finch.build("GET", endpoint(bypass)) |> Finch.request(finch_name())
     end
 
     test "raises when invalid configuration is provided" do
@@ -176,7 +178,8 @@ defmodule FinchTest do
       end)
 
       assert {:ok, %{status: 200}} =
-               Finch.build(:get, endpoint(bypass, "?" <> query_string)) |> Finch.request(finch_name())
+               Finch.build(:get, endpoint(bypass, "?" <> query_string))
+               |> Finch.request(finch_name())
     end
 
     test "successful post request, with body and query string", %{bypass: bypass} do
@@ -213,10 +216,12 @@ defmodule FinchTest do
                end)
     end
 
-    test "successful post streaming request, with streaming body and query string", %{bypass: bypass} do
+    test "successful post streaming request, with streaming body and query string", %{
+      bypass: bypass
+    } do
       start_supervised!({Finch, name: finch_name()})
 
-      req_stream = Stream.map(1..10_000, fn(_) -> "please" end)
+      req_stream = Stream.map(1..10_000, fn _ -> "please" end)
       req_body = req_stream |> Enum.join("")
       response_body = "{\"right\":\"here\"}"
       header_key = "content-type"
@@ -266,9 +271,9 @@ defmodule FinchTest do
 
       start_supervised!({Finch, name: finch_name()})
 
-      assert {:ok, %Response{status: 200}} = 
-        Finch.build(:get, "http://localhost/", [], nil, unix_socket: socket_path)
-        |> Finch.request(finch_name())
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, "http://localhost/", [], nil, unix_socket: socket_path)
+               |> Finch.request(finch_name())
     end
 
     @tag :capture_log
@@ -277,15 +282,15 @@ defmodule FinchTest do
 
       start_supervised!(
         {Finch,
-          name: finch_name(),
-          pools: %{
-            {:https, socket_address} => [conn_opts: [transport_opts: [verify: :verify_none]]]
-          }}
+         name: finch_name(),
+         pools: %{
+           {:https, socket_address} => [conn_opts: [transport_opts: [verify: :verify_none]]]
+         }}
       )
 
-      assert {:ok, %Response{status: 200}} = 
-        Finch.build(:get, "https://localhost/", [], nil, unix_socket: socket_path)
-        |> Finch.request(finch_name())
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, "https://localhost/", [], nil, unix_socket: socket_path)
+               |> Finch.request(finch_name())
     end
 
     test "properly handles connection: close", %{bypass: bypass} do
@@ -343,13 +348,16 @@ defmodule FinchTest do
 
       :sys.suspend(finch_name())
 
-      assert {:timeout, _} = catch_exit(
-        Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name(), pool_timeout: 0)
-      )
+      assert {:timeout, _} =
+               catch_exit(
+                 Finch.build(:get, endpoint(bypass))
+                 |> Finch.request(finch_name(), pool_timeout: 0)
+               )
 
       :sys.resume(finch_name())
 
-      assert {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name(), pool_timeout: 1)
+      assert {:ok, %Response{}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name(), pool_timeout: 1)
     end
   end
 
@@ -365,7 +373,10 @@ defmodule FinchTest do
     end
 
     test "caller is unable to override mode", %{bypass: bypass} do
-      start_supervised!({Finch, name: finch_name(), pools: %{default: [conn_opts: [mode: :active]]}})
+      start_supervised!(
+        {Finch, name: finch_name(), pools: %{default: [conn_opts: [mode: :active]]}}
+      )
+
       expect_any(bypass)
       assert {:ok, _} = Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name())
     end
@@ -742,11 +753,13 @@ defmodule FinchTest do
                |> Finch.stream(finch_name(), acc, fun)
     end
 
-    test "successful post request, with query string and streaming request body", %{bypass: bypass} do
+    test "successful post request, with query string and streaming request body", %{
+      bypass: bypass
+    } do
       start_supervised!({Finch, name: finch_name()})
       query_string = "query=value"
       req_headers = [{"content-type", "application/json"}]
-      req_stream = Stream.map(1..10_000, fn(_) -> "please" end)
+      req_stream = Stream.map(1..10_000, fn _ -> "please" end)
       resp_body = "{hi:\"there\"}"
 
       Bypass.expect_once(bypass, "POST", "/", fn conn ->
@@ -763,7 +776,12 @@ defmodule FinchTest do
       end
 
       assert {:ok, {200, [_ | _], ^resp_body}} =
-               Finch.build(:post, endpoint(bypass, "?" <> query_string), req_headers, {:stream, req_stream})
+               Finch.build(
+                 :post,
+                 endpoint(bypass, "?" <> query_string),
+                 req_headers,
+                 {:stream, req_stream}
+               )
                |> Finch.stream(finch_name(), acc, fun)
     end
   end
