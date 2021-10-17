@@ -1,5 +1,9 @@
 name: CI
-on: [pull_request, push]
+on:
+  pull_request:
+  push:
+    branches:
+      - main
 jobs:
  mix_test:
    strategy:
@@ -8,10 +12,10 @@ jobs:
        include:
          - pair:
              elixir: '1.7.4'
-             otp: '19.x'
+             otp: '22.x'
          - pair:
-             elixir: '1.11.4'
-             otp: '23.x'
+             elixir: '1.12.3'
+             otp: '24.x'
            lint: lint
 
    runs-on: ubuntu-18.04
@@ -20,8 +24,8 @@ jobs:
      - uses: actions/cache@v2
        with:
          path: deps
-         key: deps-${{ hashFiles('**/mix.lock') }}
-         restore-keys: deps-
+         key: deps-${{ runner.os }}-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}-${{ hashFiles('**/mix.lock') }}
+         restore-keys: deps-${{ runner.os }}-${{ matrix.pair.otp }}-${{ matrix.pair.elixir }}-
      - uses: actions/cache@v2
        with:
          path: _build
@@ -31,15 +35,26 @@ jobs:
        with:
          otp-version: ${{matrix.pair.otp}}
          elixir-version: ${{matrix.pair.elixir}}
+
      - name: Install Dependencies
        run: mix deps.get
+
      - run: mix deps.unlock --check-unused
        if: ${{ matrix.lint }}
+
      - run: mix deps.compile
+
      - run: mix compile --warnings-as-errors
        if: ${{ matrix.lint }}
+
      - name: Run Credo
        run: mix credo
        if: ${{ matrix.lint }}
+
      - name: Run Tests
        run: mix test
+       if: ${{ ! matrix.lint }}
+
+     - name: Run Tests
+       run: mix test --warnings-as-errors
+       if: ${{ matrix.lint }}
