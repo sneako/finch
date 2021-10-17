@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.9.0 (2021-10-17)
+- Add support for unix sockets.
+
 ## v0.8.3 (2021-10-15)
 - Return Error struct when HTTP2 connection is closed and a timeout occurs.
 - Do not leak messages/connections when cancelling streaming requests.
