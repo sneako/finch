@@ -3,8 +3,15 @@ defmodule Finch.PoolManager do
   use GenServer
 
   @mint_tls_opts [
-    :cacertfile, :ciphers, :depth, :partial_chain, :reuse_sessions,
-    :secure_renegotiate, :server_name_indication, :verify, :verify_fun,
+    :cacertfile,
+    :ciphers,
+    :depth,
+    :partial_chain,
+    :reuse_sessions,
+    :secure_renegotiate,
+    :server_name_indication,
+    :verify,
+    :verify_fun,
     :versions
   ]
 

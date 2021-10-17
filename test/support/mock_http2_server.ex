@@ -16,7 +16,7 @@ defmodule Finch.MockHTTP2Server do
     next_protocols_advertised: ["h2"],
     alpn_preferred_protocols: ["h2"],
     certfile: Path.join([@fixtures_dir, "selfsigned.pem"]),
-    keyfile: Path.join([@fixtures_dir, "selfsigned_key.pem"]),
+    keyfile: Path.join([@fixtures_dir, "selfsigned_key.pem"])
   ]
 
   def start_and_connect_with(options, fun) when is_list(options) and is_function(fun, 1) do
@@ -147,4 +147,3 @@ defmodule Finch.MockHTTP2Server do
     :ok
   end
 end
-

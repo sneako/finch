@@ -82,19 +82,21 @@ defmodule Finch.Request do
   def parse_url(%URI{} = parsed_uri) do
     normalized_path = parsed_uri.path || "/"
 
-    scheme = case parsed_uri.scheme do
-      "https" ->
-        :https
+    scheme =
+      case parsed_uri.scheme do
+        "https" ->
+          :https
 
-      "http" ->
-        :http
+        "http" ->
+          :http
 
-      nil ->
-        raise ArgumentError, "scheme is required for url: #{URI.to_string(parsed_uri)}"
+        nil ->
+          raise ArgumentError, "scheme is required for url: #{URI.to_string(parsed_uri)}"
 
-      scheme ->
-        raise ArgumentError, "invalid scheme \"#{scheme}\" for url: #{URI.to_string(parsed_uri)}"
-    end
+        scheme ->
+          raise ArgumentError,
+                "invalid scheme \"#{scheme}\" for url: #{URI.to_string(parsed_uri)}"
+      end
 
     {scheme, parsed_uri.host, parsed_uri.port, normalized_path, parsed_uri.query}
   end

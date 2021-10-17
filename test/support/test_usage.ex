@@ -5,8 +5,9 @@ defmodule Finch.TestUsage do
 
   def call do
     req = Finch.build(:get, "https://keathley.io")
+
     case Finch.request(req, __MODULE__, []) do
-      {:ok, %Finch.Response{}=resp} ->
+      {:ok, %Finch.Response{} = resp} ->
         resp
 
       {:error, reason} ->

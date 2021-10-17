@@ -236,7 +236,8 @@ defmodule Finch do
     pool_mod.request(pool, req, acc, fun, opts)
   end
 
-  defp build_shp(%Request{scheme: scheme, unix_socket: unix_socket}) when is_binary(unix_socket) do
+  defp build_shp(%Request{scheme: scheme, unix_socket: unix_socket})
+       when is_binary(unix_socket) do
     {scheme, {:local, unix_socket}, 0}
   end
 
