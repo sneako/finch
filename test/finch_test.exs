@@ -791,7 +791,7 @@ defmodule FinchTest do
       start_supervised!(
         {Finch,
          name: MyFinch,
-         request_transformer: fn req ->
+         request_transformer: fn req, _opts ->
            %{req | headers: [{"injected-header", "123"} | req.headers]}
          end}
       )
@@ -805,6 +805,29 @@ defmodule FinchTest do
       assert {:ok, %{status: 200}} =
                Finch.build(:get, endpoint(bypass), [{"build-header", "abc"}])
                |> Finch.request(MyFinch)
+    end
+
+    test "accepts opts", %{bypass: bypass} do
+      start_supervised!(
+        {Finch,
+         name: MyFinch,
+         request_transformer: fn req, opts ->
+          if opts[:dont_inject_headers] do
+            req
+          else
+            %{req | headers: [{"injected-header", "123"} | req.headers]}
+          end
+         end}
+      )
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        assert !Enum.member?(conn.req_headers, {"injected-header", "123"})
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      assert {:ok, %{status: 200}} =
+               Finch.build(:get, endpoint(bypass))
+               |> Finch.request(MyFinch, dont_inject_headers: true)
     end
   end
 
