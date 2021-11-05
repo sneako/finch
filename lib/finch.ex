@@ -240,7 +240,7 @@ defmodule Finch do
 
     req =
       if config.request_transformer,
-        do: config.request_transformer.transform(req, opts),
+        do: config.request_transformer.transform(req, name, opts),
         else: req
 
     shp = build_shp(req)

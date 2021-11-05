@@ -8,6 +8,8 @@ defmodule Finch.RequestTransformer do
 
     * `request`: The `Finch.Request.t()` struct representing the request to be transformed.
 
+    * `name`: The `Finch.name()` that was passed to `Finch.stream/5` or `Finch.request/3`.
+
     * `opts`: the options that were passed to `Finch.stream/5` or `Finch.request/3`, so that the
     transformer can behave differently per request.
 
@@ -25,5 +27,6 @@ defmodule Finch.RequestTransformer do
       end
   """
 
-  @callback transform(request :: Finch.Request.t(), opts :: keyword()) :: Finch.Request.t()
+  @callback transform(request :: Finch.Request.t(), name :: Finch.name(), opts :: keyword()) ::
+              Finch.Request.t()
 end
