@@ -21,7 +21,7 @@ defmodule Finch.RequestTransformer do
       defmodule HeaderInjector do
         @behaviour Finch.RequestTransformer
 
-        def transform(request, _opts) do
+        def transform(request, _name, _opts) do
           %{request | headers: [{"injected-header", "123"} | request.headers]}
         end
       end
