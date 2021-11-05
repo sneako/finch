@@ -812,11 +812,11 @@ defmodule FinchTest do
         {Finch,
          name: MyFinch,
          request_transformer: fn req, opts ->
-          if opts[:dont_inject_headers] do
-            req
-          else
-            %{req | headers: [{"injected-header", "123"} | req.headers]}
-          end
+           if opts[:dont_inject_headers] do
+             req
+           else
+             %{req | headers: [{"injected-header", "123"} | req.headers]}
+           end
          end}
       )
 
