@@ -787,14 +787,16 @@ defmodule FinchTest do
   end
 
   describe "request-transformer" do
+    defmodule HeaderInjector do
+      @behaviour Finch.RequestTransformer
+
+      def transform(request, _opts) do
+        %{request | headers: [{"injected-header", "123"} | request.headers]}
+      end
+    end
+
     test "adds headers to request", %{bypass: bypass} do
-      start_supervised!(
-        {Finch,
-         name: MyFinch,
-         request_transformer: fn req, _opts ->
-           %{req | headers: [{"injected-header", "123"} | req.headers]}
-         end}
-      )
+      start_supervised!({Finch, name: MyFinch, request_transformer: HeaderInjector})
 
       Bypass.expect_once(bypass, "GET", "/", fn conn ->
         assert Enum.member?(conn.req_headers, {"injected-header", "123"})
@@ -808,17 +810,19 @@ defmodule FinchTest do
     end
 
     test "accepts opts", %{bypass: bypass} do
-      start_supervised!(
-        {Finch,
-         name: MyFinch,
-         request_transformer: fn req, opts ->
-           if opts[:dont_inject_headers] do
-             req
-           else
-             %{req | headers: [{"injected-header", "123"} | req.headers]}
-           end
-         end}
-      )
+      defmodule ConditionalHeaderInjector do
+        @behaviour Finch.RequestTransformer
+
+        def transform(request, opts) do
+          if opts[:dont_inject_headers] do
+            request
+          else
+            %{request | headers: [{"injected-header", "123"} | request.headers]}
+          end
+        end
+      end
+
+      start_supervised!({Finch, name: MyFinch, request_transformer: ConditionalHeaderInjector})
 
       Bypass.expect_once(bypass, "GET", "/", fn conn ->
         assert !Enum.member?(conn.req_headers, {"injected-header", "123"})

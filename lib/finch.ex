@@ -84,21 +84,12 @@ defmodule Finch do
     unspecified URLs. See "Pool Configuration Options" below for details on the possible map
     values. Default value is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
 
-    * `:request_transformer` - A callback that can be used to modify Requests as they're being
-    made (for example, to inject distributed tracing headers). The arity-2 function will receive
-    the `t:Finch.Request.t/0` and a keyword list of options (passed down from the opts given to
-    `stream/5` or `request/3`). It must return the transformed `t:Finch.Request.t/0`. Note that
-    this function will be called synchronously during every request, so care should be taken to
-    ensure that it does not introduce unnecessary latency.
+    * `:request_transformer` - A callback module that can be used to modify Requests as they're being
+    made (for example, to inject distributed tracing headers).
+
   ### Pool Configuration Options
 
   #{NimbleOptions.docs(@pool_config_schema)}
-
-  ### Request Transformer Example
-
-      request_transformer: fn req, _opts ->
-        %{req | headers: [{"injected-header", "123"} | req.headers]}
-      end
   """
   def start_link(opts) do
     name = Keyword.get(opts, :name) || raise ArgumentError, "must supply a name"
@@ -246,7 +237,11 @@ defmodule Finch do
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
     {:ok, config} = Registry.meta(name, :config)
-    req = if config.request_transformer, do: config.request_transformer.(req, opts), else: req
+
+    req =
+      if config.request_transformer,
+        do: config.request_transformer.transform(req, opts),
+        else: req
 
     shp = build_shp(req)
     {pool, pool_mod} = PoolManager.get_pool(name, shp)
