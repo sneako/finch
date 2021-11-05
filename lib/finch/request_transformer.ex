@@ -1,10 +1,18 @@
 defmodule Finch.RequestTransformer do
   @moduledoc """
-  A RequestTransformer behaviour module that specifies a `transform/2` callback that can be used to modify
-  Requests as they're being made (for example, to inject distributed tracing headers). Opts is passed
-  down from the opts given to `stream/5` or `request/3`, so it may be used to allow the callback to behave
-  differently per request. Note that this function will be called synchronously during every request, so care
-  should be taken to ensure that it does not introduce unnecessary latency.
+  A behaviour for transforming a `Finch.Request` struct just before the actual request is made,
+  for example, to inject distributed tracing headers.
+
+  The `transform/2` callback will be called with the following parameters and should return the
+  transformed `Finch.Request.t()` struct:
+
+    * `request`: The `Finch.Request.t()` struct representing the request to be transformed.
+
+    * `opts`: the options that were passed to `Finch.stream/5` or `Finch.request/3`, so that the
+    transformer can behave differently per request.
+
+  Note that this function will be called synchronously during every request, so care should be
+  taken to ensure that it does not introduce unnecessary latency.
 
   ### Example implementation
 
