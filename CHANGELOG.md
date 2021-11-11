@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.9.1 (2021-10-17)
+- Upgrade NimbleOptions dep to 0.4.0.
+
 ## v0.9.0 (2021-10-17)
 - Add support for unix sockets.
 
