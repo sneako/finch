@@ -63,7 +63,7 @@ defmodule Finch.HTTP1.Pool do
   def init_pool({registry, shp, opts}) do
     # Register our pool with our module name as the key. This allows the caller
     # to determine the correct pool module to use to make the request
-    {:ok, _} = Registry.register(registry, shp, __MODULE__)
+    {:ok, _} = Registry.register(registry, shp, {__MODULE__, opts[:request_transformer]})
     {:ok, {shp, opts}}
   end
 

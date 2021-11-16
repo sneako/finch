@@ -57,6 +57,10 @@ defmodule Finch do
       used to configure proxying, https settings, or connect timeouts.
       """,
       default: []
+    ],
+    request_transformer: [
+      type: {:fun, 3},
+      required: false
     ]
   ]
 
@@ -232,7 +236,13 @@ defmodule Finch do
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
     shp = build_shp(req)
-    {pool, pool_mod} = PoolManager.get_pool(name, shp)
+    {pool, {pool_mod, request_transformer}} = PoolManager.get_pool(name, shp)
+
+    req =
+      if is_function(request_transformer, 3),
+        do: request_transformer.(req, name, opts),
+        else: req
+
     pool_mod.request(pool, req, acc, fun, opts)
   end
 

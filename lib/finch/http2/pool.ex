@@ -125,7 +125,7 @@ defmodule Finch.HTTP2.Pool do
 
   @impl true
   def init({{scheme, host, port} = shp, registry, _pool_size, pool_opts}) do
-    {:ok, _} = Registry.register(registry, shp, __MODULE__)
+    {:ok, _} = Registry.register(registry, shp, {__MODULE__, pool_opts[:request_transformer]})
 
     data = %{
       conn: nil,
@@ -321,7 +321,7 @@ defmodule Finch.HTTP2.Pool do
 
       {:error, conn, error, responses} ->
         Logger.error([
-          "Received error from server #{data.scheme}:#{data.host}:#{data.port}: ",
+          "Received error from server #{data.scheme}://#{data.host}:#{data.port}: ",
           Exception.message(error)
         ])
 
