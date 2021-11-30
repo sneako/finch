@@ -362,8 +362,20 @@ defmodule Finch.HTTP2.Pool do
   @doc false
   def connected_read_only(event, content, data)
 
-  def connected_read_only(:enter, _old_state, _data) do
-    :keep_state_and_data
+  def connected_read_only(:enter, _old_state, data) do
+    {actions, data} =
+      Enum.flat_map_reduce(data.requests, data, fn
+        # request is awaiting a response and should stay in state
+        {_ref, %{status: :done}}, data ->
+          {[], data}
+
+        # request is still sending data and should be discarded
+        {ref, %{status: :streaming} = request}, data ->
+          {^request, data} = pop_in(data.requests[ref])
+          {[{:reply, request.from, {:error, Error.exception(:read_only)}}], data}
+      end)
+
+    {:keep_state, data, actions}
   end
 
   # If we're in a read only state than respond with an error immediately
