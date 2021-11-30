@@ -251,7 +251,7 @@ defmodule Finch.HTTP2.Pool do
     request = RequestStream.new(req.body, from)
 
     with {:ok, data, ref} <- request(data, req),
-         data = put_in(data, [:requests, ref], request),
+         data = put_in(data.requests[ref], request),
          {:ok, data, actions} <- continue_request(data, ref) do
       # Set a timeout to close the request after a given timeout
       request_timeout = {{:timeout, {:request_timeout, ref}}, opts[:receive_timeout], nil}
