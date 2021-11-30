@@ -295,18 +295,17 @@ defmodule Finch.HTTP2.Pool do
       {:ok, conn, responses} ->
         data = put_in(data.conn, conn)
         {data, response_actions} = handle_responses(data, responses)
-        {data, streaming_actions} = continue_requests(data)
-        actions = response_actions ++ streaming_actions
 
         cond do
           HTTP2.open?(data.conn, :write) ->
-            {:keep_state, data, actions}
+            {data, streaming_actions} = continue_requests(data)
+            {:keep_state, data, response_actions ++ streaming_actions}
 
           HTTP2.open?(data.conn, :read) && Enum.any?(data.requests) ->
-            {:next_state, :connected_read_only, data, actions}
+            {:next_state, :connected_read_only, data, response_actions}
 
           true ->
-            {:next_state, :disconnected, data, actions}
+            {:next_state, :disconnected, data, response_actions}
         end
 
       {:error, conn, error, responses} ->
