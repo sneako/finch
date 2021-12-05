@@ -74,7 +74,7 @@ defmodule Finch.HTTP2.RequestStream do
       {:suspended,
        {[{overload_message, overload_message_size} | messages_that_fit], total_size, window_size},
        next_continuation} ->
-        fittable_size = max(window_size - (total_size - overload_message_size) - 1, 0)
+        fittable_size = window_size - (total_size - overload_message_size)
 
         <<fittable_binary::binary-size(fittable_size), overload_binary::binary>> =
           overload_message
