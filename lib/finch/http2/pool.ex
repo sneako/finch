@@ -530,10 +530,9 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp continue_requests(data) do
-    data.requests
-    |> Enum.filter(fn {_ref, request} -> request.status == :streaming end)
-    |> Enum.reduce({data, []}, fn {ref, request}, {data, actions} ->
-      with true <- HTTP2.open?(data.conn, :write),
+    Enum.reduce(data.requests, {data, []}, fn {ref, request}, {data, actions} ->
+      with true <- request.status == :streaming,
+           true <- HTTP2.open?(data.conn, :write),
            {:ok, data, new_actions} <- continue_request(data, ref) do
         {data, new_actions ++ actions}
       else
