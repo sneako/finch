@@ -11,9 +11,13 @@ defmodule Finch.HTTP2.RequestStream do
       end
 
     enumerable =
-      Stream.map(enumerable, fn data ->
-        binary_data = IO.iodata_to_binary(data)
-        {binary_data, byte_size(binary_data)}
+      Stream.map(enumerable, fn
+        binary when is_binary(binary) ->
+          {binary, byte_size(binary)}
+
+        io_data ->
+          binary = IO.iodata_to_binary(io_data)
+          {binary, byte_size(binary)}
       end)
 
     reducer = &reduce_with_suspend/2
