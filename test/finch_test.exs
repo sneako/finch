@@ -216,7 +216,7 @@ defmodule FinchTest do
                end)
     end
 
-    test "successful post streaming request, with streaming body and query string", %{
+    test "successful post HTTP/1 streaming request, with streaming body and query string", %{
       bypass: bypass
     } do
       start_supervised!({Finch, name: finch_name()})
@@ -249,6 +249,111 @@ defmodule FinchTest do
       assert {_, "application/json"} =
                Enum.find(headers, fn
                  {"content-type", _} -> true
+                 _ -> false
+               end)
+    end
+
+    test "successful post HTTP/2 streaming request, with streaming body and query string", %{
+      bypass: bypass
+    } do
+      start_supervised!(
+        {Finch,
+         name: finch_name(),
+         pools: %{
+           default: [
+             protocol: :http2,
+             count: 1,
+             conn_opts: [
+               transport_opts: [
+                 verify: :verify_none
+               ]
+             ]
+           ]
+         }}
+      )
+
+      data = :crypto.strong_rand_bytes(1_000)
+      # 1MB of data
+      req_stream = Stream.repeatedly(fn -> data end) |> Stream.take(1_000)
+      req_body = req_stream |> Enum.join("")
+      response_body = data
+      header_key = "content-type"
+      header_val = "application/octet-stream"
+      query_string = "query=value"
+
+      Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert conn.query_string == query_string
+        assert {:ok, ^req_body, conn} = Plug.Conn.read_body(conn)
+
+        conn
+        |> Plug.Conn.put_resp_header(header_key, header_val)
+        |> Plug.Conn.send_resp(200, response_body)
+      end)
+
+      assert {:ok, %Response{status: 200, headers: headers, body: ^response_body}} =
+               Finch.build(
+                 :post,
+                 endpoint(bypass, "?" <> query_string),
+                 [{header_key, header_val}],
+                 {:stream, req_stream}
+               )
+               |> Finch.request(finch_name())
+
+      assert {_, ^header_val} =
+               Enum.find(headers, fn
+                 {^header_key, _} -> true
+                 _ -> false
+               end)
+    end
+
+    test "successful post HTTP/2 with a large binary body", %{
+      bypass: bypass
+    } do
+      start_supervised!(
+        {Finch,
+         name: finch_name(),
+         pools: %{
+           default: [
+             protocol: :http2,
+             count: 1,
+             conn_opts: [
+               transport_opts: [
+                 verify: :verify_none
+               ]
+             ]
+           ]
+         }}
+      )
+
+      data = :crypto.strong_rand_bytes(1_000)
+      # 2MB of data
+      req_body = :binary.copy(data, 2_000)
+      response_body = data
+      header_key = "content-type"
+      header_val = "application/octet-stream"
+      query_string = "query=value"
+
+      Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert conn.query_string == query_string
+        assert {:ok, ^req_body, conn} = Plug.Conn.read_body(conn)
+
+        conn
+        |> Plug.Conn.put_resp_header(header_key, header_val)
+        |> Plug.Conn.send_resp(200, response_body)
+      end)
+
+      assert {:ok, %Response{status: 200, headers: headers, body: ^response_body}} =
+               Finch.build(
+                 :post,
+                 endpoint(bypass, "?" <> query_string),
+                 [{header_key, header_val}],
+                 req_body
+               )
+               |> Finch.request(finch_name())
+
+      assert {_, ^header_val} =
+               Enum.find(headers, fn
+                 {^header_key, _} -> true
                  _ -> false
                end)
     end
