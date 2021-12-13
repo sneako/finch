@@ -1,21 +1,25 @@
 # Changelog
 
+## v0.10.0 (2021-12-12)
+* Add ability to stream the request body for HTTP/2 requests.
+* Check and respect window sizes during HTTP/2 requests.
+
 ## v0.9.1 (2021-10-17)
-- Upgrade NimbleOptions dep to 0.4.0.
+* Upgrade NimbleOptions dep to 0.4.0.
 
 ## v0.9.0 (2021-10-17)
-- Add support for unix sockets.
+* Add support for unix sockets.
 
 ## v0.8.3 (2021-10-15)
-- Return Error struct when HTTP2 connection is closed and a timeout occurs.
-- Do not leak messages/connections when cancelling streaming requests.
+* Return Error struct when HTTP2 connection is closed and a timeout occurs.
+* Do not leak messages/connections when cancelling streaming requests.
 
 ## v0.8.2 (2021-09-09)
-- Demonitor http/2 connections when the request is done.
+* Demonitor http/2 connections when the request is done.
 
 ## v0.8.1 (2021-07-27)
-- Update mix.exs to allow compatibility with Telemetry v1.0
-- Avoid appending "?" to request_path when query string is an empty string
+* Update mix.exs to allow compatibility with Telemetry v1.0
+* Avoid appending "?" to request_path when query string is an empty string
 
 ## v0.8.0 (2021-06-23)
 * HTTP2 connections will now always return Exceptions.

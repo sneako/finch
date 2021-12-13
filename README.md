@@ -1,11 +1,13 @@
 <img alt="Finch" height="350px" src="assets/Finch_logo_onWhite.png?raw=true">
 
-[![Build Status](https://github.com/keathley/finch/workflows/CI/badge.svg?branch=master)](https://github.com/keathley/finch/actions) [![Hex pm](https://img.shields.io/hexpm/v/finch.svg?style=flat)](https://hex.pm/packages/finch) [![Hexdocs.pm](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/finch/)
+[![Build Status](https://github.com/sneako/finch/workflows/CI/badge.svg?branch=main)](https://github.com/sneako/finch/actions) [![Hex pm](https://img.shields.io/hexpm/v/finch.svg?style=flat)](https://hex.pm/packages/finch) [![Hexdocs.pm](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/finch/)
 
 <!-- MDOC !-->
 
 An HTTP client with a focus on performance, built on top of
 [Mint](https://github.com/elixir-mint/mint) and [NimblePool](https://github.com/dashbitco/nimble_pool).
+
+We try to achieve this goal by providing efficient connection pooling strategies and avoiding copying wherever possible.
 
 ## Usage
 
@@ -102,7 +104,7 @@ The package can be installed by adding `finch` to your list of dependencies in `
 ```elixir
 def deps do
   [
-    {:finch, "~> 0.9"}
+    {:finch, "~> 0.10"}
   ]
 end
 ```
