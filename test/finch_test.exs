@@ -377,8 +377,8 @@ defmodule FinchTest do
          }}
       )
 
-      # 2KB of data
-      req_body = List.duplicate(125, 2_000)
+      # 2MB of data
+      req_body = List.duplicate(125, 2_000_000)
       req_body_binary = IO.iodata_to_binary(req_body)
       response_body = req_body_binary
       header_key = "content-type"
