@@ -379,14 +379,15 @@ defmodule FinchTest do
 
       # 2KB of data
       req_body = List.duplicate(125, 2_000)
-      response_body = req_body
+      req_body_binary = IO.iodata_to_binary(req_body)
+      response_body = req_body_binary
       header_key = "content-type"
       header_val = "application/octet-stream"
       query_string = "query=value"
 
       Bypass.expect_once(bypass, "POST", "/", fn conn ->
         assert conn.query_string == query_string
-        assert {:ok, ^req_body, conn} = Plug.Conn.read_body(conn)
+        assert {:ok, ^req_body_binary, conn} = Plug.Conn.read_body(conn)
 
         conn
         |> Plug.Conn.put_resp_header(header_key, header_val)

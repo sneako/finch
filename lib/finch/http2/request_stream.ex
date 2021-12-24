@@ -6,19 +6,10 @@ defmodule Finch.HTTP2.RequestStream do
   def new(body, {from_pid, _from_ref} = from) do
     enumerable =
       case body do
-        {:stream, stream} -> stream
-        data -> List.wrap(data)
+        {:stream, stream} -> Stream.map(stream, &with_byte_size/1)
+        nil -> [with_byte_size("")]
+        io_data -> [with_byte_size(io_data)]
       end
-
-    enumerable =
-      Stream.map(enumerable, fn
-        binary when is_binary(binary) ->
-          {binary, byte_size(binary)}
-
-        io_data ->
-          binary = IO.iodata_to_binary(io_data)
-          {binary, byte_size(binary)}
-      end)
 
     reducer = &reduce_with_suspend/2
 
@@ -31,6 +22,9 @@ defmodule Finch.HTTP2.RequestStream do
       continuation: &Enumerable.reduce(enumerable, &1, reducer)
     }
   end
+
+  defp with_byte_size(binary) when is_binary(binary), do: {binary, byte_size(binary)}
+  defp with_byte_size(io_data), do: io_data |> IO.iodata_to_binary() |> with_byte_size()
 
   defp reduce_with_suspend(
          {message, message_size},
