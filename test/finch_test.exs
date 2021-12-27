@@ -209,11 +209,7 @@ defmodule FinchTest do
                )
                |> Finch.request(finch_name())
 
-      assert {_, "application/json"} =
-               Enum.find(headers, fn
-                 {"content-type", _} -> true
-                 _ -> false
-               end)
+      assert {"content-type", "application/json"} in headers
     end
 
     test "successful post HTTP/1 streaming request, with streaming body and query string", %{
@@ -246,11 +242,7 @@ defmodule FinchTest do
                )
                |> Finch.request(finch_name())
 
-      assert {_, "application/json"} =
-               Enum.find(headers, fn
-                 {"content-type", _} -> true
-                 _ -> false
-               end)
+      assert {"content-type", "application/json"} in headers
     end
 
     test "successful post HTTP/2 streaming request, with streaming body and query string", %{
@@ -299,11 +291,7 @@ defmodule FinchTest do
                )
                |> Finch.request(finch_name())
 
-      assert {_, ^header_val} =
-               Enum.find(headers, fn
-                 {^header_key, _} -> true
-                 _ -> false
-               end)
+      assert {header_key, header_val} in headers
     end
 
     test "successful post HTTP/2 with a large binary body", %{
@@ -351,11 +339,7 @@ defmodule FinchTest do
                )
                |> Finch.request(finch_name())
 
-      assert {_, ^header_val} =
-               Enum.find(headers, fn
-                 {^header_key, _} -> true
-                 _ -> false
-               end)
+      assert {header_key, header_val} in headers
     end
 
     test "successful post HTTP/2 with a large iolist body", %{
@@ -403,11 +387,7 @@ defmodule FinchTest do
                )
                |> Finch.request(finch_name())
 
-      assert {_, ^header_val} =
-               Enum.find(headers, fn
-                 {^header_key, _} -> true
-                 _ -> false
-               end)
+      assert {header_key, header_val} in headers
     end
 
     test "successful get request, with query string, when given a %URI{}", %{bypass: bypass} do
