@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.10.1 (2021-12-27)
+* Fix handling of iodata in HTTP/2 request streams.
+
 ## v0.10.0 (2021-12-12)
 * Add ability to stream the request body for HTTP/2 requests.
 * Check and respect window sizes during HTTP/2 requests.
