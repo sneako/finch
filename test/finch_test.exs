@@ -358,6 +358,58 @@ defmodule FinchTest do
                end)
     end
 
+    test "successful post HTTP/2 with a large iolist body", %{
+      bypass: bypass
+    } do
+      start_supervised!(
+        {Finch,
+         name: finch_name(),
+         pools: %{
+           default: [
+             protocol: :http2,
+             count: 1,
+             conn_opts: [
+               transport_opts: [
+                 verify: :verify_none
+               ]
+             ]
+           ]
+         }}
+      )
+
+      # 2MB of data
+      req_body = List.duplicate(125, 2_000_000)
+      req_body_binary = IO.iodata_to_binary(req_body)
+      response_body = req_body_binary
+      header_key = "content-type"
+      header_val = "application/octet-stream"
+      query_string = "query=value"
+
+      Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert conn.query_string == query_string
+        assert {:ok, ^req_body_binary, conn} = Plug.Conn.read_body(conn)
+
+        conn
+        |> Plug.Conn.put_resp_header(header_key, header_val)
+        |> Plug.Conn.send_resp(200, response_body)
+      end)
+
+      assert {:ok, %Response{status: 200, headers: headers, body: ^response_body}} =
+               Finch.build(
+                 :post,
+                 endpoint(bypass, "?" <> query_string),
+                 [{header_key, header_val}],
+                 req_body
+               )
+               |> Finch.request(finch_name())
+
+      assert {_, ^header_val} =
+               Enum.find(headers, fn
+                 {^header_key, _} -> true
+                 _ -> false
+               end)
+    end
+
     test "successful get request, with query string, when given a %URI{}", %{bypass: bypass} do
       start_supervised!({Finch, name: finch_name()})
       query_string = "query=value"
