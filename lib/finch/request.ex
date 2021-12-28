@@ -49,7 +49,17 @@ defmodule Finch.Request do
   """
   @type body() :: iodata() | {:stream, Enumerable.t()} | nil
 
-  @type t :: %Finch.Request{}
+  @type t :: %__MODULE__{
+          scheme: Mint.Types.scheme(),
+          host: String.t(),
+          port: :inet.port_number(),
+          method: String.t(),
+          path: String.t(),
+          headers: headers(),
+          body: body(),
+          query: String.t(),
+          unix_socket: nil | String.t()
+        }
 
   @doc false
   def request_path(%{path: path, query: nil}), do: path
