@@ -51,14 +51,14 @@ defmodule Finch.Request do
 
   @type t :: %__MODULE__{
           scheme: Mint.Types.scheme(),
-          host: String.t(),
+          host: String.t() | nil,
           port: :inet.port_number(),
           method: String.t(),
           path: String.t(),
           headers: headers(),
           body: body(),
-          query: String.t(),
-          unix_socket: nil | String.t()
+          query: String.t() | nil,
+          unix_socket: String.t() | nil
         }
 
   @doc false
