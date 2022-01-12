@@ -201,7 +201,8 @@ defmodule Finch do
   `body` parameter needs to take form of a tuple `{:stream, body_stream}`, where `body_stream`
   is a `Stream`.
   """
-  @spec build(Request.method(), Request.url(), Request.headers(), Request.body()) :: Request.t()
+  @spec build(Request.method(), Request.url(), Request.headers(), Request.body(), Keyword.t()) ::
+          Request.t()
   defdelegate build(method, url, headers \\ [], body \\ nil, opts \\ []), to: Request
 
   @doc """
