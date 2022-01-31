@@ -158,13 +158,35 @@ defmodule Finch do
 
   defp valid_opts_to_map(valid) do
     # We need to enable keepalive and set the nodelay flag to true by default.
-    transport_opts =
-      valid
-      |> get_in([:conn_opts, :transport_opts])
-      |> List.wrap()
-      |> Keyword.put_new(:timeout, @default_connect_timeout)
-      |> Keyword.put_new(:nodelay, true)
-      |> Keyword.put(:keepalive, true)
+    transport_opts = [
+      # this option must come first
+      {:inet_backend, :socket}
+      | valid
+        |> get_in([:conn_opts, :transport_opts])
+        |> List.wrap()
+        |> Keyword.put_new(:timeout, @default_connect_timeout)
+      # if we keep the nodelay and keepalive options we get this error for https requests:
+      #
+      # {:error,
+      #  %Mint.TransportError{
+      #    reason: {:options,
+      #     {:socket_options,
+      #      [
+      #        tcp: {:keepalive, true},
+      #        inet_backend: :socket,
+      #        packet_size: 0,
+      #        packet: 0,
+      #        header: 0,
+      #        active: false,
+      #        mode: :binary
+      #      ]}}
+      #  }}
+      #
+      #
+      #
+      # |> Keyword.put_new(:nodelay, true)
+      # |> Keyword.put(:keepalive, true)
+    ]
 
     conn_opts = valid[:conn_opts] |> List.wrap()
 
