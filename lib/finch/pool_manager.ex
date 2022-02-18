@@ -72,7 +72,9 @@ defmodule Finch.PoolManager do
 
   defp do_start_pools(shp, config) do
     pool_config = pool_config(config, shp)
-    pool_args = {shp, config.registry_name, pool_config.size, pool_config}
+
+    pool_args = pool_args(shp, config, pool_config)
+
     pool_mod = pool_mod(pool_config.protocol)
 
     Enum.map(1..pool_config.count, fn _ ->
@@ -118,4 +120,10 @@ defmodule Finch.PoolManager do
 
   defp pool_mod(:http1), do: Finch.HTTP1.Pool
   defp pool_mod(:http2), do: Finch.HTTP2.Pool
+
+  defp pool_args(shp, config, %{protocol: :http1} = pool_config),
+    do: {shp, config.registry_name, pool_config.size, pool_config, pool_config.pool_max_idle_time}
+
+  defp pool_args(shp, config, %{protocol: :http2} = pool_config),
+    do: {shp, config.registry_name, pool_config.size, pool_config}
 end

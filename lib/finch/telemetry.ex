@@ -142,6 +142,15 @@ defmodule Finch.Telemetry do
     * `:host` - The host address
     * `:port` - the port to connect on.
 
+  * `[:finch, :pool_max_idle_time_exceeded]` - Executed if a pool was terminated because the pool_max_idle_time has been reached. There are no measurements provided with this event.
+
+    #### Metadata
+
+    * `:scheme` - The scheme used in the connection. either `http` or `https`
+    * `:host` - The host address
+    * `:port` - the port to connect on.
+
+
   """
 
   @doc false

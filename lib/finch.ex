@@ -57,6 +57,17 @@ defmodule Finch do
       used to configure proxying, https settings, or connect timeouts.
       """,
       default: []
+    ],
+    pool_max_idle_time: [
+      type: :timeout,
+      doc: """
+      The maximum number of milliseconds that a pool can be idle before being terminated, used only by HTTP1 pools. \
+      This options is forwarded to NimblePool and it starts and idle verification cycle that may impact \
+      performance if misused. For instance setting a very low timeout may lead to pool restarts. \
+      Defaults to no timeout. \
+      For more information see NimblePool`s `handle_ping/2` documentation.
+      """,
+      default: :infinity
     ]
   ]
 
@@ -183,7 +194,8 @@ defmodule Finch do
       count: valid[:count],
       conn_opts: conn_opts,
       protocol: valid[:protocol],
-      max_idle_time: to_native(valid[:max_idle_time])
+      max_idle_time: to_native(valid[:max_idle_time]),
+      pool_max_idle_time: valid[:pool_max_idle_time]
     }
   end
 
