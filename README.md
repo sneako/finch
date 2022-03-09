@@ -55,7 +55,7 @@ children = [
 Pools will be started for each configured `{scheme, host, port}` when Finch is started.
 For any unconfigured `{scheme, host, port}`, the pool will be started the first time
 it is requested. Note pools are not automatically terminated by default, if you need to
-terminate them after some idle time, use the `pool_max_idle_time` option.
+terminate them after some idle time, use the `pool_max_idle_time` option (available only for HTTP1 pools).
 
 ## Telemetry
 

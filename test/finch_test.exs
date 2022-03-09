@@ -753,7 +753,7 @@ defmodule FinchTest do
       end)
 
       client = finch_name()
-      start_supervised!({Finch, name: client, pools: %{default: [max_idle_time: 10]}})
+      start_supervised!({Finch, name: client, pools: %{default: [conn_max_idle_time: 10]}})
 
       {:ok, client: client}
     end
