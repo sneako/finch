@@ -98,7 +98,11 @@ defmodule Finch.HTTP1.Pool do
           port: port
         }
 
+        # Deprecated
         Telemetry.event(:max_idle_time_exceeded, %{idle_time: idle_time}, meta)
+
+        Telemetry.event(:conn_max_idle_time_exceeded, %{idle_time: idle_time}, meta)
+
         {:remove, :closed, pool_state}
 
       _ ->
