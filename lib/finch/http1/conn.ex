@@ -13,7 +13,7 @@ defmodule Finch.Conn do
       opts: opts.conn_opts,
       parent: parent,
       last_checkin: System.monotonic_time(),
-      max_idle_time: opts.max_idle_time,
+      max_idle_time: opts.conn_max_idle_time,
       mint: nil
     }
   end

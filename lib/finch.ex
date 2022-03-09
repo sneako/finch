@@ -47,7 +47,7 @@ defmodule Finch do
       The maximum number of milliseconds an HTTP1 connection is allowed to be idle \
       before being closed during a checkout attempt.
       """,
-      deprecated: "This options is deprecated, use conn_max_idle_time instead"
+      deprecated: "This option is deprecated, use conn_max_idle_time instead"
     ],
     conn_opts: [
       type: :keyword_list,
@@ -202,7 +202,7 @@ defmodule Finch do
       count: valid[:count],
       conn_opts: conn_opts,
       protocol: valid[:protocol],
-      max_idle_time: to_native(valid[:max_idle_time] || valid[:conn_max_idle_time]),
+      conn_max_idle_time: to_native(valid[:max_idle_time] || valid[:conn_max_idle_time]),
       pool_max_idle_time: valid[:pool_max_idle_time]
     }
   end
