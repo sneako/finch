@@ -131,7 +131,7 @@ defmodule Finch.Telemetry do
     * `:host` - The host address
     * `:port` - the port to connect on.
 
-  * `[:finch, :max_idle_time_exceeded]` - Executed if a connection was discarded because the max_idle_time had been reached.
+  * `[:finch, :conn_max_idle_time_exceeded] - Executed if a connection was discarded because the conn_max_idle_time had been reached.
 
     #### Measurements:
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
@@ -141,6 +141,28 @@ defmodule Finch.Telemetry do
     * `:scheme` - The scheme used in the connection. either `http` or `https`
     * `:host` - The host address
     * `:port` - the port to connect on.
+
+  * `[:finch, :max_idle_time_exceeded] - Executed if a connection was discarded because the max_idle_time had been reached.
+
+    Deprecated use :conn_max_idle_time_exceeded event instead.
+
+    #### Measurements:
+    * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
+
+    #### Metadata
+
+    * `:scheme` - The scheme used in the connection. either `http` or `https`
+    * `:host` - The host address
+    * `:port` - the port to connect on.
+
+  * `[:finch, :pool_max_idle_time_exceeded]` - Executed if a pool was terminated because the pool_max_idle_time has been reached. There are no measurements provided with this event.
+
+    #### Metadata
+
+    * `:scheme` - The scheme used in the connection. either `http` or `https`
+    * `:host` - The host address
+    * `:port` - the port to connect on.
+
 
   """
 

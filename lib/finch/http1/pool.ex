@@ -7,17 +7,21 @@ defmodule Finch.HTTP1.Pool do
   alias Finch.Telemetry
 
   def child_spec(opts) do
+    {_shp, _registry_name, _pool_size, _conn_opts, pool_max_idle_time} = opts
+
     %{
       id: __MODULE__,
-      start: {__MODULE__, :start_link, [opts]}
+      start: {__MODULE__, :start_link, [opts]},
+      restart: restart_option(pool_max_idle_time)
     }
   end
 
-  def start_link({shp, registry_name, pool_size, conn_opts}) do
+  def start_link({shp, registry_name, pool_size, conn_opts, pool_max_idle_time}) do
     NimblePool.start_link(
       worker: {__MODULE__, {registry_name, shp, conn_opts}},
       pool_size: pool_size,
-      lazy: true
+      lazy: true,
+      worker_idle_timeout: pool_idle_timout(pool_max_idle_time)
     )
   end
 
@@ -94,7 +98,11 @@ defmodule Finch.HTTP1.Pool do
           port: port
         }
 
+        # Deprecated, remember to delete when we remove the :max_idle_time pool config option!
         Telemetry.event(:max_idle_time_exceeded, %{idle_time: idle_time}, meta)
+
+        Telemetry.event(:conn_max_idle_time_exceeded, %{idle_time: idle_time}, meta)
+
         {:remove, :closed, pool_state}
 
       _ ->
@@ -128,6 +136,21 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
+  def handle_ping(_conn, pool_state) do
+    {{scheme, host, port}, _opts} = pool_state
+
+    meta = %{
+      scheme: scheme,
+      host: host,
+      port: port
+    }
+
+    Telemetry.event(:pool_max_idle_time_exceeded, %{}, meta)
+
+    {:stop, :idle_timeout}
+  end
+
+  @impl NimblePool
   # On terminate, effectively close it.
   # This will succeed even if it was already closed or if we don't own it.
   def terminate_worker(_reason, conn, pool_state) do
@@ -151,4 +174,10 @@ defmodule Finch.HTTP1.Pool do
       :closed
     end
   end
+
+  defp restart_option(:infinity), do: :permanent
+  defp restart_option(_pool_max_idle_time), do: :transient
+
+  defp pool_idle_timout(:infinity), do: nil
+  defp pool_idle_timout(pool_max_idle_time), do: pool_max_idle_time
 end
