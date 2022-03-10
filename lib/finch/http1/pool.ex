@@ -98,7 +98,7 @@ defmodule Finch.HTTP1.Pool do
           port: port
         }
 
-        # Deprecated
+        # Deprecated, remember to delete when we remove the :max_idle_time pool config option!
         Telemetry.event(:max_idle_time_exceeded, %{idle_time: idle_time}, meta)
 
         Telemetry.event(:conn_max_idle_time_exceeded, %{idle_time: idle_time}, meta)
