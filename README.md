@@ -104,7 +104,7 @@ The package can be installed by adding `finch` to your list of dependencies in `
 ```elixir
 def deps do
   [
-    {:finch, "~> 0.10"}
+    {:finch, "~> 0.11"}
   ]
 end
 ```
