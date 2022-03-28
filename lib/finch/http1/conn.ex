@@ -103,7 +103,8 @@ defmodule Finch.Conn do
       host: conn.host,
       port: conn.port,
       path: full_path,
-      method: req.method
+      method: req.method,
+      headers: req.headers
     }
 
     extra_measurements = %{idle_time: idle_time}
@@ -175,7 +176,8 @@ defmodule Finch.Conn do
 
   defp handle_response(response, conn, metadata, start_time, extra_measurements) do
     case response do
-      {:ok, mint, acc} ->
+      {:ok, mint, {status, headers, _} = acc} ->
+        metadata = Map.merge(metadata, %{status: status, headers: headers})
         Telemetry.stop(:response, start_time, metadata, extra_measurements)
         {:ok, %{conn | mint: mint}, acc}
 

@@ -37,7 +37,8 @@ defmodule Finch.HTTP2.Pool do
       host: request.host,
       port: request.port,
       method: request.method,
-      path: Finch.Request.request_path(request)
+      path: Finch.Request.request_path(request),
+      headers: request.headers
     }
 
     start_time = Telemetry.start(:request, metadata)
@@ -57,7 +58,8 @@ defmodule Finch.HTTP2.Pool do
         result = response_waiting_loop(acc, fun, ref, monitor, fail_safe_timeout)
 
         case result do
-          {:ok, _} ->
+          {:ok, {status, headers, _}} ->
+            metadata = Map.merge(metadata, %{status: status, headers: headers})
             Telemetry.stop(:response, start_time, metadata)
             result
 

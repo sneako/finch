@@ -746,7 +746,7 @@ defmodule FinchTest do
     end
   end
 
-  describe "telemetry events which require multiple requests" do
+  describe "telemetry events" do
     setup %{bypass: bypass} do
       Bypass.expect(bypass, "GET", "/", fn conn ->
         Plug.Conn.send_resp(conn, 200, "OK")
@@ -756,6 +756,52 @@ defmodule FinchTest do
       start_supervised!({Finch, name: client, pools: %{default: [conn_max_idle_time: 10]}})
 
       {:ok, client: client}
+    end
+
+    test "reports request and response headers", %{bypass: bypass, client: client} do
+      {test_name, _arity} = __ENV__.function
+      self = self()
+
+      :telemetry.attach_many(
+        to_string(test_name),
+        [[:finch, :request, :start], [:finch, :response, :stop]],
+        fn name, _, metadata, _ -> send(self, {:telemetry_event, name, metadata}) end,
+        nil
+      )
+
+      Bypass.expect(bypass, "GET", "/", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_header("x-foo-response", "bar-response")
+        |> Plug.Conn.send_resp(200, "OK")
+      end)
+
+      request = Finch.build(:get, endpoint(bypass), [{"x-foo-request", "bar-request"}])
+      assert {:ok, %{status: 200}} = Finch.request(request, client)
+
+      assert_receive {:telemetry_event, [:finch, :request, :start],
+                      %{headers: [{"x-foo-request", "bar-request"}]}}
+
+      assert_receive {:telemetry_event, [:finch, :response, :stop], %{headers: headers}}
+      assert {"x-foo-response", "bar-response"} in headers
+    end
+
+    test "reports response status code", %{bypass: bypass, client: client} do
+      {test_name, _arity} = __ENV__.function
+      self = self()
+
+      :telemetry.attach(
+        to_string(test_name),
+        [:finch, :response, :stop],
+        fn name, _, metadata, _ -> send(self, {:telemetry_event, name, metadata}) end,
+        nil
+      )
+
+      Bypass.expect(bypass, "GET", "/", fn conn -> Plug.Conn.send_resp(conn, 201, "OK") end)
+
+      request = Finch.build(:get, endpoint(bypass))
+      assert {:ok, %{status: 201}} = Finch.request(request, client)
+
+      assert_receive {:telemetry_event, [:finch, :response, :stop], %{status: 201}}
     end
 
     test "reports reused connections", %{bypass: bypass, client: client} do
