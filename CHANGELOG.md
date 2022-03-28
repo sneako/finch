@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.11.0 (2022-03-28)
+
+- Add `:pool_max_idle_time` option to enable termination of idle HTTP/1 pools.
+- Add `:conn_max_idle_time` and deprecate `:max_idle_time` to make the distinction from
+  `:pool_max_idle_time` more obvious.
+- Add headers and status code to Telemetry events.
+
 ## v0.10.2 (2022-01-12)
 
 - Complete the typespec for Finch.Request.t()
