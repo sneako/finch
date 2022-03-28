@@ -59,7 +59,7 @@ defmodule Finch.HTTP2.Pool do
 
         case result do
           {:ok, {status, headers, _}} ->
-            metadata = metadata |> Map.put(:status, status) |> Map.put(:headers, headers)
+            metadata = Map.merge(metadata, %status: status, headers: headers})
             Telemetry.stop(:response, start_time, metadata)
             result
 
