@@ -7,7 +7,7 @@ defmodule Finch.Telemetry do
   Finch executes the following events:
 
   * `[:finch, :stream, :start]` - Executed before `Finch.stream/5` starts. This event is also
-     emitted when calling `Finch.request/3`
+     emitted when calling `Finch.request/3`.
 
     #### Measurements
 
@@ -28,23 +28,23 @@ defmodule Finch.Telemetry do
 
     * `:name` - The name of the Finch instance
     * `:request` - The request (`Finch.Request`)
-    * `:result` - The result of the stream, i.e., `{:ok, acc} | {:error, Exception.t()}`. In case
-      of `Finch.request/3` was called, this is `
-      {:ok, Finch.Response.t()} | {:error, Finch.Exception.t()}`.
+    * `:result` - The result of the stream, i.e., `{:ok, acc} | {:error, Finch,Exception.t()}`;
+      In case of `Finch.request/3` was called, this is
+      `{:ok, Finch.Response.t()} | {:error, Finch.Exception.t()}`
 
   * `[:finch, :stream, :exception]` - Executed when an exception occurs while executing
     `Finch.stream/5`.
 
     #### Measurements
 
-    * `:duration` - The time it took since the start before raising the exception.
+    * `:duration` - The time it took since the start before raising the exception
 
     #### Metadata
 
     * `:name` - The name of the Finch instance
     * `:request` - The request (`Finch.Request`)
-    * `:kind` - The type of exception.
-    * `:reason` - Error description or error data.
+    * `:kind` - The type of exception
+    * `:reason` - Error description or error data
     * `:stacktrace` - The stacktrace
 
   * `[:finch, :queue, :start]` - Executed before checking out a connection from the pool.
