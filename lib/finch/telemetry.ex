@@ -6,6 +6,47 @@ defmodule Finch.Telemetry do
 
   Finch executes the following events:
 
+  * `[:finch, :stream, :start]` - Executed before `Finch.stream/5` starts. This event is also
+     emitted when calling `Finch.request/3`
+
+    #### Measurements
+
+      * `:system_time` - The system time
+
+    #### Metadata:
+
+      * `:name` - The name of the Finch instance
+      * `:request` - The request (`Finch.Request`)
+
+  * `[:finch, :stream, :stop]` - Executed after `Finch.stream/5` ended.
+
+    #### Measurements
+
+    * `:duration` - Duration how long the request took.
+
+    #### Metadata
+
+    * `:name` - The name of the Finch instance
+    * `:request` - The request (`Finch.Request`)
+    * `:result` - The result of the stream, i.e., `{:ok, acc} | {:error, Exception.t()}`. In case
+      of `Finch.request/3` was called, this is `
+      {:ok, Finch.Response.t()} | {:error, Finch.Exception.t()}`.
+
+  * `[:finch, :stream, :exception]` - Executed when an exception occurs while executing
+    `Finch.stream/5`.
+
+    #### Measurements
+
+    * `:duration` - The time it took since the start before raising the exception.
+
+    #### Metadata
+
+    * `:name` - The name of the Finch instance
+    * `:request` - The request (`Finch.Request`)
+    * `:kind` - The type of exception.
+    * `:reason` - Error description or error data.
+    * `:stacktrace` - The stacktrace
+
   * `[:finch, :queue, :start]` - Executed before checking out a connection from the pool.
 
     #### Measurements
@@ -211,5 +252,15 @@ defmodule Finch.Telemetry do
   # Used for reporting generic events
   def event(event, measurements, meta) do
     :telemetry.execute([:finch, event], measurements, meta)
+  end
+
+  @doc false
+  # Used to easily create :start, :stop, :exception events.
+  def span(event, start_metadata, fun) do
+    :telemetry.span(
+      [:finch, event],
+      start_metadata,
+      fun
+    )
   end
 end

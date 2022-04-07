@@ -547,6 +547,74 @@ defmodule FinchTest do
       {:ok, client: client}
     end
 
+    test "reports stream spans", %{bypass: bypass, client: client} do
+      {test_name, _arity} = __ENV__.function
+
+      parent = self()
+      ref = make_ref()
+
+      handler = fn event, measurements, meta, _config ->
+        case event do
+          [:finch, :stream, :start] ->
+            assert is_integer(measurements.system_time)
+            assert meta.name == :finch_name
+            assert is_struct(meta.request, Finch.Request)
+
+            send(parent, {ref, :start})
+
+          [:finch, :stream, :stop] ->
+            assert is_integer(measurements.duration)
+            assert meta.name == :finch_name
+            assert is_struct(meta.request, Finch.Request)
+            assert {:ok, {200, _, _}} = meta.result
+
+            send(parent, {ref, :stop})
+
+          [:finch, :stream, :exception] ->
+            assert is_integer(measurements.duration)
+            assert meta.name == :finch_name
+            assert is_struct(meta.request, Finch.Request)
+            assert meta.kind == :exit
+            assert {:timeout, _} = meta.reason
+            assert meta.stacktrace != nil
+
+            send(parent, {ref, :exception})
+
+          _ ->
+            flunk("Unknown event")
+        end
+      end
+
+      :telemetry.attach_many(
+        to_string(test_name),
+        [
+          [:finch, :stream, :start],
+          [:finch, :stream, :stop],
+          [:finch, :stream, :exception]
+        ],
+        handler,
+        nil
+      )
+
+      assert {:ok, %{status: 200}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(client)
+      assert_receive {^ref, :start}
+      assert_receive {^ref, :stop}
+
+      Bypass.down(bypass)
+
+      try do
+        Finch.build(:get, endpoint(bypass)) |> Finch.request(client, pool_timeout: 0)
+      catch
+        :exit, reason ->
+          assert {:timeout, _} = reason
+      end
+
+      assert_receive {^ref, :start}
+      assert_receive {^ref, :exception}
+
+      :telemetry.detach(to_string(test_name))
+    end
+
     test "reports queue spans", %{bypass: bypass, client: client} do
       {test_name, _arity} = __ENV__.function
 

@@ -97,9 +97,9 @@ defmodule Finch do
     * `:name` - The name of your Finch instance. This field is required.
 
     * `:pools` - A map specifying the configuration for your pools. The keys should be URLs
-    provided as binaries, a tuple `{scheme, {:local, unix_socket}}` where `unix_socket` is the path for 
+    provided as binaries, a tuple `{scheme, {:local, unix_socket}}` where `unix_socket` is the path for
     the socket, or the atom `:default` to provide a catch-all configuration to be used for any
-    unspecified URLs. See "Pool Configuration Options" below for details on the possible map 
+    unspecified URLs. See "Pool Configuration Options" below for details on the possible map
     values. Default value is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
 
   ### Pool Configuration Options
@@ -251,9 +251,17 @@ defmodule Finch do
           {:ok, acc} | {:error, Exception.t()}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
-    shp = build_shp(req)
-    {pool, pool_mod} = PoolManager.get_pool(name, shp)
-    pool_mod.request(pool, req, acc, fun, opts)
+    start_meta = %{request: req, name: name}
+
+    Finch.Telemetry.span(:stream, start_meta, fn ->
+      shp = build_shp(req)
+      {pool, pool_mod} = PoolManager.get_pool(name, shp)
+      result = pool_mod.request(pool, req, acc, fun, opts)
+
+      end_meta = Map.put(start_meta, :result, result)
+
+      {result, end_meta}
+    end)
   end
 
   defp build_shp(%Request{scheme: scheme, unix_socket: unix_socket})
