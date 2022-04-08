@@ -213,6 +213,18 @@ defmodule Finch do
   defp manager_name(name), do: :"#{name}.PoolManager"
   defp pool_supervisor_name(name), do: :"#{name}.PoolSupervisor"
 
+  defmacrop stream_span(request, name, do: block) do
+    quote do
+      start_meta = %{request: unquote(request), name: unquote(name)}
+
+      Finch.Telemetry.span(:stream, start_meta, fn ->
+        result = unquote(block)
+        end_meta = Map.put(start_meta, :result, result)
+        {result, end_meta}
+      end)
+    end
+  end
+
   @doc """
   Builds an HTTP request to be sent with `request/3` or `stream/4`.
 
@@ -251,17 +263,15 @@ defmodule Finch do
           {:ok, acc} | {:error, Exception.t()}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
-    start_meta = %{request: req, name: name}
+    stream_span req, name do
+      __stream__(req, name, acc, fun, opts)
+    end
+  end
 
-    Finch.Telemetry.span(:stream, start_meta, fn ->
-      shp = build_shp(req)
-      {pool, pool_mod} = PoolManager.get_pool(name, shp)
-      result = pool_mod.request(pool, req, acc, fun, opts)
-
-      end_meta = Map.put(start_meta, :result, result)
-
-      {result, end_meta}
-    end)
+  defp __stream__(%Request{} = req, name, acc, fun, opts) when is_function(fun, 2) do
+    shp = build_shp(req)
+    {pool, pool_mod} = PoolManager.get_pool(name, shp)
+    pool_mod.request(pool, req, acc, fun, opts)
   end
 
   defp build_shp(%Request{scheme: scheme, unix_socket: unix_socket})
@@ -291,21 +301,23 @@ defmodule Finch do
   def request(req, name, opts \\ [])
 
   def request(%Request{} = req, name, opts) do
-    acc = {nil, [], []}
+    stream_span req, name do
+      acc = {nil, [], []}
 
-    fun = fn
-      {:status, value}, {_, headers, body} -> {value, headers, body}
-      {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
-      {:data, value}, {status, headers, body} -> {status, headers, [value | body]}
-    end
+      fun = fn
+        {:status, value}, {_, headers, body} -> {value, headers, body}
+        {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
+        {:data, value}, {status, headers, body} -> {status, headers, [value | body]}
+      end
 
-    with {:ok, {status, headers, body}} <- stream(req, name, acc, fun, opts) do
-      {:ok,
-       %Response{
-         status: status,
-         headers: headers,
-         body: body |> Enum.reverse() |> IO.iodata_to_binary()
-       }}
+      with {:ok, {status, headers, body}} <- __stream__(req, name, acc, fun, opts) do
+        {:ok,
+         %Response{
+           status: status,
+           headers: headers,
+           body: body |> Enum.reverse() |> IO.iodata_to_binary()
+         }}
+      end
     end
   end
 

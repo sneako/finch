@@ -566,7 +566,8 @@ defmodule FinchTest do
             assert is_integer(measurements.duration)
             assert meta.name == :finch_name
             assert is_struct(meta.request, Finch.Request)
-            assert {:ok, {200, _, _}} = meta.result
+
+            assert {:ok, %Finch.Response{body: "OK", status: 200}} = meta.result
 
             send(parent, {ref, :stop})
 

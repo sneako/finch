@@ -28,7 +28,7 @@ defmodule Finch.Telemetry do
 
     * `:name` - The name of the Finch instance
     * `:request` - The request (`Finch.Request`)
-    * `:result` - The result of the stream, i.e., `{:ok, acc} | {:error, Finch,Exception.t()}`;
+    * `:result` - The result of the stream, i.e., `{:ok, acc} | {:error, Finch.Exception.t()}`;
       In case of `Finch.request/3` was called, this is
       `{:ok, Finch.Response.t()} | {:error, Finch.Exception.t()}`
 
