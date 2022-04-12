@@ -10,12 +10,12 @@ defmodule Finch.Telemetry do
 
     #### Measurements
 
-      * `:system_time` - The system time
+      * `:system_time` - The system time.
 
     #### Metadata:
 
-      * `:name` - The name of the Finch instance
-      * `:request` - The request (`Finch.Request`)
+      * `:name` - The name of the Finch instance.
+      * `:request` - The request (`Finch.Request`).
 
   * `[:finch, :request, :stop]` - Executed after `Finch.request/3` or `Finch.stream/5` ended.
 
@@ -25,39 +25,39 @@ defmodule Finch.Telemetry do
 
     #### Metadata
 
-    * `:name` - The name of the Finch instance
-    * `:request` - The request (`Finch.Request`)
-    * `:result` - The result of the operation; in case of `Finch.stream/5` this is
+    * `:name` - The name of the Finch instance.
+    * `:request` - The request (`Finch.Request`).
+    * `:result` - The result of the operation. In case of `Finch.stream/5` this is
       `{:ok, acc} | {:error, Finch.Exception.t()}`, where `acc` is the accumulator result of the
-      reducer passed in `Finch.stream/5`, and in case of `Finch.request/3` this is
-      `{:ok, Finch.Response.t()} | {:error, Finch.Exception.t()}`
+      reducer passed in `Finch.stream/5`. In case of `Finch.request/3` this is
+      `{:ok, Finch.Response.t()} | {:error, Finch.Exception.t()}`.
 
   * `[:finch, :request, :exception]` - Executed when an exception occurs while executing
     `Finch.request/3` or `Finch.stream/5`.
 
     #### Measurements
 
-    * `:duration` - The time it took since the start before raising the exception
+    * `:duration` - The time it took since the start before raising the exception.
 
     #### Metadata
 
-    * `:name` - The name of the Finch instance
-    * `:request` - The request (`Finch.Request`)
-    * `:kind` - The type of exception
-    * `:reason` - Error description or error data
-    * `:stacktrace` - The stacktrace
+    * `:name` - The name of the Finch instance.
+    * `:request` - The request (`Finch.Request`).
+    * `:kind` - The type of exception.
+    * `:reason` - Error description or error data.
+    * `:stacktrace` - The stacktrace.
 
   * `[:finch, :queue, :start]` - Executed before checking out a connection from the pool.
 
     #### Measurements
 
-      * `:system_time` - The system time
+      * `:system_time` - The system time.
 
     #### Metadata:
 
-      * `:pool` - The pool's pid
-      * `:scheme` - The scheme used in the connection. either `http` or `https`
-      * `:host` - The host address
+      * `:pool` - The pool's pid.
+      * `:scheme` - The scheme used in the connection. either `http` or `https`.
+      * `:host` - The host address.
       * `:port` - the port to connect on.
 
   * `[:finch, :queue, :stop]` - Executed after a connection is retrieved from the pool.
@@ -69,9 +69,9 @@ defmodule Finch.Telemetry do
 
     #### Metadata
 
-    * `:pool` - The pool's pid
-    * `:scheme` - The scheme used in the connection. either `http` or `https`
-    * `:host` - The host address
+    * `:pool` - The pool's pid.
+    * `:scheme` - The scheme used in the connection. either `http` or `https`.
+    * `:host` - The host address.
     * `:port` - the port to connect on.
 
   * `[:finch, :queue, :exception]` - Executed if checking out a connection throws an exception.
@@ -82,22 +82,22 @@ defmodule Finch.Telemetry do
 
     #### Metadata
 
-    * `:scheme` - The scheme used in the connection. either `http` or `https`
-    * `:host` - The host address
+    * `:scheme` - The scheme used in the connection. either `http` or `https`.
+    * `:host` - The host address.
     * `:port` - the port to connect on.
     * `:kind` - The type of exception.
     * `:reason` - Error description or error data.
-    * `:stacktrace` - The stacktrace
+    * `:stacktrace` - The stacktrace.
 
   * `[:finch, :connect, :start]` - Executed before opening a new connection.
     If a connection is being re-used this event will *not* be executed.
 
     #### Measurements
-    * `:system_time` - The system time
+    * `:system_time` - The system time.
 
     #### Metadata
-    * `:scheme` - The scheme used in the connection. either `http` or `https`
-    * `:host` - The host address
+    * `:scheme` - The scheme used in the connection. either `http` or `https`.
+    * `:host` - The host address.
     * `:port` - the port to connect on.
 
   * `[:finch, :connect, :stop]` - Executed after a connection is opened.
@@ -106,20 +106,20 @@ defmodule Finch.Telemetry do
     * `:duration` - Duration to connect to the host.
 
     #### Metadata:
-    * `:scheme` - The scheme used in the connection. either `http` or `https`
-    * `:host` - The host address
+    * `:scheme` - The scheme used in the connection. either `http` or `https`.
+    * `:host` - The host address.
     * `:port` - the port to connect on.
     * `:error` - This value is optional. It includes any errors that occurred while opening the connection.
 
   * `[:finch, :send, :start]` - Executed before sending a request.
 
     #### Measurements:
-    * `:system_time` - The system time
+    * `:system_time` - The system time.
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata:
-    * `:scheme` - The scheme used in the connection. either `http` or `https`
-    * `:host` - The host address
+    * `:scheme` - The scheme used in the connection. either `http` or `https`.
+    * `:host` - The host address.
     * `:port` - the port to connect on.
     * `:path` - The request path.
     * `:method` - The request method.
@@ -131,8 +131,8 @@ defmodule Finch.Telemetry do
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata:
-    * `:scheme` - The scheme used in the connection. either `http` or `https`
-    * `:host` - The host address
+    * `:scheme` - The scheme used in the connection. either `http` or `https`.
+    * `:host` - The host address.
     * `:port` - the port to connect on.
     * `:path` - The request path.
     * `:method` - The request method.
@@ -141,12 +141,12 @@ defmodule Finch.Telemetry do
   * `[:finch, :recv, :start]` - Executed before receiving the response.
 
     #### Measurements:
-    * `:system_time` - The system time
+    * `:system_time` - The system time.
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata:
-    * `:scheme` - The scheme used in the connection. either `http` or `https`
-    * `:host` - The host address
+    * `:scheme` - The scheme used in the connection. either `http` or `https`.
+    * `:host` - The host address.
     * `:port` - the port to connect on.
     * `:path` - The request path.
     * `:method` - The request method.
@@ -158,8 +158,8 @@ defmodule Finch.Telemetry do
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata:
-    * `:scheme` - The scheme used in the connection. either `http` or `https`
-    * `:host` - The host address
+    * `:scheme` - The scheme used in the connection. either `http` or `https`.
+    * `:host` - The host address.
     * `:port` - the port to connect on.
     * `:path` - The request path.
     * `:method` - The request method.
@@ -174,20 +174,20 @@ defmodule Finch.Telemetry do
 
     #### Metadata
 
-    * `:scheme` - The scheme used in the connection. either `http` or `https`
-    * `:host` - The host address
+    * `:scheme` - The scheme used in the connection. either `http` or `https`.
+    * `:host` - The host address.
     * `:port` - the port to connect on.
     * `:path` - The request path.
     * `:method` - The request method.
     * `:kind` - The type of exception.
     * `:reason` - Error description or error data.
-    * `:stacktrace` - The stacktrace
+    * `:stacktrace` - The stacktrace.
 
   * `[:finch, :reused_connection]` - Executed if an existing connection is reused. There are no measurements provided with this event.
 
     #### Metadata:
-    * `:scheme` - The scheme used in the connection. either `http` or `https`
-    * `:host` - The host address
+    * `:scheme` - The scheme used in the connection. either `http` or `https`.
+    * `:host` - The host address.
     * `:port` - the port to connect on.
 
   * `[:finch, :conn_max_idle_time_exceeded] - Executed if a connection was discarded because the conn_max_idle_time had been reached.
@@ -197,8 +197,8 @@ defmodule Finch.Telemetry do
 
     #### Metadata
 
-    * `:scheme` - The scheme used in the connection. either `http` or `https`
-    * `:host` - The host address
+    * `:scheme` - The scheme used in the connection. either `http` or `https`.
+    * `:host` - The host address.
     * `:port` - the port to connect on.
 
   * `[:finch, :max_idle_time_exceeded] - Executed if a connection was discarded because the max_idle_time had been reached.
@@ -210,16 +210,16 @@ defmodule Finch.Telemetry do
 
     #### Metadata
 
-    * `:scheme` - The scheme used in the connection. either `http` or `https`
-    * `:host` - The host address
+    * `:scheme` - The scheme used in the connection. either `http` or `https`.
+    * `:host` - The host address.
     * `:port` - the port to connect on.
 
   * `[:finch, :pool_max_idle_time_exceeded]` - Executed if a pool was terminated because the pool_max_idle_time has been reached. There are no measurements provided with this event.
 
     #### Metadata
 
-    * `:scheme` - The scheme used in the connection. either `http` or `https`
-    * `:host` - The host address
+    * `:scheme` - The scheme used in the connection. either `http` or `https`.
+    * `:host` - The host address.
     * `:port` - the port to connect on.
 
 
