@@ -547,7 +547,7 @@ defmodule FinchTest do
       {:ok, client: client}
     end
 
-    test "reports stream spans", %{bypass: bypass, client: client} do
+    test "reports request spans", %{bypass: bypass, client: client} do
       {test_name, _arity} = __ENV__.function
 
       parent = self()
@@ -724,7 +724,7 @@ defmodule FinchTest do
       :telemetry.detach(to_string(test_name))
     end
 
-    test "reports request spans", %{bypass: bypass, client: client} do
+    test "reports send spans", %{bypass: bypass, client: client} do
       {test_name, _arity} = __ENV__.function
 
       parent = self()
@@ -767,7 +767,7 @@ defmodule FinchTest do
       :telemetry.detach(to_string(test_name))
     end
 
-    test "reports response spans", %{bypass: bypass, client: client} do
+    test "reports recv spans", %{bypass: bypass, client: client} do
       {test_name, _arity} = __ENV__.function
       parent = self()
       ref = make_ref()
