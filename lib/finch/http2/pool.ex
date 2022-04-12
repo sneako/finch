@@ -32,14 +32,7 @@ defmodule Finch.HTTP2.Pool do
     opts = Keyword.put_new(opts, :receive_timeout, @default_receive_timeout)
     timeout = opts[:receive_timeout]
 
-    metadata = %{
-      scheme: request.scheme,
-      host: request.host,
-      port: request.port,
-      method: request.method,
-      path: Finch.Request.request_path(request),
-      headers: request.headers
-    }
+    metadata = %{request: request}
 
     start_time = Telemetry.start(:send, metadata)
 

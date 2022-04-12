@@ -56,9 +56,7 @@ defmodule Finch.Telemetry do
     #### Metadata:
 
       * `:pool` - The pool's pid.
-      * `:scheme` - The scheme used in the connection. either `http` or `https`.
-      * `:host` - The host address.
-      * `:port` - the port to connect on.
+      * `:request` - The request (`Finch.Request`).
 
   * `[:finch, :queue, :stop]` - Executed after a connection is retrieved from the pool.
 
@@ -70,9 +68,7 @@ defmodule Finch.Telemetry do
     #### Metadata
 
     * `:pool` - The pool's pid.
-    * `:scheme` - The scheme used in the connection. either `http` or `https`.
-    * `:host` - The host address.
-    * `:port` - the port to connect on.
+    * `:request` - The request (`Finch.Request`).
 
   * `[:finch, :queue, :exception]` - Executed if checking out a connection throws an exception.
 
@@ -82,9 +78,7 @@ defmodule Finch.Telemetry do
 
     #### Metadata
 
-    * `:scheme` - The scheme used in the connection. either `http` or `https`.
-    * `:host` - The host address.
-    * `:port` - the port to connect on.
+    * `:request` - The request (`Finch.Request`).
     * `:kind` - The type of exception.
     * `:reason` - Error description or error data.
     * `:stacktrace` - The stacktrace.
@@ -118,11 +112,7 @@ defmodule Finch.Telemetry do
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata:
-    * `:scheme` - The scheme used in the connection. either `http` or `https`.
-    * `:host` - The host address.
-    * `:port` - the port to connect on.
-    * `:path` - The request path.
-    * `:method` - The request method.
+    * `:request` - The request (`Finch.Request`).
 
   * `[:finch, :send, :stop]` - Executed after a request is finished.
 
@@ -131,11 +121,7 @@ defmodule Finch.Telemetry do
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata:
-    * `:scheme` - The scheme used in the connection. either `http` or `https`.
-    * `:host` - The host address.
-    * `:port` - the port to connect on.
-    * `:path` - The request path.
-    * `:method` - The request method.
+    * `:request` - The request (`Finch.Request`).
     * `:error` - This value is optional. It includes any errors that occurred while making the request.
 
   * `[:finch, :recv, :start]` - Executed before receiving the response.
@@ -145,11 +131,7 @@ defmodule Finch.Telemetry do
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata:
-    * `:scheme` - The scheme used in the connection. either `http` or `https`.
-    * `:host` - The host address.
-    * `:port` - the port to connect on.
-    * `:path` - The request path.
-    * `:method` - The request method.
+    * `:request` - The request (`Finch.Request`).
 
   * `[:finch, :recv, :stop]` - Executed after a response has been fully received.
 
@@ -158,11 +140,7 @@ defmodule Finch.Telemetry do
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata:
-    * `:scheme` - The scheme used in the connection. either `http` or `https`.
-    * `:host` - The host address.
-    * `:port` - the port to connect on.
-    * `:path` - The request path.
-    * `:method` - The request method.
+    * `:request` - The request (`Finch.Request`).
     * `:status` - The response status (`Mint.Types.status()`).
     * `:headers` - The response headers (`Mint.Types.headers()`).
     * `:error` - This value is optional. It includes any errors that occurred while receiving the response.
@@ -176,11 +154,7 @@ defmodule Finch.Telemetry do
 
     #### Metadata
 
-    * `:scheme` - The scheme used in the connection. either `http` or `https`.
-    * `:host` - The host address.
-    * `:port` - the port to connect on.
-    * `:path` - The request path.
-    * `:method` - The request method.
+    * `:request` - The request (`Finch.Request`).
     * `:kind` - The type of exception.
     * `:reason` - Error description or error data.
     * `:stacktrace` - The stacktrace.

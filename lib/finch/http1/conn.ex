@@ -98,14 +98,7 @@ defmodule Finch.Conn do
   def request(conn, req, acc, fun, receive_timeout, idle_time) do
     full_path = Finch.Request.request_path(req)
 
-    metadata = %{
-      scheme: conn.scheme,
-      host: conn.host,
-      port: conn.port,
-      path: full_path,
-      method: req.method,
-      headers: req.headers
-    }
+    metadata = %{request: req}
 
     extra_measurements = %{idle_time: idle_time}
 

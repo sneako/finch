@@ -627,18 +627,14 @@ defmodule FinchTest do
           [:finch, :queue, :start] ->
             assert is_integer(measurements.system_time)
             assert is_pid(meta.pool)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
+            assert is_struct(meta.request, Finch.Request)
             send(parent, {ref, :start})
 
           [:finch, :queue, :stop] ->
             assert is_integer(measurements.duration)
             assert is_integer(measurements.idle_time)
             assert is_pid(meta.pool)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
+            assert is_struct(meta.request, Finch.Request)
             send(parent, {ref, :stop})
 
           [:finch, :queue, :exception] ->
@@ -647,9 +643,7 @@ defmodule FinchTest do
             assert meta.kind == :exit
             assert {:timeout, _} = meta.reason
             assert meta.stacktrace != nil
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
+            assert is_struct(meta.request, Finch.Request)
             send(parent, {ref, :exception})
 
           _ ->
@@ -741,21 +735,13 @@ defmodule FinchTest do
           [:finch, :send, :start] ->
             assert is_integer(measurements.system_time)
             assert is_integer(measurements.idle_time)
-            assert is_binary(meta.path)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            assert is_binary(meta.method)
+            assert is_struct(meta.request, Finch.Request)
             send(parent, {ref, :start})
 
           [:finch, :send, :stop] ->
             assert is_integer(measurements.duration)
             assert is_integer(measurements.idle_time)
-            assert is_binary(meta.path)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            assert is_binary(meta.method)
+            assert is_struct(meta.request, Finch.Request)
             send(parent, {ref, :stop})
 
           _ ->
@@ -791,21 +777,15 @@ defmodule FinchTest do
           [:finch, :recv, :start] ->
             assert is_integer(measurements.system_time)
             assert is_integer(measurements.idle_time)
-            assert is_binary(meta.path)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            assert is_binary(meta.method)
+            assert is_struct(meta.request, Finch.Request)
             send(parent, {ref, :start})
 
           [:finch, :recv, :stop] ->
             assert is_integer(measurements.duration)
             assert is_integer(measurements.idle_time)
-            assert is_binary(meta.path)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            assert is_binary(meta.method)
+            assert is_struct(meta.request, Finch.Request)
+            assert is_integer(meta.status)
+            assert is_list(meta.headers)
             send(parent, {ref, :stop})
 
           _ ->
@@ -864,7 +844,7 @@ defmodule FinchTest do
       assert {:ok, %{status: 200}} = Finch.request(request, client)
 
       assert_receive {:telemetry_event, [:finch, :send, :start],
-                      %{headers: [{"x-foo-request", "bar-request"}]}}
+                      %{request: %{headers: [{"x-foo-request", "bar-request"}]}}}
 
       assert_receive {:telemetry_event, [:finch, :recv, :stop], %{headers: headers}}
       assert {"x-foo-response", "bar-response"} in headers
