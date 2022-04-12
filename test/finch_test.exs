@@ -738,7 +738,7 @@ defmodule FinchTest do
 
       handler = fn event, measurements, meta, _config ->
         case event do
-          [:finch, :request, :start] ->
+          [:finch, :send, :start] ->
             assert is_integer(measurements.system_time)
             assert is_integer(measurements.idle_time)
             assert is_binary(meta.path)
@@ -748,7 +748,7 @@ defmodule FinchTest do
             assert is_binary(meta.method)
             send(parent, {ref, :start})
 
-          [:finch, :request, :stop] ->
+          [:finch, :send, :stop] ->
             assert is_integer(measurements.duration)
             assert is_integer(measurements.idle_time)
             assert is_binary(meta.path)
@@ -766,9 +766,9 @@ defmodule FinchTest do
       :telemetry.attach_many(
         to_string(test_name),
         [
-          [:finch, :request, :start],
-          [:finch, :request, :stop],
-          [:finch, :request, :exception]
+          [:finch, :send, :start],
+          [:finch, :send, :stop],
+          [:finch, :send, :exception]
         ],
         handler,
         nil
@@ -788,7 +788,7 @@ defmodule FinchTest do
 
       handler = fn event, measurements, meta, _config ->
         case event do
-          [:finch, :response, :start] ->
+          [:finch, :recv, :start] ->
             assert is_integer(measurements.system_time)
             assert is_integer(measurements.idle_time)
             assert is_binary(meta.path)
@@ -798,7 +798,7 @@ defmodule FinchTest do
             assert is_binary(meta.method)
             send(parent, {ref, :start})
 
-          [:finch, :response, :stop] ->
+          [:finch, :recv, :stop] ->
             assert is_integer(measurements.duration)
             assert is_integer(measurements.idle_time)
             assert is_binary(meta.path)
@@ -816,8 +816,8 @@ defmodule FinchTest do
       :telemetry.attach_many(
         to_string(test_name),
         [
-          [:finch, :response, :start],
-          [:finch, :response, :stop]
+          [:finch, :recv, :start],
+          [:finch, :recv, :stop]
         ],
         handler,
         nil
@@ -849,7 +849,7 @@ defmodule FinchTest do
 
       :telemetry.attach_many(
         to_string(test_name),
-        [[:finch, :request, :start], [:finch, :response, :stop]],
+        [[:finch, :send, :start], [:finch, :recv, :stop]],
         fn name, _, metadata, _ -> send(self, {:telemetry_event, name, metadata}) end,
         nil
       )
@@ -863,10 +863,10 @@ defmodule FinchTest do
       request = Finch.build(:get, endpoint(bypass), [{"x-foo-request", "bar-request"}])
       assert {:ok, %{status: 200}} = Finch.request(request, client)
 
-      assert_receive {:telemetry_event, [:finch, :request, :start],
+      assert_receive {:telemetry_event, [:finch, :send, :start],
                       %{headers: [{"x-foo-request", "bar-request"}]}}
 
-      assert_receive {:telemetry_event, [:finch, :response, :stop], %{headers: headers}}
+      assert_receive {:telemetry_event, [:finch, :recv, :stop], %{headers: headers}}
       assert {"x-foo-response", "bar-response"} in headers
     end
 
@@ -876,7 +876,7 @@ defmodule FinchTest do
 
       :telemetry.attach(
         to_string(test_name),
-        [:finch, :response, :stop],
+        [:finch, :recv, :stop],
         fn name, _, metadata, _ -> send(self, {:telemetry_event, name, metadata}) end,
         nil
       )
@@ -886,7 +886,7 @@ defmodule FinchTest do
       request = Finch.build(:get, endpoint(bypass))
       assert {:ok, %{status: 201}} = Finch.request(request, client)
 
-      assert_receive {:telemetry_event, [:finch, :response, :stop], %{status: 201}}
+      assert_receive {:telemetry_event, [:finch, :recv, :stop], %{status: 201}}
     end
 
     test "reports reused connections", %{bypass: bypass, client: client} do

@@ -111,7 +111,7 @@ defmodule Finch.Telemetry do
     * `:port` - the port to connect on.
     * `:reason` - This value is optional. It includes any errors that occurred while opening the connection.
 
-  * `[:finch, :request, :start]` - Executed before sending a request.
+  * `[:finch, :send, :start]` - Executed before sending a request.
 
     #### Measurements:
     * `:system_time` - The system time
@@ -124,7 +124,7 @@ defmodule Finch.Telemetry do
     * `:path` - The request path.
     * `:method` - The request method.
 
-  * `[:finch, :request, :stop]` - Executed after a request is finished.
+  * `[:finch, :send, :stop]` - Executed after a request is finished.
 
     #### Measurements:
     * `:duration` - Duration to make the request.
@@ -138,7 +138,7 @@ defmodule Finch.Telemetry do
     * `:method` - The request method.
     * `:reason` - This value is optional. It includes any errors that occurred while making the request.
 
-  * `[:finch, :response, :start]` - Executed before receiving the response.
+  * `[:finch, :recv, :start]` - Executed before receiving the response.
 
     #### Measurements:
     * `:system_time` - The system time
@@ -151,7 +151,7 @@ defmodule Finch.Telemetry do
     * `:path` - The request path.
     * `:method` - The request method.
 
-  * `[:finch, :response, :stop]` - Executed after a response has been fully received.
+  * `[:finch, :recv, :stop]` - Executed after a response has been fully received.
 
     #### Measurements:
     * `:duration` - Duration to receive the response.
@@ -165,7 +165,7 @@ defmodule Finch.Telemetry do
     * `:method` - The request method.
     * `:reason` - This value is optional. It includes any errors that occurred while receiving the response.
 
-  * `[:finch, :response, :exception]` - Executed if an exception is thrown before the response has
+  * `[:finch, :recv, :exception]` - Executed if an exception is thrown before the response has
     been fully received.
 
     #### Measurements
