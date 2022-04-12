@@ -213,11 +213,11 @@ defmodule Finch do
   defp manager_name(name), do: :"#{name}.PoolManager"
   defp pool_supervisor_name(name), do: :"#{name}.PoolSupervisor"
 
-  defmacrop stream_span(request, name, do: block) do
+  defmacrop request_span(request, name, do: block) do
     quote do
       start_meta = %{request: unquote(request), name: unquote(name)}
 
-      Finch.Telemetry.span(:stream, start_meta, fn ->
+      Finch.Telemetry.span(:request, start_meta, fn ->
         result = unquote(block)
         end_meta = Map.put(start_meta, :result, result)
         {result, end_meta}
@@ -263,7 +263,7 @@ defmodule Finch do
           {:ok, acc} | {:error, Exception.t()}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
-    stream_span req, name do
+    request_span req, name do
       __stream__(req, name, acc, fun, opts)
     end
   end
@@ -301,7 +301,7 @@ defmodule Finch do
   def request(req, name, opts \\ [])
 
   def request(%Request{} = req, name, opts) do
-    stream_span req, name do
+    request_span req, name do
       acc = {nil, [], []}
 
       fun = fn

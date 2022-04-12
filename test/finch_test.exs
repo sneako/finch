@@ -555,14 +555,14 @@ defmodule FinchTest do
 
       handler = fn event, measurements, meta, _config ->
         case event do
-          [:finch, :stream, :start] ->
+          [:finch, :request, :start] ->
             assert is_integer(measurements.system_time)
             assert meta.name == :finch_name
             assert is_struct(meta.request, Finch.Request)
 
             send(parent, {ref, :start})
 
-          [:finch, :stream, :stop] ->
+          [:finch, :request, :stop] ->
             assert is_integer(measurements.duration)
             assert meta.name == :finch_name
             assert is_struct(meta.request, Finch.Request)
@@ -571,7 +571,7 @@ defmodule FinchTest do
 
             send(parent, {ref, :stop})
 
-          [:finch, :stream, :exception] ->
+          [:finch, :request, :exception] ->
             assert is_integer(measurements.duration)
             assert meta.name == :finch_name
             assert is_struct(meta.request, Finch.Request)
@@ -589,9 +589,9 @@ defmodule FinchTest do
       :telemetry.attach_many(
         to_string(test_name),
         [
-          [:finch, :stream, :start],
-          [:finch, :stream, :stop],
-          [:finch, :stream, :exception]
+          [:finch, :request, :start],
+          [:finch, :request, :stop],
+          [:finch, :request, :exception]
         ],
         handler,
         nil
