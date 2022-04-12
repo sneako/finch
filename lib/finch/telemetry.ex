@@ -6,8 +6,7 @@ defmodule Finch.Telemetry do
 
   Finch executes the following events:
 
-  * `[:finch, :request, :start]` - Executed before `Finch.stream/5` starts. This event is also
-     emitted when calling `Finch.request/3`.
+  * `[:finch, :request, :start]` - Executed when `Finch.request/3` or `Finch.stream/5` is called.
 
     #### Measurements
 
@@ -18,7 +17,7 @@ defmodule Finch.Telemetry do
       * `:name` - The name of the Finch instance
       * `:request` - The request (`Finch.Request`)
 
-  * `[:finch, :request, :stop]` - Executed after `Finch.stream/5` ended.
+  * `[:finch, :request, :stop]` - Executed after `Finch.request/3` or `Finch.stream/5` ended.
 
     #### Measurements
 
@@ -28,12 +27,13 @@ defmodule Finch.Telemetry do
 
     * `:name` - The name of the Finch instance
     * `:request` - The request (`Finch.Request`)
-    * `:result` - The result of the stream, i.e., `{:ok, acc} | {:error, Finch.Exception.t()}`;
-      In case of `Finch.request/3` was called, this is
+    * `:result` - The result of the operation; in case of `Finch.stream/5` this is
+      `{:ok, acc} | {:error, Finch.Exception.t()}`, where `acc` is the accumulator result of the
+      reducer passed in `Finch.stream/5`, and in case of `Finch.request/3` this is
       `{:ok, Finch.Response.t()} | {:error, Finch.Exception.t()}`
 
   * `[:finch, :request, :exception]` - Executed when an exception occurs while executing
-    `Finch.stream/5`.
+    `Finch.request/3` or `Finch.stream/5`.
 
     #### Measurements
 
