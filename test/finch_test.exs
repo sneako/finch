@@ -645,7 +645,7 @@ defmodule FinchTest do
             assert is_integer(measurements.duration)
             assert is_pid(meta.pool)
             assert meta.kind == :exit
-            assert {:timeout, _} = meta.error
+            assert {:timeout, _} = meta.reason
             assert meta.stacktrace != nil
             assert is_atom(meta.scheme)
             assert is_integer(meta.port)

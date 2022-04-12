@@ -86,7 +86,7 @@ defmodule Finch.Telemetry do
     * `:host` - The host address
     * `:port` - the port to connect on.
     * `:kind` - The type of exception.
-    * `:error` - Error description or error data.
+    * `:reason` - Error description or error data.
     * `:stacktrace` - The stacktrace
 
   * `[:finch, :connect, :start]` - Executed before opening a new connection.
@@ -109,7 +109,7 @@ defmodule Finch.Telemetry do
     * `:scheme` - The scheme used in the connection. either `http` or `https`
     * `:host` - The host address
     * `:port` - the port to connect on.
-    * `:error` - This value is optional. It includes any errors that occurred while opening the connection.
+    * `:reason` - This value is optional. It includes any errors that occurred while opening the connection.
 
   * `[:finch, :request, :start]` - Executed before sending a request.
 
@@ -136,7 +136,7 @@ defmodule Finch.Telemetry do
     * `:port` - the port to connect on.
     * `:path` - The request path.
     * `:method` - The request method.
-    * `:error` - This value is optional. It includes any errors that occurred while making the request.
+    * `:reason` - This value is optional. It includes any errors that occurred while making the request.
 
   * `[:finch, :response, :start]` - Executed before receiving the response.
 
@@ -163,7 +163,26 @@ defmodule Finch.Telemetry do
     * `:port` - the port to connect on.
     * `:path` - The request path.
     * `:method` - The request method.
-    * `:error` - This value is optional. It includes any errors that occurred while receiving the response.
+    * `:reason` - This value is optional. It includes any errors that occurred while receiving the response.
+
+  * `[:finch, :response, :exception]` - Executed if an exception is thrown before the response has
+    been fully received.
+
+    #### Measurements
+
+    * `:duration` - The time it took before raising an exception
+
+    #### Metadata
+
+    * `:scheme` - The scheme used in the connection. either `http` or `https`
+    * `:host` - The host address
+    * `:port` - the port to connect on.
+    * `:path` - The request path.
+    * `:method` - The request method.
+    * `:kind` - The type of exception.
+    * `:reason` - Error description or error data.
+    * `:reason` - *Deprecated and will be removed in 1.0.* Same as `:reason`.
+    * `:stacktrace` - The stacktrace
 
   * `[:finch, :reused_connection]` - Executed if an existing connection is reused. There are no measurements provided with this event.
 
@@ -242,7 +261,7 @@ defmodule Finch.Telemetry do
     meta =
       meta
       |> Map.put(:kind, kind)
-      |> Map.put(:error, reason)
+      |> Map.put(:reason, reason)
       |> Map.put(:stacktrace, stack)
 
     :telemetry.execute([:finch, event, :exception], measurements, meta)
