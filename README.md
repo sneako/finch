@@ -9,6 +9,8 @@ An HTTP client with a focus on performance, built on top of
 
 We try to achieve this goal by providing efficient connection pooling strategies and avoiding copying wherever possible.
 
+### Note: breaking changes have been introduced in 0.12.0 affecting the Telemetry events and their metadata. Please see the entry for 0.12.0 in CHANGELOG.md for further details.
+
 ## Usage
 
 In order to use Finch, you must start it and provide a `:name`. Often in your
