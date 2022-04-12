@@ -163,6 +163,8 @@ defmodule Finch.Telemetry do
     * `:port` - the port to connect on.
     * `:path` - The request path.
     * `:method` - The request method.
+    * `:status` - The response status (`Mint.Types.status()`).
+    * `:headers` - The response headers (`Mint.Types.headers()`).
     * `:error` - This value is optional. It includes any errors that occurred while receiving the response.
 
   * `[:finch, :recv, :exception]` - Executed if an exception is thrown before the response has
