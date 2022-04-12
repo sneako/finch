@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.12.0 (unreleased)
+### Breaking changes
+- Telemetry updates #176
+    - Rename the telemetry event `:request` to `:send` and `:response` to `:recv`.
+    - Replace `:scheme`, `:host`, `:port`, `:path`, `:method` fields in favor of a single `request` field.
+    - Rename the meta data field `:error` to `:reason` for all `:exception` events.
+    - Introduce a new `[:finch, :request, :start | :stop | :exception]` telemetry event that emits
+      whenever `Finch.request/3` or `Finch.stream/5` is called.
+
 ## v0.11.0 (2022-03-28)
 
 - Add `:pool_max_idle_time` option to enable termination of idle HTTP/1 pools.
