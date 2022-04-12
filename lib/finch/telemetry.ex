@@ -181,7 +181,6 @@ defmodule Finch.Telemetry do
     * `:method` - The request method.
     * `:kind` - The type of exception.
     * `:reason` - Error description or error data.
-    * `:reason` - *Deprecated and will be removed in 1.0.* Same as `:reason`.
     * `:stacktrace` - The stacktrace
 
   * `[:finch, :reused_connection]` - Executed if an existing connection is reused. There are no measurements provided with this event.
