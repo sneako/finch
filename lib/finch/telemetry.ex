@@ -28,9 +28,9 @@ defmodule Finch.Telemetry do
     * `:name` - The name of the Finch instance.
     * `:request` - The request (`Finch.Request`).
     * `:result` - The result of the operation. In case of `Finch.stream/5` this is
-      `{:ok, acc} | {:error, Finch.Exception.t()}`, where `acc` is the accumulator result of the
+      `{:ok, acc} | {:error, Exception.t()}`, where `acc` is the accumulator result of the
       reducer passed in `Finch.stream/5`. In case of `Finch.request/3` this is
-      `{:ok, Finch.Response.t()} | {:error, Finch.Exception.t()}`.
+      `{:ok, Finch.Response.t()} | {:error, Exception.t()}`.
 
   * `[:finch, :request, :exception]` - Executed when an exception occurs while executing
     `Finch.request/3` or `Finch.stream/5`.
