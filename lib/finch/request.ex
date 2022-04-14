@@ -14,7 +14,7 @@ defmodule Finch.Request do
     :body,
     :query,
     :unix_socket,
-    :private
+    private: %{}
   ]
 
   @atom_methods [
@@ -72,7 +72,7 @@ defmodule Finch.Request do
           body: body(),
           query: String.t() | nil,
           unix_socket: String.t() | nil,
-          private: private_metdata() | nil
+          private: private_metdata()
         }
 
   @doc """
@@ -81,13 +81,8 @@ defmodule Finch.Request do
   from handlers that consume `Finch.Telemetry` events.
   """
   @spec put_private(t(), key :: atom(), value :: term()) :: t()
-  def put_private(%__MODULE__{private: private} = request, key, value)
-      when is_atom(key) and is_map(private) do
+  def put_private(%__MODULE__{private: private} = request, key, value) when is_atom(key) do
     %{request | private: Map.put(private, key, value)}
-  end
-
-  def put_private(%__MODULE__{} = request, key, value) when is_atom(key) do
-    %{request | private: %{key => value}}
   end
 
   def put_private(%__MODULE__{}, key, _) do

@@ -176,6 +176,10 @@ defmodule FinchTest do
         |> Finch.Request.put_private(:my_lib_key, :foo)
 
       assert request.private == %{my_lib_key: :foo}
+
+      request = Finch.Request.put_private(request, :my_lib_key2, :bar)
+
+      assert request.private == %{my_lib_key: :foo, my_lib_key2: :bar}
     end
 
     test "raises when invalid metadata is passed" do
