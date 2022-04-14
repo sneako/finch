@@ -558,14 +558,14 @@ defmodule FinchTest do
           [:finch, :request, :start] ->
             assert is_integer(measurements.system_time)
             assert meta.name == :finch_name
-            assert is_struct(meta.request, Finch.Request)
+            assert %Finch.Request{} = meta.request
 
             send(parent, {ref, :start})
 
           [:finch, :request, :stop] ->
             assert is_integer(measurements.duration)
             assert meta.name == :finch_name
-            assert is_struct(meta.request, Finch.Request)
+            assert %Finch.Request{} = meta.request
 
             assert {:ok, %Finch.Response{body: "OK", status: 200}} = meta.result
 
@@ -574,7 +574,7 @@ defmodule FinchTest do
           [:finch, :request, :exception] ->
             assert is_integer(measurements.duration)
             assert meta.name == :finch_name
-            assert is_struct(meta.request, Finch.Request)
+            assert %Finch.Request{} = meta.request
             assert meta.kind == :exit
             assert {:timeout, _} = meta.reason
             assert meta.stacktrace != nil
@@ -627,14 +627,14 @@ defmodule FinchTest do
           [:finch, :queue, :start] ->
             assert is_integer(measurements.system_time)
             assert is_pid(meta.pool)
-            assert is_struct(meta.request, Finch.Request)
+            assert %Finch.Request{} = meta.request
             send(parent, {ref, :start})
 
           [:finch, :queue, :stop] ->
             assert is_integer(measurements.duration)
             assert is_integer(measurements.idle_time)
             assert is_pid(meta.pool)
-            assert is_struct(meta.request, Finch.Request)
+            assert %Finch.Request{} = meta.request
             send(parent, {ref, :stop})
 
           [:finch, :queue, :exception] ->
@@ -643,7 +643,7 @@ defmodule FinchTest do
             assert meta.kind == :exit
             assert {:timeout, _} = meta.reason
             assert meta.stacktrace != nil
-            assert is_struct(meta.request, Finch.Request)
+            assert %Finch.Request{} = meta.request
             send(parent, {ref, :exception})
 
           _ ->
@@ -735,13 +735,13 @@ defmodule FinchTest do
           [:finch, :send, :start] ->
             assert is_integer(measurements.system_time)
             assert is_integer(measurements.idle_time)
-            assert is_struct(meta.request, Finch.Request)
+            assert %Finch.Request{} = meta.request
             send(parent, {ref, :start})
 
           [:finch, :send, :stop] ->
             assert is_integer(measurements.duration)
             assert is_integer(measurements.idle_time)
-            assert is_struct(meta.request, Finch.Request)
+            assert %Finch.Request{} = meta.request
             send(parent, {ref, :stop})
 
           _ ->
@@ -777,13 +777,13 @@ defmodule FinchTest do
           [:finch, :recv, :start] ->
             assert is_integer(measurements.system_time)
             assert is_integer(measurements.idle_time)
-            assert is_struct(meta.request, Finch.Request)
+            assert %Finch.Request{} = meta.request
             send(parent, {ref, :start})
 
           [:finch, :recv, :stop] ->
             assert is_integer(measurements.duration)
             assert is_integer(measurements.idle_time)
-            assert is_struct(meta.request, Finch.Request)
+            assert %Finch.Request{} = meta.request
             assert is_integer(meta.status)
             assert is_list(meta.headers)
             send(parent, {ref, :stop})
