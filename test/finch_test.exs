@@ -547,6 +547,75 @@ defmodule FinchTest do
       {:ok, client: client}
     end
 
+    test "reports request spans", %{bypass: bypass, client: client} do
+      {test_name, _arity} = __ENV__.function
+
+      parent = self()
+      ref = make_ref()
+
+      handler = fn event, measurements, meta, _config ->
+        case event do
+          [:finch, :request, :start] ->
+            assert is_integer(measurements.system_time)
+            assert meta.name == :finch_name
+            assert is_struct(meta.request, Finch.Request)
+
+            send(parent, {ref, :start})
+
+          [:finch, :request, :stop] ->
+            assert is_integer(measurements.duration)
+            assert meta.name == :finch_name
+            assert is_struct(meta.request, Finch.Request)
+
+            assert {:ok, %Finch.Response{body: "OK", status: 200}} = meta.result
+
+            send(parent, {ref, :stop})
+
+          [:finch, :request, :exception] ->
+            assert is_integer(measurements.duration)
+            assert meta.name == :finch_name
+            assert is_struct(meta.request, Finch.Request)
+            assert meta.kind == :exit
+            assert {:timeout, _} = meta.reason
+            assert meta.stacktrace != nil
+
+            send(parent, {ref, :exception})
+
+          _ ->
+            flunk("Unknown event")
+        end
+      end
+
+      :telemetry.attach_many(
+        to_string(test_name),
+        [
+          [:finch, :request, :start],
+          [:finch, :request, :stop],
+          [:finch, :request, :exception]
+        ],
+        handler,
+        nil
+      )
+
+      assert {:ok, %{status: 200}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(client)
+      assert_receive {^ref, :start}
+      assert_receive {^ref, :stop}
+
+      Bypass.down(bypass)
+
+      try do
+        Finch.build(:get, endpoint(bypass)) |> Finch.request(client, pool_timeout: 0)
+      catch
+        :exit, reason ->
+          assert {:timeout, _} = reason
+      end
+
+      assert_receive {^ref, :start}
+      assert_receive {^ref, :exception}
+
+      :telemetry.detach(to_string(test_name))
+    end
+
     test "reports queue spans", %{bypass: bypass, client: client} do
       {test_name, _arity} = __ENV__.function
 
@@ -558,29 +627,23 @@ defmodule FinchTest do
           [:finch, :queue, :start] ->
             assert is_integer(measurements.system_time)
             assert is_pid(meta.pool)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
+            assert is_struct(meta.request, Finch.Request)
             send(parent, {ref, :start})
 
           [:finch, :queue, :stop] ->
             assert is_integer(measurements.duration)
             assert is_integer(measurements.idle_time)
             assert is_pid(meta.pool)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
+            assert is_struct(meta.request, Finch.Request)
             send(parent, {ref, :stop})
 
           [:finch, :queue, :exception] ->
             assert is_integer(measurements.duration)
             assert is_pid(meta.pool)
             assert meta.kind == :exit
-            assert {:timeout, _} = meta.error
+            assert {:timeout, _} = meta.reason
             assert meta.stacktrace != nil
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
+            assert is_struct(meta.request, Finch.Request)
             send(parent, {ref, :exception})
 
           _ ->
@@ -661,7 +724,7 @@ defmodule FinchTest do
       :telemetry.detach(to_string(test_name))
     end
 
-    test "reports request spans", %{bypass: bypass, client: client} do
+    test "reports send spans", %{bypass: bypass, client: client} do
       {test_name, _arity} = __ENV__.function
 
       parent = self()
@@ -669,24 +732,16 @@ defmodule FinchTest do
 
       handler = fn event, measurements, meta, _config ->
         case event do
-          [:finch, :request, :start] ->
+          [:finch, :send, :start] ->
             assert is_integer(measurements.system_time)
             assert is_integer(measurements.idle_time)
-            assert is_binary(meta.path)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            assert is_binary(meta.method)
+            assert is_struct(meta.request, Finch.Request)
             send(parent, {ref, :start})
 
-          [:finch, :request, :stop] ->
+          [:finch, :send, :stop] ->
             assert is_integer(measurements.duration)
             assert is_integer(measurements.idle_time)
-            assert is_binary(meta.path)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            assert is_binary(meta.method)
+            assert is_struct(meta.request, Finch.Request)
             send(parent, {ref, :stop})
 
           _ ->
@@ -697,9 +752,9 @@ defmodule FinchTest do
       :telemetry.attach_many(
         to_string(test_name),
         [
-          [:finch, :request, :start],
-          [:finch, :request, :stop],
-          [:finch, :request, :exception]
+          [:finch, :send, :start],
+          [:finch, :send, :stop],
+          [:finch, :send, :exception]
         ],
         handler,
         nil
@@ -712,31 +767,25 @@ defmodule FinchTest do
       :telemetry.detach(to_string(test_name))
     end
 
-    test "reports response spans", %{bypass: bypass, client: client} do
+    test "reports recv spans", %{bypass: bypass, client: client} do
       {test_name, _arity} = __ENV__.function
       parent = self()
       ref = make_ref()
 
       handler = fn event, measurements, meta, _config ->
         case event do
-          [:finch, :response, :start] ->
+          [:finch, :recv, :start] ->
             assert is_integer(measurements.system_time)
             assert is_integer(measurements.idle_time)
-            assert is_binary(meta.path)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            assert is_binary(meta.method)
+            assert is_struct(meta.request, Finch.Request)
             send(parent, {ref, :start})
 
-          [:finch, :response, :stop] ->
+          [:finch, :recv, :stop] ->
             assert is_integer(measurements.duration)
             assert is_integer(measurements.idle_time)
-            assert is_binary(meta.path)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            assert is_binary(meta.method)
+            assert is_struct(meta.request, Finch.Request)
+            assert is_integer(meta.status)
+            assert is_list(meta.headers)
             send(parent, {ref, :stop})
 
           _ ->
@@ -747,8 +796,8 @@ defmodule FinchTest do
       :telemetry.attach_many(
         to_string(test_name),
         [
-          [:finch, :response, :start],
-          [:finch, :response, :stop]
+          [:finch, :recv, :start],
+          [:finch, :recv, :stop]
         ],
         handler,
         nil
@@ -780,7 +829,7 @@ defmodule FinchTest do
 
       :telemetry.attach_many(
         to_string(test_name),
-        [[:finch, :request, :start], [:finch, :response, :stop]],
+        [[:finch, :send, :start], [:finch, :recv, :stop]],
         fn name, _, metadata, _ -> send(self, {:telemetry_event, name, metadata}) end,
         nil
       )
@@ -794,10 +843,10 @@ defmodule FinchTest do
       request = Finch.build(:get, endpoint(bypass), [{"x-foo-request", "bar-request"}])
       assert {:ok, %{status: 200}} = Finch.request(request, client)
 
-      assert_receive {:telemetry_event, [:finch, :request, :start],
-                      %{headers: [{"x-foo-request", "bar-request"}]}}
+      assert_receive {:telemetry_event, [:finch, :send, :start],
+                      %{request: %{headers: [{"x-foo-request", "bar-request"}]}}}
 
-      assert_receive {:telemetry_event, [:finch, :response, :stop], %{headers: headers}}
+      assert_receive {:telemetry_event, [:finch, :recv, :stop], %{headers: headers}}
       assert {"x-foo-response", "bar-response"} in headers
     end
 
@@ -807,7 +856,7 @@ defmodule FinchTest do
 
       :telemetry.attach(
         to_string(test_name),
-        [:finch, :response, :stop],
+        [:finch, :recv, :stop],
         fn name, _, metadata, _ -> send(self, {:telemetry_event, name, metadata}) end,
         nil
       )
@@ -817,7 +866,7 @@ defmodule FinchTest do
       request = Finch.build(:get, endpoint(bypass))
       assert {:ok, %{status: 201}} = Finch.request(request, client)
 
-      assert_receive {:telemetry_event, [:finch, :response, :stop], %{status: 201}}
+      assert_receive {:telemetry_event, [:finch, :recv, :stop], %{status: 201}}
     end
 
     test "reports reused connections", %{bypass: bypass, client: client} do

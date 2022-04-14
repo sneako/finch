@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.12.0 (unreleased)
+
+### Breaking changes
+
+- Telemetry updates #176
+  - Rename the telemetry event `:request` to `:send` and `:response` to `:recv`.
+  - Introduce a new `:request` field which contains the full `Finch.Request.t()` in place of the `:scheme`, `:host`, `:port`, `:path`, `:method` fields wherever possible. The new `:request` field can be found on the `:request`, `:queue`, `:send`, and `:recv` events.
+  - Rename the meta data field `:error` to `:reason` for all `:exception` events to follow the standard introduced in [telemetry](https://github.com/beam-telemetry/telemetry/blob/3f069cfd2193396bee221d0709287c1bdaa4fabf/src/telemetry.erl#L335)
+  - Introduce a new `[:finch, :request, :start | :stop | :exception]` telemetry event that emits
+    whenever `Finch.request/3` or `Finch.stream/5` are called.
+
 ## v0.11.0 (2022-03-28)
 
 - Add `:pool_max_idle_time` option to enable termination of idle HTTP/1 pools.

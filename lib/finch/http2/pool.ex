@@ -32,19 +32,12 @@ defmodule Finch.HTTP2.Pool do
     opts = Keyword.put_new(opts, :receive_timeout, @default_receive_timeout)
     timeout = opts[:receive_timeout]
 
-    metadata = %{
-      scheme: request.scheme,
-      host: request.host,
-      port: request.port,
-      method: request.method,
-      path: Finch.Request.request_path(request),
-      headers: request.headers
-    }
+    metadata = %{request: request}
 
-    start_time = Telemetry.start(:request, metadata)
+    start_time = Telemetry.start(:send, metadata)
 
     with {:ok, ref} <- :gen_statem.call(pool, {:request, request, opts}) do
-      Telemetry.stop(:request, start_time, metadata)
+      Telemetry.stop(:send, start_time, metadata)
       monitor = Process.monitor(pool)
       # If the timeout is an integer, we add a fail-safe "after" clause that fires
       # after a timeout that is double the original timeout (min 2000ms). This means
@@ -52,7 +45,7 @@ defmodule Finch.HTTP2.Pool do
       # returned, but otherwise we have a way to escape this code, raise an error, and
       # get the process unstuck.
       fail_safe_timeout = if is_integer(timeout), do: max(2000, timeout * 2), else: :infinity
-      start_time = Telemetry.start(:response, metadata)
+      start_time = Telemetry.start(:recv, metadata)
 
       try do
         result = response_waiting_loop(acc, fun, ref, monitor, fail_safe_timeout)
@@ -60,17 +53,17 @@ defmodule Finch.HTTP2.Pool do
         case result do
           {:ok, {status, headers, _}} ->
             metadata = Map.merge(metadata, %{status: status, headers: headers})
-            Telemetry.stop(:response, start_time, metadata)
+            Telemetry.stop(:recv, start_time, metadata)
             result
 
           {:error, error} ->
             metadata = Map.put(metadata, :error, error)
-            Telemetry.stop(:response, start_time, metadata)
+            Telemetry.stop(:recv, start_time, metadata)
             result
         end
       catch
         kind, error ->
-          Telemetry.exception(:response, start_time, kind, error, __STACKTRACE__, metadata)
+          Telemetry.exception(:recv, start_time, kind, error, __STACKTRACE__, metadata)
 
           :gen_statem.call(pool, {:cancel, ref})
           clean_responses(ref)

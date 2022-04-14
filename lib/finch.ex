@@ -97,9 +97,9 @@ defmodule Finch do
     * `:name` - The name of your Finch instance. This field is required.
 
     * `:pools` - A map specifying the configuration for your pools. The keys should be URLs
-    provided as binaries, a tuple `{scheme, {:local, unix_socket}}` where `unix_socket` is the path for 
+    provided as binaries, a tuple `{scheme, {:local, unix_socket}}` where `unix_socket` is the path for
     the socket, or the atom `:default` to provide a catch-all configuration to be used for any
-    unspecified URLs. See "Pool Configuration Options" below for details on the possible map 
+    unspecified URLs. See "Pool Configuration Options" below for details on the possible map
     values. Default value is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
 
   ### Pool Configuration Options
@@ -213,6 +213,18 @@ defmodule Finch do
   defp manager_name(name), do: :"#{name}.PoolManager"
   defp pool_supervisor_name(name), do: :"#{name}.PoolSupervisor"
 
+  defmacrop request_span(request, name, do: block) do
+    quote do
+      start_meta = %{request: unquote(request), name: unquote(name)}
+
+      Finch.Telemetry.span(:request, start_meta, fn ->
+        result = unquote(block)
+        end_meta = Map.put(start_meta, :result, result)
+        {result, end_meta}
+      end)
+    end
+  end
+
   @doc """
   Builds an HTTP request to be sent with `request/3` or `stream/4`.
 
@@ -251,6 +263,12 @@ defmodule Finch do
           {:ok, acc} | {:error, Exception.t()}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
+    request_span req, name do
+      __stream__(req, name, acc, fun, opts)
+    end
+  end
+
+  defp __stream__(%Request{} = req, name, acc, fun, opts) when is_function(fun, 2) do
     shp = build_shp(req)
     {pool, pool_mod} = PoolManager.get_pool(name, shp)
     pool_mod.request(pool, req, acc, fun, opts)
@@ -283,21 +301,23 @@ defmodule Finch do
   def request(req, name, opts \\ [])
 
   def request(%Request{} = req, name, opts) do
-    acc = {nil, [], []}
+    request_span req, name do
+      acc = {nil, [], []}
 
-    fun = fn
-      {:status, value}, {_, headers, body} -> {value, headers, body}
-      {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
-      {:data, value}, {status, headers, body} -> {status, headers, [value | body]}
-    end
+      fun = fn
+        {:status, value}, {_, headers, body} -> {value, headers, body}
+        {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
+        {:data, value}, {status, headers, body} -> {status, headers, [value | body]}
+      end
 
-    with {:ok, {status, headers, body}} <- stream(req, name, acc, fun, opts) do
-      {:ok,
-       %Response{
-         status: status,
-         headers: headers,
-         body: body |> Enum.reverse() |> IO.iodata_to_binary()
-       }}
+      with {:ok, {status, headers, body}} <- __stream__(req, name, acc, fun, opts) do
+        {:ok,
+         %Response{
+           status: status,
+           headers: headers,
+           body: body |> Enum.reverse() |> IO.iodata_to_binary()
+         }}
+      end
     end
   end
 

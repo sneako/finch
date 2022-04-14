@@ -98,26 +98,19 @@ defmodule Finch.Conn do
   def request(conn, req, acc, fun, receive_timeout, idle_time) do
     full_path = Finch.Request.request_path(req)
 
-    metadata = %{
-      scheme: conn.scheme,
-      host: conn.host,
-      port: conn.port,
-      path: full_path,
-      method: req.method,
-      headers: req.headers
-    }
+    metadata = %{request: req}
 
     extra_measurements = %{idle_time: idle_time}
 
-    start_time = Telemetry.start(:request, metadata, extra_measurements)
+    start_time = Telemetry.start(:send, metadata, extra_measurements)
 
     try do
       case HTTP1.request(conn.mint, req.method, full_path, req.headers, stream_or_body(req.body)) do
         {:ok, mint, ref} ->
           case maybe_stream_request_body(mint, ref, req.body, receive_timeout) do
             {:ok, mint} ->
-              Telemetry.stop(:request, start_time, metadata, extra_measurements)
-              start_time = Telemetry.start(:response, metadata, extra_measurements)
+              Telemetry.stop(:send, start_time, metadata, extra_measurements)
+              start_time = Telemetry.start(:recv, metadata, extra_measurements)
               response = receive_response([], acc, fun, mint, ref, receive_timeout)
               handle_response(response, conn, metadata, start_time, extra_measurements)
 
@@ -138,7 +131,7 @@ defmodule Finch.Conn do
     catch
       kind, error ->
         close(conn)
-        Telemetry.exception(:response, start_time, kind, error, __STACKTRACE__, metadata)
+        Telemetry.exception(:recv, start_time, kind, error, __STACKTRACE__, metadata)
         :erlang.raise(kind, error, __STACKTRACE__)
     end
   end
@@ -148,7 +141,7 @@ defmodule Finch.Conn do
 
   defp handle_request_error(conn, mint, error, metadata, start_time, extra_measurements) do
     metadata = Map.put(metadata, :error, error)
-    Telemetry.stop(:request, start_time, metadata, extra_measurements)
+    Telemetry.stop(:send, start_time, metadata, extra_measurements)
     {:error, %{conn | mint: mint}, error}
   end
 
@@ -178,12 +171,12 @@ defmodule Finch.Conn do
     case response do
       {:ok, mint, {status, headers, _} = acc} ->
         metadata = Map.merge(metadata, %{status: status, headers: headers})
-        Telemetry.stop(:response, start_time, metadata, extra_measurements)
+        Telemetry.stop(:recv, start_time, metadata, extra_measurements)
         {:ok, %{conn | mint: mint}, acc}
 
       {:error, mint, error} ->
         metadata = Map.put(metadata, :error, error)
-        Telemetry.stop(:response, start_time, metadata, extra_measurements)
+        Telemetry.stop(:recv, start_time, metadata, extra_measurements)
         {:error, %{conn | mint: mint}, error}
     end
   end
