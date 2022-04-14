@@ -4,7 +4,18 @@ defmodule Finch.Request do
   """
 
   @enforce_keys [:scheme, :host, :port, :method, :path, :headers, :body, :query]
-  defstruct [:scheme, :host, :port, :method, :path, :headers, :body, :query, :unix_socket]
+  defstruct [
+    :scheme,
+    :host,
+    :port,
+    :method,
+    :path,
+    :headers,
+    :body,
+    :query,
+    :unix_socket,
+    :private
+  ]
 
   @atom_methods [
     :get,
@@ -49,6 +60,8 @@ defmodule Finch.Request do
   """
   @type body() :: iodata() | {:stream, Enumerable.t()} | nil
 
+  @type private_metdata() :: %{optional(atom()) => term()}
+
   @type t :: %__MODULE__{
           scheme: Mint.Types.scheme(),
           host: String.t() | nil,
@@ -58,8 +71,33 @@ defmodule Finch.Request do
           headers: headers(),
           body: body(),
           query: String.t() | nil,
-          unix_socket: String.t() | nil
+          unix_socket: String.t() | nil,
+          private: private_metdata() | nil
         }
+
+  @doc """
+  Sets a new **private** key and value in the request metadata. This storage is meant to be used by libraries
+  and frameworks to inject information about the request that needs to be retrieved later on, for example,
+  from handlers that consume `Finch.Telemetry` events.
+  """
+  @spec put_private(t(), key :: atom(), value :: term()) :: t()
+  def put_private(%__MODULE__{private: private} = request, key, value) do
+    if not is_atom(key) do
+      raise ArgumentError, """
+      got unsupported private metadata key #{inspect(key)}
+      Only atoms are allowed as keys of the `private` field.
+      """
+    end
+
+    updated_private =
+      if private == nil do
+        %{key => value}
+      else
+        Map.put(private, key, value)
+      end
+
+    %{request | private: updated_private}
+  end
 
   @doc false
   def request_path(%{path: path, query: nil}), do: path
