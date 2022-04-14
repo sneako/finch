@@ -2,19 +2,24 @@ defmodule Finch.RequestTest do
   use ExUnit.Case, async: true
 
   describe "put_private/3" do
-    test "pass valid metadata" do
+    test "accepts atoms as keys" do
       request =
         Finch.build(:get, "http://example.com")
         |> Finch.Request.put_private(:my_lib_key, :foo)
 
       assert request.private == %{my_lib_key: :foo}
+    end
 
-      request = Finch.Request.put_private(request, :my_lib_key2, :bar)
+    test "appends to the map when called multiple times" do
+      request =
+        Finch.build(:get, "http://example.com")
+        |> Finch.Request.put_private(:my_lib_key, :foo)
+        |> Finch.Request.put_private(:my_lib_key2, :bar)
 
       assert request.private == %{my_lib_key: :foo, my_lib_key2: :bar}
     end
 
-    test "raises when invalid metadata is passed" do
+    test "raises when invalid key is used" do
       assert_raise ArgumentError,
                    """
                    got unsupported private metadata key "my_key"
