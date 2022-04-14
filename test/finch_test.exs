@@ -182,7 +182,7 @@ defmodule FinchTest do
       assert_raise ArgumentError,
                    """
                    got unsupported private metadata key "my_key"
-                   Only atoms are allowed as keys of the `private` field.
+                   only atoms are allowed as keys of the `:private` field.
                    """,
                    fn ->
                      Finch.build(:get, "http://example.com")
