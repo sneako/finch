@@ -81,22 +81,20 @@ defmodule Finch.Request do
   from handlers that consume `Finch.Telemetry` events.
   """
   @spec put_private(t(), key :: atom(), value :: term()) :: t()
-  def put_private(%__MODULE__{private: private} = request, key, value) do
-    if not is_atom(key) do
-      raise ArgumentError, """
-      got unsupported private metadata key #{inspect(key)}
-      Only atoms are allowed as keys of the `private` field.
-      """
-    end
+  def put_private(%__MODULE__{private: private} = request, key, value)
+      when is_atom(key) and is_map(private) do
+    %{request | private: Map.put(private, key, value)}
+  end
 
-    updated_private =
-      if private == nil do
-        %{key => value}
-      else
-        Map.put(private, key, value)
-      end
+  def put_private(%__MODULE__{} = request, key, value) when is_atom(key) do
+    %{request | private: %{key => value}}
+  end
 
-    %{request | private: updated_private}
+  def put_private(%__MODULE__{}, key, _) do
+    raise ArgumentError, """
+    got unsupported private metadata key #{inspect(key)}
+    only atoms are allowed as keys of the `:private` field.
+    """
   end
 
   @doc false
