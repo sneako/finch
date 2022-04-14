@@ -60,7 +60,7 @@ defmodule Finch.Request do
   """
   @type body() :: iodata() | {:stream, Enumerable.t()} | nil
 
-  @type private_metdata() :: %{optional(atom()) => term()}
+  @type private_metadata() :: %{optional(atom()) => term()}
 
   @type t :: %__MODULE__{
           scheme: Mint.Types.scheme(),
@@ -72,7 +72,7 @@ defmodule Finch.Request do
           body: body(),
           query: String.t() | nil,
           unix_socket: String.t() | nil,
-          private: private_metdata()
+          private: private_metadata()
         }
 
   @doc """
