@@ -4,13 +4,13 @@ defmodule Finch.HTTP1.IntegrationTest do
 
   require Logger
 
-  alias Finch.HTTP1Server
+  alias Finch.HTTPS1Server
   alias Finch.TestHelper
 
   setup_all do
     port = 4001
 
-    {:ok, _} = HTTP1Server.start(port)
+    {:ok, _} = HTTPS1Server.start(port)
 
     {:ok, url: "https://localhost:#{port}"}
   end
