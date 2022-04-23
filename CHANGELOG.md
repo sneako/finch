@@ -1,6 +1,7 @@
 # Changelog
 
 ## v0.12.0 (unreleased)
+- Add support for private request metadata #180
 
 ### Breaking changes
 
