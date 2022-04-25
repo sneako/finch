@@ -221,15 +221,9 @@ defmodule Finch.Telemetry do
     * `:host` - The host address.
     * `:port` - The port to connect on.
 
-  ### Max Idle Time Exceeded
+  ### Pool Max Idle Time Exceeded
 
-  `[:finch, :max_idle_time_exceeded]` - Executed if a connection was discarded because the `max_idle_time` had been reached.
-
-  **Deprecated:** use `:conn_max_idle_time_exceeded` event instead.
-
-  #### Measurements
-
-    * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
+  `[:finch, :pool_max_idle_time_exceeded]` - Executed if a pool was terminated because the `pool_max_idle_time` has been reached. There are no measurements provided with this event.
 
   #### Metadata
 
@@ -237,9 +231,15 @@ defmodule Finch.Telemetry do
     * `:host` - The host address.
     * `:port` - The port to connect on.
 
-  ### Pool Max Idle Time Exceeded
+  ### Max Idle Time Exceeded (Deprecated)
 
-  `[:finch, :pool_max_idle_time_exceeded]` - Executed if a pool was terminated because the `pool_max_idle_time` has been reached. There are no measurements provided with this event.
+  `[:finch, :max_idle_time_exceeded]` - Executed if a connection was discarded because the `max_idle_time` had been reached.
+
+  *Deprecated:* use `:conn_max_idle_time_exceeded` event instead.
+
+  #### Measurements
+
+    * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
   #### Metadata
 
