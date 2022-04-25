@@ -179,7 +179,7 @@ defmodule Finch.Telemetry do
     * `:host` - The host address.
     * `:port` - the port to connect on.
 
-  * `[:finch, :conn_max_idle_time_exceeded] - Executed if a connection was discarded because the `conn_max_idle_time` had been reached.
+  * `[:finch, :conn_max_idle_time_exceeded]` - Executed if a connection was discarded because the `conn_max_idle_time` had been reached.
 
     #### Measurements
 
