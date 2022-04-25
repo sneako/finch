@@ -1,15 +1,9 @@
 defmodule Finch.HTTP1.PoolTest do
-  use ExUnit.Case
+  use FinchCase, async: true
 
-  setup do
-    {:ok, bypass: Bypass.open()}
-  end
-
-  defp endpoint(%{port: port}, path \\ "/"), do: "http://localhost:#{port}#{path}"
-
-  test "should terminate pool after idle timeout", %{bypass: bypass} do
-    {atom_test_name, _arity} = __ENV__.function
-    test_name = to_string(atom_test_name)
+  @tag capture_log: true
+  test "should terminate pool after idle timeout", %{bypass: bypass, finch_name: finch_name} do
+    test_name = to_string(finch_name)
     parent = self()
 
     handler = fn event, _measurments, meta, _config ->
