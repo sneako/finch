@@ -25,7 +25,7 @@ defmodule Finch.Telemetry do
 
   #### Measurements
 
-  * `:duration` - Duration how long the request took.
+  * `:duration` - Time taken from the request start event.
 
   #### Metadata
 
@@ -63,7 +63,7 @@ defmodule Finch.Telemetry do
 
   #### Metadata
 
-    * `:pool` - The pool's pid.
+    * `:pool` - The pool's PID.
     * `:request` - The request (`Finch.Request`).
 
   ### Queue Stop
@@ -72,12 +72,12 @@ defmodule Finch.Telemetry do
 
   #### Measurements
 
-    * `:duration` - Duration to check out a pool connection.
+    * `:duration` - Time taken to check out a pool connection.
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
   #### Metadata
 
-    * `:pool` - The pool's pid.
+    * `:pool` - The pool's PID.
     * `:request` - The request (`Finch.Request`).
 
   ### Queue Exception
@@ -86,7 +86,7 @@ defmodule Finch.Telemetry do
 
   #### Measurements
 
-    * `:duration` - The time it took before raising an exception
+    * `:duration` - The time it took since queue start event before raising an exception.
 
   #### Metadata
 
@@ -108,7 +108,7 @@ defmodule Finch.Telemetry do
 
     * `:scheme` - The scheme used in the connection. either `http` or `https`.
     * `:host` - The host address.
-    * `:port` - the port to connect on.
+    * `:port` - The port to connect on.
 
   ### Connect Stop
 
@@ -116,13 +116,13 @@ defmodule Finch.Telemetry do
 
   #### Measurements
 
-    * `:duration` - Duration to connect to the host.
+    * `:duration` - Time taken to connect to the host.
 
   #### Metadata
 
     * `:scheme` - The scheme used in the connection. either `http` or `https`.
     * `:host` - The host address.
-    * `:port` - the port to connect on.
+    * `:port` - The port to connect on.
     * `:error` - This value is optional. It includes any errors that occurred while opening the connection.
 
   ### Send Start
@@ -144,7 +144,7 @@ defmodule Finch.Telemetry do
 
   #### Measurements
 
-    * `:duration` - Duration to make the request.
+    * `:duration` - Time taken to make the request.
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
   #### Metadata
@@ -199,14 +199,13 @@ defmodule Finch.Telemetry do
 
   ### Reused Connection
 
-
   `[:finch, :reused_connection]` - Executed if an existing connection is reused. There are no measurements provided with this event.
 
   #### Metadata
 
     * `:scheme` - The scheme used in the connection. either `http` or `https`.
     * `:host` - The host address.
-    * `:port` - the port to connect on.
+    * `:port` - The port to connect on.
 
   ### Conn Max Idle Time Exceeded
 
@@ -220,13 +219,13 @@ defmodule Finch.Telemetry do
 
     * `:scheme` - The scheme used in the connection. either `http` or `https`.
     * `:host` - The host address.
-    * `:port` - the port to connect on.
+    * `:port` - The port to connect on.
 
   ### Max Idle Time Exceeded
 
   `[:finch, :max_idle_time_exceeded]` - Executed if a connection was discarded because the `max_idle_time` had been reached.
 
-  Deprecated use `:conn_max_idle_time_exceeded` event instead.
+  **Deprecated:** use `:conn_max_idle_time_exceeded` event instead.
 
   #### Measurements
 
@@ -236,7 +235,7 @@ defmodule Finch.Telemetry do
 
     * `:scheme` - The scheme used in the connection. either `http` or `https`.
     * `:host` - The host address.
-    * `:port` - the port to connect on.
+    * `:port` - The port to connect on.
 
   ### Pool Max Idle Time Exceeded
 
@@ -246,7 +245,7 @@ defmodule Finch.Telemetry do
 
     * `:scheme` - The scheme used in the connection. either `http` or `https`.
     * `:host` - The host address.
-    * `:port` - the port to connect on.
+    * `:port` - The port to connect on.
   """
 
   @doc false
