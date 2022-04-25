@@ -7,6 +7,15 @@ defmodule FinchTest do
   alias Finch.Response
   alias Finch.MockSocketServer
 
+  # returns the name of the current test as an atom which can be used as the Finch name
+  # to enable async tests with many different instances of Finch running
+  # this needs to be macro to retain the caller function's name
+  defmacrop finch_name do
+    {name, _} = __CALLER__.function
+    IO.inspect(name)
+    name
+  end
+
   setup do
     {:ok, bypass: Bypass.open()}
   end
@@ -1082,12 +1091,5 @@ defmodule FinchTest do
 
   defp expect_any(bypass) do
     Bypass.expect(bypass, fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)
-  end
-
-  # returns the name of the current test as an atom which can be used as the Finch name
-  # to enable async tests with many different instances of Finch running
-  defp finch_name do
-    {name, _} = __ENV__.function
-    name
   end
 end
