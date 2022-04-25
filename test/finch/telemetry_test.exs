@@ -1,5 +1,5 @@
 defmodule Finch.TelemetryTest do
-  use FinchCase, async: true
+  use FinchCase, async: false
 
   @moduletag :capture_log
 
