@@ -2,7 +2,7 @@ defmodule Finch.Telemetry do
   @moduledoc """
   Telemetry integration.
 
-  Unless specified, all time's are in `:native` units.
+  Unless specified, all times are in `:native` units.
 
   Finch executes the following events:
 
