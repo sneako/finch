@@ -87,9 +87,11 @@ defmodule Finch.Telemetry do
     If a connection is being re-used this event will *not* be executed.
 
     #### Measurements
+
     * `:system_time` - The system time.
 
     #### Metadata
+
     * `:scheme` - The scheme used in the connection. either `http` or `https`.
     * `:host` - The host address.
     * `:port` - the port to connect on.
@@ -97,9 +99,11 @@ defmodule Finch.Telemetry do
   * `[:finch, :connect, :stop]` - Executed after a connection is opened.
 
     #### Measurements
+
     * `:duration` - Duration to connect to the host.
 
     #### Metadata
+
     * `:scheme` - The scheme used in the connection. either `http` or `https`.
     * `:host` - The host address.
     * `:port` - the port to connect on.
@@ -108,38 +112,46 @@ defmodule Finch.Telemetry do
   * `[:finch, :send, :start]` - Executed before sending a request.
 
     #### Measurements
+
     * `:system_time` - The system time.
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata
+
     * `:request` - The request (`Finch.Request`).
 
   * `[:finch, :send, :stop]` - Executed after a request is finished.
 
     #### Measurements
+
     * `:duration` - Duration to make the request.
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata
+
     * `:request` - The request (`Finch.Request`).
     * `:error` - This value is optional. It includes any errors that occurred while making the request.
 
   * `[:finch, :recv, :start]` - Executed before receiving the response.
 
     #### Measurements
+
     * `:system_time` - The system time.
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata
+
     * `:request` - The request (`Finch.Request`).
 
   * `[:finch, :recv, :stop]` - Executed after a response has been fully received.
 
     #### Measurements
+
     * `:duration` - Duration to receive the response.
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata
+
     * `:request` - The request (`Finch.Request`).
     * `:status` - The response status (`Mint.Types.status()`).
     * `:headers` - The response headers (`Mint.Types.headers()`).
@@ -162,6 +174,7 @@ defmodule Finch.Telemetry do
   * `[:finch, :reused_connection]` - Executed if an existing connection is reused. There are no measurements provided with this event.
 
     #### Metadata
+
     * `:scheme` - The scheme used in the connection. either `http` or `https`.
     * `:host` - The host address.
     * `:port` - the port to connect on.
@@ -169,6 +182,7 @@ defmodule Finch.Telemetry do
   * `[:finch, :conn_max_idle_time_exceeded] - Executed if a connection was discarded because the `conn_max_idle_time` had been reached.
 
     #### Measurements
+
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata
@@ -182,6 +196,7 @@ defmodule Finch.Telemetry do
     Deprecated use `:conn_max_idle_time_exceeded` event instead.
 
     #### Measurements
+
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
     #### Metadata
@@ -197,8 +212,6 @@ defmodule Finch.Telemetry do
     * `:scheme` - The scheme used in the connection. either `http` or `https`.
     * `:host` - The host address.
     * `:port` - the port to connect on.
-
-
   """
 
   @doc false
