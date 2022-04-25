@@ -12,7 +12,6 @@ defmodule FinchTest do
   # this needs to be macro to retain the caller function's name
   defmacrop finch_name do
     {name, _} = __CALLER__.function
-    IO.inspect(name)
     name
   end
 
