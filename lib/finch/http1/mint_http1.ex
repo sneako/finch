@@ -1,6 +1,9 @@
 defmodule Finch.MintHTTP1 do
   @moduledoc false
 
+  # This module exists to ensure that protocol negotiation does not accidentally cause Mint to open
+  # HTTP2 connections in our HTTP1 pools.
+
   alias Mint.HTTP1
   alias Mint.UnsafeProxy
 
