@@ -5,7 +5,7 @@ defmodule Finch do
              |> String.split("<!-- MDOC !-->")
              |> Enum.fetch!(1)
 
-  alias Finch.{PoolManager, Request, Response}
+  alias Finch.{PoolManager, Request, Response, Error}
 
   use Supervisor
 
@@ -310,13 +310,21 @@ defmodule Finch do
         {:data, value}, {status, headers, body} -> {status, headers, [value | body]}
       end
 
-      with {:ok, {status, headers, body}} <- __stream__(req, name, acc, fun, opts) do
-        {:ok,
-         %Response{
-           status: status,
-           headers: headers,
-           body: body |> Enum.reverse() |> IO.iodata_to_binary()
-         }}
+      case __stream__(req, name, acc, fun, opts) do
+        {:ok, {status, headers, body}} ->
+          {:ok,
+           %Response{
+             status: status,
+             headers: headers,
+             body: body |> Enum.reverse() |> IO.iodata_to_binary()
+           }}
+
+        {:error, %{reason: reason}} ->
+          {:error, %Error{reason: reason}}
+
+        # If something unexpected has happened, returns it.
+        x ->
+          x
       end
     end
   end
