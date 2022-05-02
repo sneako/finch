@@ -13,48 +13,21 @@ defmodule Finch.TelemetryTest do
     :ok
   end
 
-  test "reports request and response headers", %{bypass: bypass, finch_name: finch_name} do
+  test "reports request headers", %{bypass: bypass, finch_name: finch_name} do
     self = self()
 
     :telemetry.attach_many(
       to_string(finch_name),
-      [[:finch, :send, :start], [:finch, :recv, :stop]],
+      [[:finch, :send, :start]],
       fn name, _, metadata, _ -> send(self, {:telemetry_event, name, metadata}) end,
       nil
     )
-
-    Bypass.expect(bypass, "GET", "/", fn conn ->
-      conn
-      |> Plug.Conn.put_resp_header("x-foo-response", "bar-response")
-      |> Plug.Conn.send_resp(200, "OK")
-    end)
 
     request = Finch.build(:get, endpoint(bypass), [{"x-foo-request", "bar-request"}])
     assert {:ok, %{status: 200}} = Finch.request(request, finch_name)
 
     assert_receive {:telemetry_event, [:finch, :send, :start],
                     %{request: %{headers: [{"x-foo-request", "bar-request"}]}}}
-
-    assert_receive {:telemetry_event, [:finch, :recv, :stop], %{headers: headers}}
-    assert {"x-foo-response", "bar-response"} in headers
-  end
-
-  test "reports response status code", %{bypass: bypass, finch_name: finch_name} do
-    self = self()
-
-    :telemetry.attach(
-      to_string(finch_name),
-      [:finch, :recv, :stop],
-      fn name, _, metadata, _ -> send(self, {:telemetry_event, name, metadata}) end,
-      nil
-    )
-
-    Bypass.expect(bypass, "GET", "/", fn conn -> Plug.Conn.send_resp(conn, 201, "OK") end)
-
-    request = Finch.build(:get, endpoint(bypass))
-    assert {:ok, %{status: 201}} = Finch.request(request, finch_name)
-
-    assert_receive {:telemetry_event, [:finch, :recv, :stop], %{status: 201}}
   end
 
   test "reports reused connections", %{bypass: bypass, finch_name: finch_name} do
@@ -411,8 +384,6 @@ defmodule Finch.TelemetryTest do
           assert is_integer(measurements.duration)
           assert is_integer(measurements.idle_time)
           assert %Finch.Request{} = meta.request
-          assert is_integer(meta.status)
-          assert is_list(meta.headers)
           send(parent, {ref, :stop})
 
         _ ->

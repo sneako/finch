@@ -177,8 +177,6 @@ defmodule Finch.Telemetry do
   #### Metadata
 
     * `:request` - The request (`Finch.Request`).
-    * `:status` - The response status (`Mint.Types.status()`).
-    * `:headers` - The response headers (`Mint.Types.headers()`).
     * `:error` - This value is optional. It includes any errors that occurred while receiving the response.
 
   ### Receive Exception
