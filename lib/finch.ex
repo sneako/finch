@@ -326,6 +326,7 @@ defmodule Finch do
     request(name, method, url, [])
   end
 
+  @doc false
   def request(name, method, url, headers, body \\ nil, opts \\ []) do
     IO.warn("Finch.request/6 is deprecated, use Finch.build/5 + Finch.request/3 instead")
 
