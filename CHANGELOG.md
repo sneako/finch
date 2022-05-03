@@ -1,9 +1,19 @@
 # Changelog
 
-## v0.12.0 (unreleased)
-- Add support for private request metadata #180
+## v0.12.0 (2022-05-03)
 
-### Breaking changes
+### Enhancements
+
+- Add support for private request metadata #180
+- Hide docs for deprecated `Finch.request/6` #195
+- Add support for Mint.UnsafeProxy connections #184
+
+### Bug Fixes
+
+- In v0.11.0 headers and status codes were added to Telemetry events in a way that made invalid assumptions
+  regarding the shape of the response accumulator, this has been resolved in #196
+
+### Breaking Changes
 
 - Telemetry updates #176
   - Rename the telemetry event `:request` to `:send` and `:response` to `:recv`.
