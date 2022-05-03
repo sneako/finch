@@ -567,6 +567,45 @@ defmodule FinchTest do
                |> Finch.stream(finch_name, acc, fun)
     end
 
+    test "HTTP/1 with atom accumulator, illustrating that the type/shape of the accumulator is not important",
+         %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+      expect_any(bypass)
+
+      fun = fn _msg, :ok -> :ok end
+
+      assert {:ok, :ok} =
+               Finch.build(:get, endpoint(bypass))
+               |> Finch.stream(finch_name, :ok, fun)
+    end
+
+    test "HTTP/2 with atom accumulator, illustrating that the type/shape of the accumulator is not important",
+         %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocol: :http2,
+             count: 1,
+             conn_opts: [
+               transport_opts: [
+                 verify: :verify_none
+               ]
+             ]
+           ]
+         }}
+      )
+
+      expect_any(bypass)
+
+      fun = fn _msg, :ok -> :ok end
+
+      assert {:ok, :ok} =
+               Finch.build(:get, endpoint(bypass))
+               |> Finch.stream(finch_name, :ok, fun)
+    end
+
     test "successful post request, with query string and string request body",
          %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})

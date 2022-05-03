@@ -51,15 +51,15 @@ defmodule Finch.HTTP2.Pool do
         result = response_waiting_loop(acc, fun, ref, monitor, fail_safe_timeout)
 
         case result do
-          {:ok, {status, headers, _}} ->
+          {:ok, acc, {status, headers}} ->
             metadata = Map.merge(metadata, %{status: status, headers: headers})
             Telemetry.stop(:recv, start_time, metadata)
-            result
+            {:ok, acc}
 
-          {:error, error} ->
-            metadata = Map.put(metadata, :error, error)
+          {:error, error, {status, headers}} ->
+            metadata = Map.merge(metadata, %{error: error, status: status, headers: headers})
             Telemetry.stop(:recv, start_time, metadata)
-            result
+            {:error, error}
         end
       catch
         kind, error ->
@@ -74,21 +74,61 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  defp response_waiting_loop(acc, fun, ref, monitor_ref, fail_safe_timeout) do
-    receive do
-      {:DOWN, ^monitor_ref, _, _, _} ->
-        {:error, :connection_process_went_down}
+  defp response_waiting_loop(
+         acc,
+         fun,
+         ref,
+         monitor_ref,
+         fail_safe_timeout,
+         status \\ nil,
+         headers \\ []
+       )
 
-      {kind, ^ref, value} when kind in [:status, :headers, :data] ->
-        response_waiting_loop(fun.({kind, value}, acc), fun, ref, monitor_ref, fail_safe_timeout)
+  defp response_waiting_loop(acc, fun, ref, monitor_ref, fail_safe_timeout, status, headers) do
+    receive do
+      {:status, ^ref, value} ->
+        response_waiting_loop(
+          fun.({:status, value}, acc),
+          fun,
+          ref,
+          monitor_ref,
+          fail_safe_timeout,
+          value,
+          headers
+        )
+
+      {:headers, ^ref, value} ->
+        response_waiting_loop(
+          fun.({:headers, value}, acc),
+          fun,
+          ref,
+          monitor_ref,
+          fail_safe_timeout,
+          status,
+          headers ++ value
+        )
+
+      {:data, ^ref, value} ->
+        response_waiting_loop(
+          fun.({:data, value}, acc),
+          fun,
+          ref,
+          monitor_ref,
+          fail_safe_timeout,
+          status,
+          headers
+        )
 
       {:done, ^ref} ->
         Process.demonitor(monitor_ref)
-        {:ok, acc}
+        {:ok, acc, {status, headers}}
 
       {:error, ^ref, error} ->
         Process.demonitor(monitor_ref)
-        {:error, error}
+        {:error, error, {status, headers}}
+
+      {:DOWN, ^monitor_ref, _, _, _} ->
+        {:error, :connection_process_went_down, {status, headers}}
     after
       fail_safe_timeout ->
         Process.demonitor(monitor_ref)

@@ -175,44 +175,73 @@ defmodule Finch.Conn do
 
   defp handle_response(response, conn, metadata, start_time, extra_measurements) do
     case response do
-      {:ok, mint, {status, headers, _} = acc} ->
+      {:ok, mint, acc, {status, headers}} ->
         metadata = Map.merge(metadata, %{status: status, headers: headers})
         Telemetry.stop(:recv, start_time, metadata, extra_measurements)
         {:ok, %{conn | mint: mint}, acc}
 
-      {:error, mint, error} ->
-        metadata = Map.put(metadata, :error, error)
+      {:error, mint, error, {status, headers}} ->
+        metadata = Map.merge(metadata, %{error: error, status: status, headers: headers})
         Telemetry.stop(:recv, start_time, metadata, extra_measurements)
         {:error, %{conn | mint: mint}, error}
     end
   end
 
-  defp receive_response([], acc, fun, mint, ref, timeout) do
+  defp receive_response(entries, acc, fun, mint, ref, timeout, status \\ nil, headers \\ [])
+
+  defp receive_response([], acc, fun, mint, ref, timeout, status, headers) do
     case MintHTTP1.recv(mint, 0, timeout) do
       {:ok, mint, entries} ->
-        receive_response(entries, acc, fun, mint, ref, timeout)
+        receive_response(entries, acc, fun, mint, ref, timeout, status, headers)
 
       {:error, mint, error, _responses} ->
-        {:error, mint, error}
+        {:error, mint, error, {status, headers}}
     end
   end
 
-  defp receive_response([entry | entries], acc, fun, mint, ref, timeout) do
+  defp receive_response([entry | entries], acc, fun, mint, ref, timeout, status, headers) do
     case entry do
       {:status, ^ref, value} ->
-        receive_response(entries, fun.({:status, value}, acc), fun, mint, ref, timeout)
+        receive_response(
+          entries,
+          fun.({:status, value}, acc),
+          fun,
+          mint,
+          ref,
+          timeout,
+          value,
+          headers
+        )
 
       {:headers, ^ref, value} ->
-        receive_response(entries, fun.({:headers, value}, acc), fun, mint, ref, timeout)
+        receive_response(
+          entries,
+          fun.({:headers, value}, acc),
+          fun,
+          mint,
+          ref,
+          timeout,
+          status,
+          headers ++ value
+        )
 
       {:data, ^ref, value} ->
-        receive_response(entries, fun.({:data, value}, acc), fun, mint, ref, timeout)
+        receive_response(
+          entries,
+          fun.({:data, value}, acc),
+          fun,
+          mint,
+          ref,
+          timeout,
+          status,
+          headers
+        )
 
       {:done, ^ref} ->
-        {:ok, mint, acc}
+        {:ok, mint, acc, {status, headers}}
 
       {:error, ^ref, error} ->
-        {:error, mint, error}
+        {:error, mint, error, {status, headers}}
     end
   end
 end
