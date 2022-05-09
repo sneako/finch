@@ -165,7 +165,7 @@ defmodule Finch.Telemetry do
 
     * `:request` - The request (`Finch.Request`).
 
-  ### Receive Start
+  ### Receive Stop
 
   `[:finch, :recv, :stop]` - Executed after a response has been fully received.
 
