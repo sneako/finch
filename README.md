@@ -1,4 +1,5 @@
-<img alt="Finch" height="350px" src="assets/Finch_logo_onWhite.png?raw=true">
+![Finch](./assets/Finch_logo_onWhite.png#gh-light-mode-only)
+![Finch](./assets/Finch_logo_all-White.png#gh-dark-mode-only)
 
 [![Build Status](https://github.com/sneako/finch/workflows/CI/badge.svg?branch=main)](https://github.com/sneako/finch/actions) [![Hex pm](https://img.shields.io/hexpm/v/finch.svg?style=flat)](https://hex.pm/packages/finch) [![Hexdocs.pm](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/finch/)
 
