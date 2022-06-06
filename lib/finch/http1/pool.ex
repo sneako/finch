@@ -29,6 +29,7 @@ defmodule Finch.HTTP1.Pool do
   def request(pool, req, acc, fun, opts) do
     pool_timeout = Keyword.get(opts, :pool_timeout, 5_000)
     receive_timeout = Keyword.get(opts, :receive_timeout, 15_000)
+    max_body = Keyword.get(opts, :max_response_body, :infinity)
 
     metadata = %{request: req, pool: pool}
 
@@ -42,7 +43,8 @@ defmodule Finch.HTTP1.Pool do
           Telemetry.stop(:queue, start_time, metadata, %{idle_time: idle_time})
 
           with {:ok, conn} <- Conn.connect(conn),
-               {:ok, conn, acc} <- Conn.request(conn, req, acc, fun, receive_timeout, idle_time) do
+               {:ok, conn, acc} <-
+                 Conn.request(conn, req, acc, fun, receive_timeout, idle_time, max_body) do
             {{:ok, acc}, transfer_if_open(conn, state, from)}
           else
             {:error, conn, error} ->

@@ -31,6 +31,7 @@ defmodule Finch.HTTP2.Pool do
   def request(pool, request, acc, fun, opts) do
     opts = Keyword.put_new(opts, :receive_timeout, @default_receive_timeout)
     timeout = opts[:receive_timeout]
+    max_body = Keyword.get(opts, :max_response_body, :infinity)
 
     metadata = %{request: request}
 
@@ -48,7 +49,7 @@ defmodule Finch.HTTP2.Pool do
       start_time = Telemetry.start(:recv, metadata)
 
       try do
-        result = response_waiting_loop(acc, fun, ref, monitor, fail_safe_timeout)
+        result = response_waiting_loop(acc, fun, ref, monitor, fail_safe_timeout, max_body)
 
         case result do
           {:ok, acc, {status, headers}} ->
@@ -59,6 +60,8 @@ defmodule Finch.HTTP2.Pool do
           {:error, error, {status, headers}} ->
             metadata = Map.merge(metadata, %{error: error, status: status, headers: headers})
             Telemetry.stop(:recv, start_time, metadata)
+            clean_responses(ref)
+            Process.demonitor(monitor)
             {:error, error}
         end
       catch
@@ -80,11 +83,13 @@ defmodule Finch.HTTP2.Pool do
          ref,
          monitor_ref,
          fail_safe_timeout,
+         max_body,
          status \\ nil,
-         headers \\ []
+         headers \\ [],
+         body_sum \\ 0
        )
 
-  defp response_waiting_loop(acc, fun, ref, monitor_ref, fail_safe_timeout, status, headers) do
+  defp response_waiting_loop(acc, fun, ref, monitor_ref, fail_safe_timeout, max_body, status, headers, body_sum) do
     receive do
       {:status, ^ref, value} ->
         response_waiting_loop(
@@ -93,31 +98,64 @@ defmodule Finch.HTTP2.Pool do
           ref,
           monitor_ref,
           fail_safe_timeout,
+          max_body,
           value,
-          headers
+          headers,
+          body_sum
         )
 
       {:headers, ^ref, value} ->
-        response_waiting_loop(
-          fun.({:headers, value}, acc),
-          fun,
-          ref,
-          monitor_ref,
-          fail_safe_timeout,
-          status,
-          headers ++ value
-        )
+        with true <- is_integer(max_body),
+             {_header_name, content_length_str} <- List.keyfind(value, "content-length", 0),
+             {content_length, ""} <- Integer.parse(content_length_str),
+             true <- content_length > max_body do
+          {:error, Error.exception(:response_body_too_large), {status, headers}}
+        else
+          _ ->
+            response_waiting_loop(
+              fun.({:headers, value}, acc),
+              fun,
+              ref,
+              monitor_ref,
+              fail_safe_timeout,
+              max_body,
+              status,
+              headers ++ value,
+              body_sum
+            )
+        end
 
       {:data, ^ref, value} ->
-        response_waiting_loop(
-          fun.({:data, value}, acc),
-          fun,
-          ref,
-          monitor_ref,
-          fail_safe_timeout,
-          status,
-          headers
-        )
+        with true <- is_integer(max_body),
+             body_sum <- byte_size(value) + body_sum,
+             {^body_sum, true} <- {body_sum, body_sum > max_body} do
+          {:error, Error.exception(:response_body_too_large), {status, headers}}
+        else
+          {body_sum, _} ->
+            response_waiting_loop(
+              fun.({:data, value}, acc),
+              fun,
+              ref,
+              monitor_ref,
+              fail_safe_timeout,
+              max_body,
+              status,
+              headers,
+              body_sum
+            )
+          false ->
+            response_waiting_loop(
+              fun.({:data, value}, acc),
+              fun,
+              ref,
+              monitor_ref,
+              fail_safe_timeout,
+              max_body,
+              status,
+              headers,
+              body_sum
+            )
+        end
 
       {:done, ^ref} ->
         Process.demonitor(monitor_ref)

@@ -263,11 +263,37 @@ defmodule FinchTest do
       assert {"content-type", "application/json"} in headers
     end
 
-    test "successful post HTTP/2 streaming request, with streaming body and query string",
-         %{
-           bypass: bypass,
-           finch_name: finch_name
-         } do
+    test "reports response too large HTTP/2", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocol: :http2,
+             count: 1,
+             conn_opts: [
+               transport_opts: [
+                 verify: :verify_none
+               ]
+             ]
+           ]
+         }}
+      )
+
+      Bypass.expect(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, :binary.copy(" ", 1_000))
+      end)
+
+      request = Finch.build(:get, endpoint(bypass))
+
+      assert {:error, %Finch.Error{reason: :response_body_too_large}} =
+               Finch.request(request, finch_name, max_response_body: 999)
+    end
+
+    test "successful post HTTP/2 streaming request, with streaming body and query string", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
       start_supervised!(
         {Finch,
          name: finch_name,

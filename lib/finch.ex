@@ -258,6 +258,9 @@ defmodule Finch do
     * `:receive_timeout` - The maximum time to wait for a response before returning an error.
       Default value is `15_000`.
 
+    * `:max_response_body` - The maximum size of the response body in bytes. Exception raised has reason: `:response_body_too_large`.
+      Default value is `:infinity`.
+
   """
   @spec stream(Request.t(), name(), acc, stream(acc), keyword) ::
           {:ok, acc} | {:error, Exception.t()}
@@ -293,6 +296,9 @@ defmodule Finch do
 
     * `:receive_timeout` - The maximum time to wait for a response before returning an error.
       Default value is `15_000`.
+
+    * `:max_response_body` - The maximum size of the response body in bytes. Exception raised has reason: `:response_body_too_large`.
+      Default value is `:infinity`.
 
   """
   @spec request(Request.t(), name(), keyword()) ::

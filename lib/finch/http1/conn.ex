@@ -4,6 +4,7 @@ defmodule Finch.Conn do
   alias Finch.MintHTTP1
   alias Finch.SSL
   alias Finch.Telemetry
+  alias Finch.Error
 
   def new(scheme, host, port, opts, parent) do
     %{
@@ -93,9 +94,9 @@ defmodule Finch.Conn do
     end
   end
 
-  def request(%{mint: nil} = conn, _, _, _, _, _), do: {:error, conn, "Could not connect"}
+  def request(%{mint: nil} = conn, _, _, _, _, _, _), do: {:error, conn, "Could not connect"}
 
-  def request(conn, req, acc, fun, receive_timeout, idle_time) do
+  def request(conn, req, acc, fun, receive_timeout, idle_time, max_body) do
     full_path = Finch.Request.request_path(req)
 
     metadata = %{request: req}
@@ -117,7 +118,7 @@ defmodule Finch.Conn do
             {:ok, mint} ->
               Telemetry.stop(:send, start_time, metadata, extra_measurements)
               start_time = Telemetry.start(:recv, metadata, extra_measurements)
-              response = receive_response([], acc, fun, mint, ref, receive_timeout)
+              response = receive_response([], acc, fun, mint, ref, receive_timeout, max_body)
               handle_response(response, conn, metadata, start_time, extra_measurements)
 
             {:error, mint, error} ->
@@ -183,23 +184,25 @@ defmodule Finch.Conn do
       {:error, mint, error, {status, headers}} ->
         metadata = Map.merge(metadata, %{error: error, status: status, headers: headers})
         Telemetry.stop(:recv, start_time, metadata, extra_measurements)
-        {:error, %{conn | mint: mint}, error}
+        {:error, close(%{conn | mint: mint}), error}
     end
   end
 
-  defp receive_response(entries, acc, fun, mint, ref, timeout, status \\ nil, headers \\ [])
+  defp receive_response(entries, acc, fun, mint, ref, timeout, max_body, status \\ nil, headers \\ [], body_sum \\ 0)
 
-  defp receive_response([], acc, fun, mint, ref, timeout, status, headers) do
-    case MintHTTP1.recv(mint, 0, timeout) do
+  defp receive_response([], acc, fun, mint, ref, timeout, max_body, status, headers, body_sum) do
+    num_bytes_to_receive = if is_integer(max_body), do: max_body - body_sum, else: 0
+    case MintHTTP1.recv(mint, num_bytes_to_receive, timeout) do
       {:ok, mint, entries} ->
-        receive_response(entries, acc, fun, mint, ref, timeout, status, headers)
+        receive_response(entries, acc, fun, mint, ref, timeout, max_body, status, headers, body_sum)
 
       {:error, mint, error, _responses} ->
         {:error, mint, error, {status, headers}}
     end
   end
 
-  defp receive_response([entry | entries], acc, fun, mint, ref, timeout, status, headers) do
+
+    defp receive_response([entry | entries], acc, fun, mint, ref, timeout, max_body, status, headers, body_sum) do
     case entry do
       {:status, ^ref, value} ->
         receive_response(
@@ -209,39 +212,65 @@ defmodule Finch.Conn do
           mint,
           ref,
           timeout,
+          max_body,
           value,
-          headers
+          headers,
+          body_sum
         )
 
       {:headers, ^ref, value} ->
-        receive_response(
-          entries,
-          fun.({:headers, value}, acc),
-          fun,
-          mint,
-          ref,
-          timeout,
-          status,
-          headers ++ value
-        )
+        if content_length_is_greater?(value, max_body) do
+          {:error, mint, Error.exception(:response_body_too_large)}
+        else
+          receive_response(
+            entries,
+            fun.({:headers, value}, acc),
+            fun,
+            mint,
+            ref,
+            timeout,
+            max_body,
+            status,
+            headers ++ value,
+            body_sum
+          )
+        end
 
       {:data, ^ref, value} ->
-        receive_response(
-          entries,
-          fun.({:data, value}, acc),
-          fun,
-          mint,
-          ref,
-          timeout,
-          status,
-          headers
-        )
+        body_sum = if is_integer(max_body), do: byte_size(value) + body_sum, else: 0
+
+        with true <- is_integer(max_body),
+             true <- body_sum > max_body do
+          {:error, mint, Error.exception(:response_body_too_large), {status, headers}}
+        else
+          _ ->
+            receive_response(
+              entries,
+              fun.({:data, value}, acc),
+              fun,
+              mint,
+              ref,
+              timeout,
+              max_body,
+              status,
+              headers,
+              body_sum
+            )
+        end
 
       {:done, ^ref} ->
         {:ok, mint, acc, {status, headers}}
 
       {:error, ^ref, error} ->
         {:error, mint, error, {status, headers}}
+    end
+  end
+
+  defp content_length_is_greater?(headers, max_body) do
+    with true <- is_integer(max_body),
+         {_header_name, content_length_str} <- List.keyfind(headers, "content-length", 0) do
+      {content_length, ""} = Integer.parse(content_length_str)
+      content_length > max_body
     end
   end
 end
