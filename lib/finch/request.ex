@@ -117,7 +117,7 @@ defmodule Finch.Request do
 
   @doc false
   def parse_url(url) when is_binary(url) do
-    url |> URI.parse() |> parse_url()
+    url |> String.trim() |> URI.parse() |> parse_url()
   end
 
   def parse_url(%URI{} = parsed_uri) do
