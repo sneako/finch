@@ -39,7 +39,7 @@ defmodule Finch.MixProject do
       {:nimble_options, "~> 0.4.0"},
       {:telemetry, "~> 0.4 or ~> 1.0"},
       {:mime, "~> 1.0 or ~> 2.0"},
-      {:ex_doc, "~> 0.21", only: :dev, runtime: false},
+      {:ex_doc, "~> 0.28", only: :dev, runtime: false},
       {:credo, "~> 1.3", only: [:dev, :test]},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
       {:bypass, "~> 2.0", only: :test},
@@ -49,19 +49,25 @@ defmodule Finch.MixProject do
     ]
   end
 
-  def package do
+  defp package do
     [
       licenses: ["MIT"],
-      links: %{"GitHub" => @repo_url}
+      links: %{
+        "GitHub" => @repo_url,
+        "Changelog" => "https://hexdocs.pm/finch/changelog.html"
+      }
     ]
   end
 
-  def docs do
+  defp docs do
     [
       logo: "assets/Finch_logo_all-White.png",
       source_ref: "v#{@version}",
       source_url: @repo_url,
-      main: @name
+      main: @name,
+      extras: [
+        "CHANGELOG.md"
+      ]
     ]
   end
 end
