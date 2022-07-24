@@ -107,7 +107,7 @@ defmodule Finch do
   #{NimbleOptions.docs(@pool_config_schema)}
   """
   def start_link(opts) do
-    name = Keyword.get(opts, :name) || raise ArgumentError, "must supply a name"
+    name = finch_name!(opts)
     pools = Keyword.get(opts, :pools, []) |> pool_options!()
     {default_pool_config, pools} = Map.pop(pools, :default)
 
@@ -122,6 +122,13 @@ defmodule Finch do
     Supervisor.start_link(__MODULE__, config, name: supervisor_name(name))
   end
 
+  def child_spec(opts) do
+    %{
+      id: finch_name!(opts),
+      start: {__MODULE__, :start_link, [opts]}
+    }
+  end
+
   @impl true
   def init(config) do
     children = [
@@ -131,6 +138,10 @@ defmodule Finch do
     ]
 
     Supervisor.init(children, strategy: :one_for_all)
+  end
+
+  defp finch_name!(opts) do
+    Keyword.get(opts, :name) || raise(ArgumentError, "must supply a name")
   end
 
   defp pool_options!(pools) do

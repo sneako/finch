@@ -23,6 +23,12 @@ defmodule FinchTest do
                ":max_idle_time is deprecated. Use :conn_max_idle_time instead."
              )
     end
+
+    test "multiple instances can be started under a single supervisor without additional configuration",
+         %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+      start_supervised!({Finch, name: String.to_atom("#{finch_name}2")})
+    end
   end
 
   describe "pool configuration" do
