@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.13.0 (2022-07-26)
+
+### Enhancements
+
+- Define `Finch.child_spec/1` which will automatically use the `Finch` `:name` as the `:id`, allowing users to start multiple instances under the same Supervisor without any additional configuration #202
+- Include the changelog in the generated HexDocs #201
+- Fix typo in `Finch.Telemetry` docs #198
+
 ## v0.12.0 (2022-05-03)
 
 ### Enhancements
