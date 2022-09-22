@@ -20,7 +20,7 @@ defmodule FinchTest do
 
       assert String.contains?(
                msg,
-               ":max_idle_time is deprecated. Use :conn_max_idle_time instead."
+               ":max_idle_time option is deprecated. Use :conn_max_idle_time instead."
              )
     end
 
@@ -80,7 +80,7 @@ defmodule FinchTest do
     test "raises when invalid configuration is provided", %{finch_name: finch_name} do
       assert_raise(
         NimbleOptions.ValidationError,
-        ~r/expected :count to be a positive integer/,
+        "invalid value for :count option: expected positive integer, got: :dog",
         fn ->
           Finch.start_link(name: finch_name, pools: %{default: [count: :dog]})
         end
