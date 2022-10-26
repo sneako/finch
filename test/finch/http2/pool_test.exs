@@ -14,6 +14,7 @@ defmodule Finch.HTTP2.PoolTest do
 
   setup do
     start_supervised({Registry, keys: :unique, name: :test})
+
     request = %{
       scheme: :https,
       method: "GET",
@@ -22,18 +23,21 @@ defmodule Finch.HTTP2.PoolTest do
       host: "localhost",
       port: nil,
       headers: [],
-      body: nil,
+      body: nil
     }
 
     {:ok, request: request}
   end
 
   def start_pool(port) do
-    Pool.start_link({{:https, "localhost", port}, :test, 0, conn_opts: [transport_opts: [verify: :verify_none]]})
+    Pool.start_link(
+      {{:https, "localhost", port}, :test, 0, conn_opts: [transport_opts: [verify: :verify_none]]}
+    )
   end
 
   test "request/response", %{request: req} do
     us = self()
+
     {:ok, pool} =
       start_server_and_connect_with(fn port ->
         start_pool(port)
@@ -44,7 +48,7 @@ defmodule Finch.HTTP2.PoolTest do
       send(us, {:resp, {:ok, resp}})
     end)
 
-    assert_recv_frames [headers(stream_id: stream_id)]
+    assert_recv_frames([headers(stream_id: stream_id)])
 
     hbf = server_encode_headers([{":status", "200"}])
 
@@ -68,8 +72,10 @@ defmodule Finch.HTTP2.PoolTest do
     assert %{reason: {:max_header_list_size_exceeded, _, _}} = error
   end
 
-  test "if server sends GOAWAY and then replies, we get the replies but are closed for writing", %{request: req} do
+  test "if server sends GOAWAY and then replies, we get the replies but are closed for writing",
+       %{request: req} do
     us = self()
+
     {:ok, pool} =
       start_server_and_connect_with(fn port ->
         start_pool(port)
@@ -80,19 +86,19 @@ defmodule Finch.HTTP2.PoolTest do
       send(us, {:resp, result})
     end)
 
-    assert_recv_frames [headers(stream_id: stream_id)]
+    assert_recv_frames([headers(stream_id: stream_id)])
 
     hbf = server_encode_headers([{":status", "200"}])
 
     # Force the connection to enter read only mode
     server_send_frames([
-      goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "all good"),
+      goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "all good")
     ])
 
     :timer.sleep(10)
 
     # We can't send any more requests since the connection is closed for writing.
-    assert {:error, %{reason: :read_only}} = request(pool, req, [])
+    assert {:error, %Finch.Error{reason: :read_only}} = request(pool, req, [])
 
     server_send_frames([
       headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
@@ -107,11 +113,14 @@ defmodule Finch.HTTP2.PoolTest do
     Process.sleep(50)
 
     # If we try to make a request now that the server shut down, we get an error.
-    assert {:error, %{reason: :disconnected}} = request(pool, req, [])
+    assert {:error, %Finch.Error{reason: :disconnected}} = request(pool, req, [])
   end
 
-  test "if server disconnects while there are waiting clients, we notify those clients", %{request: req} do
+  test "if server disconnects while there are waiting clients, we notify those clients", %{
+    request: req
+  } do
     us = self()
+
     {:ok, pool} =
       start_server_and_connect_with(fn port ->
         start_pool(port)
@@ -122,7 +131,7 @@ defmodule Finch.HTTP2.PoolTest do
       send(us, {:resp, result})
     end)
 
-    assert_recv_frames [headers(stream_id: stream_id)]
+    assert_recv_frames([headers(stream_id: stream_id)])
 
     hbf = server_encode_headers([{":status", "200"}])
 
@@ -132,7 +141,7 @@ defmodule Finch.HTTP2.PoolTest do
 
     :ok = :ssl.close(server_socket())
 
-    assert_receive {:resp, {:error, %{reason: :connection_closed}}}
+    assert_receive {:resp, {:error, %Finch.Error{reason: :connection_closed}}}
   end
 
   test "if connections reaches max concurrent streams, we return an error", %{request: req} do
@@ -147,41 +156,44 @@ defmodule Finch.HTTP2.PoolTest do
       request(pool, req, [])
     end)
 
-    assert_recv_frames [headers(stream_id: _stream_id)]
+    assert_recv_frames([headers(stream_id: _stream_id)])
 
-    assert {:error, %{reason: :too_many_concurrent_requests}} = request(pool, req, [])
+    assert {:error, %Mint.HTTPError{reason: :too_many_concurrent_requests}} =
+             request(pool, req, [])
   end
 
   test "request timeout with timeout of 0", %{request: req} do
     us = self()
 
-    {:ok, pool} = start_server_and_connect_with(fn port ->
-      start_pool(port)
-    end)
+    {:ok, pool} =
+      start_server_and_connect_with(fn port ->
+        start_pool(port)
+      end)
 
     spawn(fn ->
       resp = request(pool, req, receive_timeout: 0)
       send(us, {:resp, resp})
     end)
 
-    assert_recv_frames [headers(stream_id: stream_id), rst_stream(stream_id: stream_id)]
+    assert_recv_frames([headers(stream_id: stream_id), rst_stream(stream_id: stream_id)])
 
-    assert_receive {:resp, {:error, %{reason: :request_timeout}}}
+    assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}}}
   end
 
   test "request timeout with timeout > 0", %{request: req} do
     us = self()
 
-    {:ok, pool} = start_server_and_connect_with(fn port ->
-      start_pool(port)
-    end)
+    {:ok, pool} =
+      start_server_and_connect_with(fn port ->
+        start_pool(port)
+      end)
 
     spawn(fn ->
       resp = request(pool, req, receive_timeout: 50)
       send(us, {:resp, resp})
     end)
 
-    assert_recv_frames [headers(stream_id: stream_id)]
+    assert_recv_frames([headers(stream_id: stream_id)])
 
     hbf = server_encode_headers([{":status", "200"}])
 
@@ -189,21 +201,23 @@ defmodule Finch.HTTP2.PoolTest do
       headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers]))
     ])
 
-    assert_receive {:resp, {:error, %{reason: :request_timeout}}}
+    assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}}}
   end
 
   test "request timeout with timeout > 0 that fires after request is done", %{request: req} do
     us = self()
-    {:ok, pool} = start_server_and_connect_with(fn port ->
-      start_pool(port)
-    end)
+
+    {:ok, pool} =
+      start_server_and_connect_with(fn port ->
+        start_pool(port)
+      end)
 
     spawn(fn ->
       resp = request(pool, req, receive_timeout: 50)
       send(us, {:resp, resp})
     end)
 
-    assert_recv_frames [headers(stream_id: stream_id)]
+    assert_recv_frames([headers(stream_id: stream_id)])
 
     server_send_frames([
       headers(
@@ -215,23 +229,25 @@ defmodule Finch.HTTP2.PoolTest do
 
     assert_receive {:resp, {:ok, _}}
 
-    assert_recv_frames [rst_stream(stream_id: ^stream_id, error_code: :no_error)]
+    assert_recv_frames([rst_stream(stream_id: ^stream_id, error_code: :no_error)])
 
     refute_receive _any, 200
   end
 
   test "request timeout with timeout > 0 where :done arrives after timeout", %{request: req} do
     us = self()
-    {:ok, pool} = start_server_and_connect_with(fn port ->
-      start_pool(port)
-    end)
+
+    {:ok, pool} =
+      start_server_and_connect_with(fn port ->
+        start_pool(port)
+      end)
 
     spawn(fn ->
       resp = request(pool, req, receive_timeout: 10)
       send(us, {:resp, resp})
     end)
 
-    assert_recv_frames [headers(stream_id: stream_id)]
+    assert_recv_frames([headers(stream_id: stream_id)])
 
     # We sleep enough so that the timeout fires, then we send a response.
     Process.sleep(30)
@@ -245,9 +261,9 @@ defmodule Finch.HTTP2.PoolTest do
     ])
 
     # When there's a timeout, we cancel the request.
-    assert_recv_frames [rst_stream(stream_id: ^stream_id, error_code: :cancel)]
+    assert_recv_frames([rst_stream(stream_id: ^stream_id, error_code: :cancel)])
 
-    assert_receive {:resp, {:error, %{reason: :request_timeout}}}
+    assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}}}
   end
 
   @pdict_key {__MODULE__, :http2_test_server}
@@ -294,4 +310,3 @@ defmodule Finch.HTTP2.PoolTest do
     MockHTTP2Server.get_socket(server)
   end
 end
-

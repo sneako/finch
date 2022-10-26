@@ -2,8 +2,8 @@ defmodule Finch.MixProject do
   use Mix.Project
 
   @name "Finch"
-  @version "0.6.2"
-  @repo_url "https://github.com/keathley/finch"
+  @version "0.13.0"
+  @repo_url "https://github.com/sneako/finch"
 
   def project do
     [
@@ -33,34 +33,41 @@ defmodule Finch.MixProject do
 
   defp deps do
     [
-      {:mint, "~> 1.2"},
+      {:mint, "~> 1.3"},
       {:castore, "~> 0.1"},
-      {:nimble_pool, "~> 0.2"},
-      {:nimble_options, "~> 0.3.5"},
-      {:telemetry, "~> 0.4"},
-      {:ex_doc, "~> 0.21", only: :dev, runtime: false},
+      {:nimble_pool, "~> 0.2.6"},
+      {:nimble_options, "~> 0.4"},
+      {:telemetry, "~> 0.4 or ~> 1.0"},
+      {:mime, "~> 1.0 or ~> 2.0"},
+      {:ex_doc, "~> 0.28", only: :dev, runtime: false},
       {:credo, "~> 1.3", only: [:dev, :test]},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:bypass, "~> 1.0", only: :test},
-      {:cowboy, "~> 2.0", only: [:dev, :test]},
+      {:bypass, "~> 2.0", only: :test},
+      {:cowboy, "~> 2.7", only: [:dev, :test]},
       {:plug_cowboy, "~> 2.0", only: [:dev, :test]},
       {:x509, "~> 0.8", only: [:dev, :test]}
     ]
   end
 
-  def package do
+  defp package do
     [
       licenses: ["MIT"],
-      links: %{"GitHub" => @repo_url}
+      links: %{
+        "GitHub" => @repo_url,
+        "Changelog" => "https://hexdocs.pm/finch/changelog.html"
+      }
     ]
   end
 
-  def docs do
+  defp docs do
     [
       logo: "assets/Finch_logo_all-White.png",
       source_ref: "v#{@version}",
       source_url: @repo_url,
-      main: @name
+      main: @name,
+      extras: [
+        "CHANGELOG.md"
+      ]
     ]
   end
 end

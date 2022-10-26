@@ -1,83 +1,126 @@
 defmodule FinchTest do
-  use ExUnit.Case, async: true
+  use FinchCase, async: true
   doctest Finch
 
-  alias Finch.Response
+  import ExUnit.CaptureIO
 
-  setup do
-    {:ok, bypass: Bypass.open()}
-  end
+  alias Finch.Response
+  alias Finch.MockSocketServer
 
   describe "start_link/1" do
     test "raises if :name is not provided" do
       assert_raise(ArgumentError, ~r/must supply a name/, fn -> Finch.start_link([]) end)
     end
+
+    test "max_idle_time is deprecated", %{finch_name: finch_name} do
+      msg =
+        capture_io(:stderr, fn ->
+          start_supervised!({Finch, name: finch_name, pools: %{default: [max_idle_time: 1_000]}})
+        end)
+
+      assert String.contains?(
+               msg,
+               ":max_idle_time option is deprecated. Use :conn_max_idle_time instead."
+             )
+    end
+
+    test "multiple instances can be started under a single supervisor without additional configuration",
+         %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+      start_supervised!({Finch, name: String.to_atom("#{finch_name}2")})
+    end
   end
 
   describe "pool configuration" do
-    test "unconfigured", %{bypass: bypass} do
-      start_supervised!({Finch, name: MyFinch})
+    test "unconfigured", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
       expect_any(bypass)
 
-      {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch)
-      assert [_pool] = get_pools(MyFinch, shp(bypass))
+      {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+      assert [_pool] = get_pools(finch_name, shp(bypass))
 
-      {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch)
+      {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
     end
 
-    test "default can be configured", %{bypass: bypass} do
+    test "default can be configured", %{bypass: bypass, finch_name: finch_name} do
       {:ok, _} =
         Finch.start_link(
-          name: MyFinch,
+          name: finch_name,
           pools: %{default: [count: 5, size: 5]}
         )
 
       expect_any(bypass)
 
-      {:ok, %Response{}} = Finch.build("GET", endpoint(bypass)) |> Finch.request(MyFinch)
-      pools = get_pools(MyFinch, shp(bypass))
+      {:ok, %Response{}} = Finch.build("GET", endpoint(bypass)) |> Finch.request(finch_name)
+      pools = get_pools(finch_name, shp(bypass))
       assert length(pools) == 5
     end
 
-    test "raises when invalid configuration is provided" do
+    test "TLS options will be dropped from default if it connects to http",
+         %{bypass: bypass, finch_name: finch_name} do
+      {:ok, _} =
+        Finch.start_link(
+          name: finch_name,
+          pools: %{
+            default: [
+              count: 5,
+              size: 5,
+              conn_opts: [transport_opts: [verify: :verify_none]]
+            ]
+          }
+        )
+
+      expect_any(bypass)
+
+      # you will get badarg error if the verify option is applied to the connection.
+      assert {:ok, %Response{}} =
+               Finch.build("GET", endpoint(bypass)) |> Finch.request(finch_name)
+    end
+
+    test "raises when invalid configuration is provided", %{finch_name: finch_name} do
       assert_raise(
         NimbleOptions.ValidationError,
-        ~r/expected :count to be a positive integer/,
+        "invalid value for :count option: expected positive integer, got: :dog",
         fn ->
-          Finch.start_link(name: MyFinch, pools: %{default: [count: :dog]})
+          Finch.start_link(name: finch_name, pools: %{default: [count: :dog]})
         end
       )
 
       assert_raise(ArgumentError, ~r/invalid destination/, fn ->
-        Finch.start_link(name: MyFinch, pools: %{invalid: [count: 5, size: 5]})
+        Finch.start_link(name: finch_name, pools: %{invalid: [count: 5, size: 5]})
       end)
     end
 
     test "pools are started based on only the {scheme, host, port} of the URLs",
-         %{bypass: bypass} do
+         %{bypass: bypass, finch_name: finch_name} do
       other_bypass = Bypass.open()
       default_bypass = Bypass.open()
+      unix_socket = {:local, "/my/unix/socket"}
 
       start_supervised!(
         {Finch,
-         name: MyFinch,
+         name: finch_name,
          pools: %{
            endpoint(bypass, "/some-path") => [count: 5, size: 5],
-           endpoint(other_bypass, "/some-other-path") => [count: 10, size: 10]
+           endpoint(other_bypass, "/some-other-path") => [count: 10, size: 10],
+           {:http, unix_socket} => [count: 5, size: 5],
+           {:https, unix_socket} => [count: 10, size: 10]
          }}
       )
 
-      assert get_pools(MyFinch, shp(bypass)) |> length() == 5
-      assert get_pools(MyFinch, shp(other_bypass)) |> length() == 10
+      assert get_pools(finch_name, shp(bypass)) |> length() == 5
+      assert get_pools(finch_name, shp(other_bypass)) |> length() == 10
+      assert get_pools(finch_name, shp({:http, unix_socket})) |> length() == 5
+      assert get_pools(finch_name, shp({:https, unix_socket})) |> length() == 10
 
       # no pool has been started for this unconfigured shp
-      assert get_pools(MyFinch, shp(default_bypass)) |> length() == 0
+      assert get_pools(finch_name, shp(default_bypass)) |> length() == 0
     end
 
-    test "pools with an invalid URL cannot be started" do
+    test "pools with an invalid URL cannot be started", %{finch_name: finch_name} do
       assert_raise(ArgumentError, ~r/scheme is required for url: example.com/, fn ->
         Finch.start_link(
-          name: MyFinch,
+          name: finch_name,
           pools: %{
             "example.com" => [count: 5, size: 5]
           }
@@ -86,7 +129,7 @@ defmodule FinchTest do
 
       assert_raise(ArgumentError, ~r/scheme is required for url: example/, fn ->
         Finch.start_link(
-          name: MyFinch,
+          name: finch_name,
           pools: %{
             "example" => [count: 5, size: 5]
           }
@@ -95,7 +138,7 @@ defmodule FinchTest do
 
       assert_raise(ArgumentError, ~r/scheme is required for url: :443/, fn ->
         Finch.start_link(
-          name: MyFinch,
+          name: finch_name,
           pools: %{
             ":443" => [count: 5, size: 5]
           }
@@ -103,12 +146,14 @@ defmodule FinchTest do
       end)
     end
 
-    test "impossible to accidentally start multiple pools when they are dynamically started", %{
-      bypass: bypass
-    } do
+    test "impossible to accidentally start multiple pools when they are dynamically started",
+         %{
+           bypass: bypass,
+           finch_name: finch_name
+         } do
       start_supervised!(
         {Finch,
-         name: MyFinch,
+         name: finch_name,
          pools: %{
            default: [count: 5, size: 5]
          }}
@@ -118,16 +163,16 @@ defmodule FinchTest do
 
       Task.async_stream(
         1..50,
-        fn _ -> Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch) end,
+        fn _ -> Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name) end,
         max_concurrency: 50
       )
       |> Stream.run()
 
-      assert get_pools(MyFinch, shp(bypass)) |> length() == 5
+      assert get_pools(finch_name, shp(bypass)) |> length() == 5
     end
   end
 
-  describe "build/4" do
+  describe "build/5" do
     test "raises if unsupported atom request method provided", %{bypass: bypass} do
       assert_raise ArgumentError, ~r/got unsupported atom method :gimme/, fn ->
         Finch.build(:gimme, endpoint(bypass))
@@ -142,8 +187,8 @@ defmodule FinchTest do
   end
 
   describe "request/3" do
-    test "successful get request, with query string", %{bypass: bypass} do
-      start_supervised!({Finch, name: MyFinch})
+    test "successful get request, with query string", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
       query_string = "query=value"
 
       Bypass.expect_once(bypass, "GET", "/", fn conn ->
@@ -152,11 +197,15 @@ defmodule FinchTest do
       end)
 
       assert {:ok, %{status: 200}} =
-               Finch.build(:get, endpoint(bypass, "?" <> query_string)) |> Finch.request(MyFinch)
+               Finch.build(:get, endpoint(bypass, "?" <> query_string))
+               |> Finch.request(finch_name)
     end
 
-    test "successful post request, with body and query string", %{bypass: bypass} do
-      start_supervised!({Finch, name: MyFinch})
+    test "successful post request, with body and query string", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
 
       req_body = "{\"response\":\"please\"}"
       response_body = "{\"right\":\"here\"}"
@@ -180,19 +229,17 @@ defmodule FinchTest do
                  [{header_key, header_val}],
                  req_body
                )
-               |> Finch.request(MyFinch)
+               |> Finch.request(finch_name)
 
-      assert {_, "application/json"} =
-               Enum.find(headers, fn
-                 {"content-type", _} -> true
-                 _ -> false
-               end)
+      assert {"content-type", "application/json"} in headers
     end
 
-    test "successful post streaming request, with streaming body and query string", %{
-      bypass: bypass
-    } do
-      start_supervised!({Finch, name: MyFinch})
+    test "successful post HTTP/1 streaming request, with streaming body and query string",
+         %{
+           bypass: bypass,
+           finch_name: finch_name
+         } do
+      start_supervised!({Finch, name: finch_name})
 
       req_stream = Stream.map(1..10_000, fn _ -> "please" end)
       req_body = req_stream |> Enum.join("")
@@ -217,17 +264,165 @@ defmodule FinchTest do
                  [{header_key, header_val}],
                  {:stream, req_stream}
                )
-               |> Finch.request(MyFinch)
+               |> Finch.request(finch_name)
 
-      assert {_, "application/json"} =
-               Enum.find(headers, fn
-                 {"content-type", _} -> true
-                 _ -> false
-               end)
+      assert {"content-type", "application/json"} in headers
     end
 
-    test "successful get request, with query string, when given a %URI{}", %{bypass: bypass} do
-      start_supervised!({Finch, name: MyFinch})
+    test "successful post HTTP/2 streaming request, with streaming body and query string",
+         %{
+           bypass: bypass,
+           finch_name: finch_name
+         } do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocol: :http2,
+             count: 1,
+             conn_opts: [
+               transport_opts: [
+                 verify: :verify_none
+               ]
+             ]
+           ]
+         }}
+      )
+
+      data = :crypto.strong_rand_bytes(1_000)
+      # 1MB of data
+      req_stream = Stream.repeatedly(fn -> data end) |> Stream.take(1_000)
+      req_body = req_stream |> Enum.join("")
+      response_body = data
+      header_key = "content-type"
+      header_val = "application/octet-stream"
+      query_string = "query=value"
+
+      Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert conn.query_string == query_string
+        assert {:ok, ^req_body, conn} = Plug.Conn.read_body(conn)
+
+        conn
+        |> Plug.Conn.put_resp_header(header_key, header_val)
+        |> Plug.Conn.send_resp(200, response_body)
+      end)
+
+      assert {:ok, %Response{status: 200, headers: headers, body: ^response_body}} =
+               Finch.build(
+                 :post,
+                 endpoint(bypass, "?" <> query_string),
+                 [{header_key, header_val}],
+                 {:stream, req_stream}
+               )
+               |> Finch.request(finch_name)
+
+      assert {header_key, header_val} in headers
+    end
+
+    test "successful post HTTP/2 with a large binary body",
+         %{
+           bypass: bypass,
+           finch_name: finch_name
+         } do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocol: :http2,
+             count: 1,
+             conn_opts: [
+               transport_opts: [
+                 verify: :verify_none
+               ]
+             ]
+           ]
+         }}
+      )
+
+      data = :crypto.strong_rand_bytes(1_000)
+      # 2MB of data
+      req_body = :binary.copy(data, 2_000)
+      response_body = data
+      header_key = "content-type"
+      header_val = "application/octet-stream"
+      query_string = "query=value"
+
+      Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert conn.query_string == query_string
+        assert {:ok, ^req_body, conn} = Plug.Conn.read_body(conn)
+
+        conn
+        |> Plug.Conn.put_resp_header(header_key, header_val)
+        |> Plug.Conn.send_resp(200, response_body)
+      end)
+
+      assert {:ok, %Response{status: 200, headers: headers, body: ^response_body}} =
+               Finch.build(
+                 :post,
+                 endpoint(bypass, "?" <> query_string),
+                 [{header_key, header_val}],
+                 req_body
+               )
+               |> Finch.request(finch_name)
+
+      assert {header_key, header_val} in headers
+    end
+
+    test "successful post HTTP/2 with a large iolist body",
+         %{
+           bypass: bypass,
+           finch_name: finch_name
+         } do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocol: :http2,
+             count: 1,
+             conn_opts: [
+               transport_opts: [
+                 verify: :verify_none
+               ]
+             ]
+           ]
+         }}
+      )
+
+      # 2MB of data
+      req_body = List.duplicate(125, 2_000_000)
+      req_body_binary = IO.iodata_to_binary(req_body)
+      response_body = req_body_binary
+      header_key = "content-type"
+      header_val = "application/octet-stream"
+      query_string = "query=value"
+
+      Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert conn.query_string == query_string
+        assert {:ok, ^req_body_binary, conn} = Plug.Conn.read_body(conn)
+
+        conn
+        |> Plug.Conn.put_resp_header(header_key, header_val)
+        |> Plug.Conn.send_resp(200, response_body)
+      end)
+
+      assert {:ok, %Response{status: 200, headers: headers, body: ^response_body}} =
+               Finch.build(
+                 :post,
+                 endpoint(bypass, "?" <> query_string),
+                 [{header_key, header_val}],
+                 req_body
+               )
+               |> Finch.request(finch_name)
+
+      assert {header_key, header_val} in headers
+    end
+
+    test "successful get request, with query string, when given a %URI{}",
+         %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
       query_string = "query=value"
       uri = URI.parse(endpoint(bypass, "?" <> query_string))
 
@@ -236,11 +431,38 @@ defmodule FinchTest do
         Plug.Conn.send_resp(conn, 200, "OK")
       end)
 
-      assert {:ok, %{status: 200}} = Finch.build(:get, uri) |> Finch.request(MyFinch)
+      assert {:ok, %{status: 200}} = Finch.build(:get, uri) |> Finch.request(finch_name)
     end
 
-    test "properly handles connection: close", %{bypass: bypass} do
-      start_supervised!({Finch, name: MyFinch})
+    test "successful get request to a unix socket", %{finch_name: finch_name} do
+      {:ok, {:local, socket_path}} = MockSocketServer.start()
+
+      start_supervised!({Finch, name: finch_name})
+
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, "http://localhost/", [], nil, unix_socket: socket_path)
+               |> Finch.request(finch_name)
+    end
+
+    @tag :capture_log
+    test "successful get request to a unix socket with tls", %{finch_name: finch_name} do
+      {:ok, socket_address = {:local, socket_path}} = MockSocketServer.start(ssl?: true)
+
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           {:https, socket_address} => [conn_opts: [transport_opts: [verify: :verify_none]]]
+         }}
+      )
+
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, "https://localhost/", [], nil, unix_socket: socket_path)
+               |> Finch.request(finch_name)
+    end
+
+    test "properly handles connection: close", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
 
       Bypass.expect(bypass, fn conn ->
         conn
@@ -256,12 +478,12 @@ defmodule FinchTest do
         )
 
       for _ <- 1..10 do
-        assert {:ok, %Response{status: 200, body: "OK"}} = Finch.request(request, MyFinch)
+        assert {:ok, %Response{status: 200, body: "OK"}} = Finch.request(request, finch_name)
       end
     end
 
-    test "returns error when request times out", %{bypass: bypass} do
-      start_supervised!({Finch, name: MyFinch})
+    test "returns error when request times out", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
 
       timeout = 100
 
@@ -272,39 +494,39 @@ defmodule FinchTest do
 
       assert {:error, %{reason: :timeout}} =
                Finch.build(:get, endpoint(bypass))
-               |> Finch.request(MyFinch, receive_timeout: timeout)
+               |> Finch.request(finch_name, receive_timeout: timeout)
 
       assert {:ok, %Response{}} =
                Finch.build(:get, endpoint(bypass))
-               |> Finch.request(MyFinch, receive_timeout: timeout * 2)
+               |> Finch.request(finch_name, receive_timeout: timeout * 2)
     end
 
-    test "returns error when requesting bad address" do
-      start_supervised!({Finch, name: MyFinch})
+    test "returns error when requesting bad address", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
 
       assert {:error, %{reason: :nxdomain}} =
-               Finch.build(:get, "http://idontexist.wat") |> Finch.request(MyFinch)
+               Finch.build(:get, "http://idontexist.wat") |> Finch.request(finch_name)
     end
 
-    test "worker exits when pool times out", %{bypass: bypass} do
-      start_supervised!({Finch, name: MyFinch})
+    test "worker exits when pool times out", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
       expect_any(bypass)
 
-      {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch)
+      {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
 
-      :sys.suspend(MyFinch)
+      :sys.suspend(finch_name)
 
-      e =
-        assert_raise RuntimeError, fn ->
-          Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch, pool_timeout: 0)
-        end
+      assert_raise RuntimeError,
+                   ~r/Finch was unable to provide a connection within the timeout/,
+                   fn ->
+                     Finch.build(:get, endpoint(bypass))
+                     |> Finch.request(finch_name, pool_timeout: 0)
+                   end
 
-      assert e.message =~ "Finch was unable to provide a connection within the timeout"
-
-      :sys.resume(MyFinch)
+      :sys.resume(finch_name)
 
       assert {:ok, %Response{}} =
-               Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch, pool_timeout: 1)
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name, pool_timeout: 1)
     end
   end
 
@@ -319,339 +541,19 @@ defmodule FinchTest do
       stop_supervised(Finch)
     end
 
-    test "caller is unable to override mode", %{bypass: bypass} do
-      start_supervised!({Finch, name: MyFinch, pools: %{default: [conn_opts: [mode: :active]]}})
+    test "caller is unable to override mode", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{default: [conn_opts: [mode: :active]]}}
+      )
+
       expect_any(bypass)
-      assert {:ok, _} = Finch.build(:get, endpoint(bypass)) |> Finch.request(MyFinch)
-    end
-  end
-
-  describe "telemetry" do
-    setup %{bypass: bypass} do
-      Bypass.expect_once(bypass, "GET", "/", fn conn ->
-        Plug.Conn.send_resp(conn, 200, "OK")
-      end)
-
-      client = MyFinch
-      start_supervised!({Finch, name: client})
-
-      {:ok, client: client}
-    end
-
-    test "reports queue spans", %{bypass: bypass, client: client} do
-      {test_name, _arity} = __ENV__.function
-
-      parent = self()
-      ref = make_ref()
-
-      handler = fn event, measurements, meta, _config ->
-        case event do
-          [:finch, :queue, :start] ->
-            assert is_integer(measurements.system_time)
-            assert is_pid(meta.pool)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            send(parent, {ref, :start})
-
-          [:finch, :queue, :stop] ->
-            assert is_integer(measurements.duration)
-            assert is_integer(measurements.idle_time)
-            assert is_pid(meta.pool)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            send(parent, {ref, :stop})
-
-          [:finch, :queue, :exception] ->
-            assert is_integer(measurements.duration)
-            assert is_pid(meta.pool)
-            assert meta.kind == :exit
-            assert {:timeout, _} = meta.error
-            assert meta.stacktrace != nil
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            send(parent, {ref, :exception})
-
-          _ ->
-            flunk("Unknown event")
-        end
-      end
-
-      :telemetry.attach_many(
-        to_string(test_name),
-        [
-          [:finch, :queue, :start],
-          [:finch, :queue, :stop],
-          [:finch, :queue, :exception]
-        ],
-        handler,
-        nil
-      )
-
-      assert {:ok, %{status: 200}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(client)
-      assert_receive {^ref, :start}
-      assert_receive {^ref, :stop}
-
-      Bypass.down(bypass)
-
-      try do
-        Finch.build(:get, endpoint(bypass)) |> Finch.request(client, pool_timeout: 0)
-      rescue
-        e in RuntimeError ->
-          assert e.message =~ "Finch was unable to provide a connection within the timeout"
-      end
-
-      assert_receive {^ref, :start}
-      assert_receive {^ref, :exception}
-
-      :telemetry.detach(to_string(test_name))
-    end
-
-    test "reports connection spans", %{bypass: bypass, client: client} do
-      {test_name, _arity} = __ENV__.function
-      parent = self()
-      ref = make_ref()
-
-      handler = fn event, measurements, meta, _config ->
-        case event do
-          [:finch, :connect, :start] ->
-            assert is_integer(measurements.system_time)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            send(parent, {ref, :start})
-
-          [:finch, :connect, :stop] ->
-            assert is_integer(measurements.duration)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            send(parent, {ref, :stop})
-
-          _ ->
-            flunk("Unknown event")
-        end
-      end
-
-      :telemetry.attach_many(
-        to_string(test_name),
-        [
-          [:finch, :connect, :start],
-          [:finch, :connect, :stop]
-        ],
-        handler,
-        nil
-      )
-
-      assert {:ok, %{status: 200}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(client)
-      assert_receive {^ref, :start}
-      assert_receive {^ref, :stop}
-
-      :telemetry.detach(to_string(test_name))
-    end
-
-    test "reports request spans", %{bypass: bypass, client: client} do
-      {test_name, _arity} = __ENV__.function
-
-      parent = self()
-      ref = make_ref()
-
-      handler = fn event, measurements, meta, _config ->
-        case event do
-          [:finch, :request, :start] ->
-            assert is_integer(measurements.system_time)
-            assert is_integer(measurements.idle_time)
-            assert is_binary(meta.path)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            assert is_binary(meta.method)
-            send(parent, {ref, :start})
-
-          [:finch, :request, :stop] ->
-            assert is_integer(measurements.duration)
-            assert is_integer(measurements.idle_time)
-            assert is_binary(meta.path)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            assert is_binary(meta.method)
-            send(parent, {ref, :stop})
-
-          _ ->
-            flunk("Unknown event")
-        end
-      end
-
-      :telemetry.attach_many(
-        to_string(test_name),
-        [
-          [:finch, :request, :start],
-          [:finch, :request, :stop],
-          [:finch, :request, :exception]
-        ],
-        handler,
-        nil
-      )
-
-      assert {:ok, %{status: 200}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(client)
-      assert_receive {^ref, :start}
-      assert_receive {^ref, :stop}
-
-      :telemetry.detach(to_string(test_name))
-    end
-
-    test "reports response spans", %{bypass: bypass, client: client} do
-      {test_name, _arity} = __ENV__.function
-      parent = self()
-      ref = make_ref()
-
-      handler = fn event, measurements, meta, _config ->
-        case event do
-          [:finch, :response, :start] ->
-            assert is_integer(measurements.system_time)
-            assert is_integer(measurements.idle_time)
-            assert is_binary(meta.path)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            assert is_binary(meta.method)
-            send(parent, {ref, :start})
-
-          [:finch, :response, :stop] ->
-            assert is_integer(measurements.duration)
-            assert is_integer(measurements.idle_time)
-            assert is_binary(meta.path)
-            assert is_atom(meta.scheme)
-            assert is_integer(meta.port)
-            assert is_binary(meta.host)
-            assert is_binary(meta.method)
-            send(parent, {ref, :stop})
-
-          _ ->
-            flunk("Unknown event")
-        end
-      end
-
-      :telemetry.attach_many(
-        to_string(test_name),
-        [
-          [:finch, :response, :start],
-          [:finch, :response, :stop]
-        ],
-        handler,
-        nil
-      )
-
-      assert {:ok, %{status: 200}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(client)
-      assert_receive {^ref, :start}
-      assert_receive {^ref, :stop}
-
-      :telemetry.detach(to_string(test_name))
-    end
-  end
-
-  describe "telemetry events which require multiple requests" do
-    setup %{bypass: bypass} do
-      Bypass.expect(bypass, "GET", "/", fn conn ->
-        Plug.Conn.send_resp(conn, 200, "OK")
-      end)
-
-      client = MyFinch
-      start_supervised!({Finch, name: client, pools: %{default: [max_idle_time: 10]}})
-
-      {:ok, client: client}
-    end
-
-    test "reports reused connections", %{bypass: bypass, client: client} do
-      {test_name, _arity} = __ENV__.function
-      parent = self()
-      ref = make_ref()
-
-      handler = fn event, _measurements, meta, _config ->
-        case event do
-          [:finch, :connect, :start] ->
-            send(parent, {ref, :start})
-
-          [:finch, :connect, :stop] ->
-            send(parent, {ref, :stop})
-
-          [:finch, :reused_connection] ->
-            assert is_atom(meta.scheme)
-            assert is_binary(meta.host)
-            assert is_integer(meta.port)
-            send(parent, {ref, :reused})
-
-          _ ->
-            flunk("Unknown event")
-        end
-      end
-
-      :telemetry.attach_many(
-        to_string(test_name),
-        [
-          [:finch, :connect, :start],
-          [:finch, :connect, :stop],
-          [:finch, :reused_connection]
-        ],
-        handler,
-        nil
-      )
-
-      request = Finch.build(:get, endpoint(bypass))
-      assert {:ok, %{status: 200}} = Finch.request(request, client)
-      assert_receive {^ref, :start}
-      assert_receive {^ref, :stop}
-
-      assert {:ok, %{status: 200}} = Finch.request(request, client)
-      assert_receive {^ref, :reused}
-
-      :telemetry.detach(to_string(test_name))
-    end
-
-    test "reports max_idle_time_exceeded", %{bypass: bypass, client: client} do
-      {test_name, _arity} = __ENV__.function
-      parent = self()
-      ref = make_ref()
-
-      handler = fn event, measurements, meta, _config ->
-        case event do
-          [:finch, :max_idle_time_exceeded] ->
-            assert is_integer(measurements.idle_time)
-            assert is_atom(meta.scheme)
-            assert is_binary(meta.host)
-            assert is_integer(meta.port)
-            send(parent, {ref, :max_idle_time_exceeded})
-
-          _ ->
-            flunk("Unknown event")
-        end
-      end
-
-      :telemetry.attach_many(
-        to_string(test_name),
-        [
-          [:finch, :max_idle_time_exceeded]
-        ],
-        handler,
-        nil
-      )
-
-      request = Finch.build(:get, endpoint(bypass))
-      assert {:ok, %{status: 200}} = Finch.request(request, client)
-      Process.sleep(15)
-      assert {:ok, %{status: 200}} = Finch.request(request, client)
-      assert_receive {^ref, :max_idle_time_exceeded}
-
-      :telemetry.detach(to_string(test_name))
+      assert {:ok, _} = Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
     end
   end
 
   describe "stream/5" do
-    test "successful get request, with query string", %{bypass: bypass} do
-      start_supervised!({Finch, name: MyFinch})
+    test "successful get request, with query string", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
       query_string = "query=value"
 
       Bypass.expect_once(bypass, "GET", "/", fn conn ->
@@ -669,11 +571,51 @@ defmodule FinchTest do
 
       assert {:ok, {200, [_ | _], "OK"}} =
                Finch.build(:get, endpoint(bypass, "?" <> query_string))
-               |> Finch.stream(MyFinch, acc, fun)
+               |> Finch.stream(finch_name, acc, fun)
     end
 
-    test "successful post request, with query string and string request body", %{bypass: bypass} do
-      start_supervised!({Finch, name: MyFinch})
+    test "HTTP/1 with atom accumulator, illustrating that the type/shape of the accumulator is not important",
+         %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+      expect_any(bypass)
+
+      fun = fn _msg, :ok -> :ok end
+
+      assert {:ok, :ok} =
+               Finch.build(:get, endpoint(bypass))
+               |> Finch.stream(finch_name, :ok, fun)
+    end
+
+    test "HTTP/2 with atom accumulator, illustrating that the type/shape of the accumulator is not important",
+         %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocol: :http2,
+             count: 1,
+             conn_opts: [
+               transport_opts: [
+                 verify: :verify_none
+               ]
+             ]
+           ]
+         }}
+      )
+
+      expect_any(bypass)
+
+      fun = fn _msg, :ok -> :ok end
+
+      assert {:ok, :ok} =
+               Finch.build(:get, endpoint(bypass))
+               |> Finch.stream(finch_name, :ok, fun)
+    end
+
+    test "successful post request, with query string and string request body",
+         %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
       query_string = "query=value"
       req_headers = [{"content-type", "application/json"}]
       req_body = "{hello:\"world\"}"
@@ -694,13 +636,15 @@ defmodule FinchTest do
 
       assert {:ok, {200, [_ | _], ^resp_body}} =
                Finch.build(:post, endpoint(bypass, "?" <> query_string), req_headers, req_body)
-               |> Finch.stream(MyFinch, acc, fun)
+               |> Finch.stream(finch_name, acc, fun)
     end
 
-    test "successful post request, with query string and streaming request body", %{
-      bypass: bypass
-    } do
-      start_supervised!({Finch, name: MyFinch})
+    test "successful post request, with query string and streaming request body",
+         %{
+           bypass: bypass,
+           finch_name: finch_name
+         } do
+      start_supervised!({Finch, name: finch_name})
       query_string = "query=value"
       req_headers = [{"content-type", "application/json"}]
       req_stream = Stream.map(1..10_000, fn _ -> "please" end)
@@ -726,7 +670,7 @@ defmodule FinchTest do
                  req_headers,
                  {:stream, req_stream}
                )
-               |> Finch.stream(MyFinch, acc, fun)
+               |> Finch.stream(finch_name, acc, fun)
     end
   end
 
@@ -734,9 +678,8 @@ defmodule FinchTest do
     Registry.lookup(name, shp)
   end
 
-  defp endpoint(%{port: port}, path \\ "/"), do: "http://localhost:#{port}#{path}"
-
   defp shp(%{port: port}), do: {:http, "localhost", port}
+  defp shp({scheme, {:local, unix_socket}}), do: {scheme, {:local, unix_socket}, 0}
 
   defp expect_any(bypass) do
     Bypass.expect(bypass, fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)

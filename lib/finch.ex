@@ -9,7 +9,7 @@ defmodule Finch do
 
   use Supervisor
 
-  @default_pool_size 10
+  @default_pool_size 50
   @default_pool_count 1
 
   @default_connect_timeout 5_000
@@ -17,7 +17,7 @@ defmodule Finch do
   @pool_config_schema [
     protocol: [
       type: {:in, [:http2, :http1]},
-      doc: "The type of connection and pool to use",
+      doc: "The type of connection and pool to use.",
       default: :http1
     ],
     size: [
@@ -25,7 +25,8 @@ defmodule Finch do
       doc: """
       Number of connections to maintain in each pool. Used only by HTTP1 pools \
       since HTTP2 is able to multiplex requests through a single connection. In \
-      other words, for HTTP2, the size is always 1.
+      other words, for HTTP2, the size is always 1 and the `:count` should be \
+      configured in order to increase capacity.
       """,
       default: @default_pool_size
     ],
@@ -42,15 +43,38 @@ defmodule Finch do
     ],
     max_idle_time: [
       type: :timeout,
-      doc:
-        "The maxiumum number of milliseconds an HTTP1 connection is allowed to be idle before being closed during a checkout attempt",
-      default: :infinity
+      doc: """
+      The maximum number of milliseconds an HTTP1 connection is allowed to be idle \
+      before being closed during a checkout attempt.
+      """,
+      deprecated: "Use :conn_max_idle_time instead."
     ],
     conn_opts: [
       type: :keyword_list,
-      doc:
-        "These options are passed to `Mint.HTTP.connect/4` whenever a new connection is established. `:mode` is not configurable as Finch must control this setting. Typically these options are used to configure proxying, https settings, or connect timeouts.",
+      doc: """
+      These options are passed to `Mint.HTTP.connect/4` whenever a new connection is established. \
+      `:mode` is not configurable as Finch must control this setting. Typically these options are \
+      used to configure proxying, https settings, or connect timeouts.
+      """,
       default: []
+    ],
+    pool_max_idle_time: [
+      type: :timeout,
+      doc: """
+      The maximum number of milliseconds that a pool can be idle before being terminated, used only by HTTP1 pools. \
+      This options is forwarded to NimblePool and it starts and idle verification cycle that may impact \
+      performance if misused. For instance setting a very low timeout may lead to pool restarts. \
+      For more information see NimblePool's `handle_ping/2` documentation.
+      """,
+      default: :infinity
+    ],
+    conn_max_idle_time: [
+      type: :timeout,
+      doc: """
+      The maximum number of milliseconds an HTTP1 connection is allowed to be idle \
+      before being closed during a checkout attempt.
+      """,
+      default: :infinity
     ]
   ]
 
@@ -73,18 +97,17 @@ defmodule Finch do
     * `:name` - The name of your Finch instance. This field is required.
 
     * `:pools` - A map specifying the configuration for your pools. The keys should be URLs
-    provided as binaries, or the atom `:default` to provide a catch-all configuration to be used
-    for any unspecified URLs. See "Pool Configuration Options" below for details on the possible
-    map values. Default value is `%{default: [size: #{@default_pool_size}, count: #{
-    @default_pool_count
-  }]}`.
+    provided as binaries, a tuple `{scheme, {:local, unix_socket}}` where `unix_socket` is the path for
+    the socket, or the atom `:default` to provide a catch-all configuration to be used for any
+    unspecified URLs. See "Pool Configuration Options" below for details on the possible map
+    values. Default value is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
 
   ### Pool Configuration Options
 
   #{NimbleOptions.docs(@pool_config_schema)}
   """
   def start_link(opts) do
-    name = Keyword.get(opts, :name) || raise ArgumentError, "must supply a name"
+    name = finch_name!(opts)
     pools = Keyword.get(opts, :pools, []) |> pool_options!()
     {default_pool_config, pools} = Map.pop(pools, :default)
 
@@ -99,6 +122,13 @@ defmodule Finch do
     Supervisor.start_link(__MODULE__, config, name: supervisor_name(name))
   end
 
+  def child_spec(opts) do
+    %{
+      id: finch_name!(opts),
+      start: {__MODULE__, :start_link, [opts]}
+    }
+  end
+
   @impl true
   def init(config) do
     children = [
@@ -108,6 +138,10 @@ defmodule Finch do
     ]
 
     Supervisor.init(children, strategy: :one_for_all)
+  end
+
+  defp finch_name!(opts) do
+    Keyword.get(opts, :name) || raise(ArgumentError, "must supply a name")
   end
 
   defp pool_options!(pools) do
@@ -129,11 +163,14 @@ defmodule Finch do
       :default ->
         {:ok, destination}
 
+      {scheme, {:local, path}} when is_atom(scheme) and is_binary(path) ->
+        {:ok, {scheme, {:local, path}, 0}}
+
       url when is_binary(url) ->
         cast_binary_destination(url)
 
       _ ->
-        {:error, %ArgumentError{message: "invalid destination: #{inspect destination}"}}
+        {:error, %ArgumentError{message: "invalid destination: #{inspect(destination)}"}}
     end
   end
 
@@ -158,9 +195,16 @@ defmodule Finch do
       |> Keyword.put_new(:nodelay, true)
       |> Keyword.put(:keepalive, true)
 
+    conn_opts = valid[:conn_opts] |> List.wrap()
+
+    ssl_key_log_file =
+      Keyword.get(conn_opts, :ssl_key_log_file) || System.get_env("SSLKEYLOGFILE")
+
+    ssl_key_log_file_device = ssl_key_log_file && File.open!(ssl_key_log_file, [:append])
+
     conn_opts =
-      valid[:conn_opts]
-      |> List.wrap()
+      conn_opts
+      |> Keyword.put(:ssl_key_log_file_device, ssl_key_log_file_device)
       |> Keyword.put(:transport_opts, transport_opts)
 
     %{
@@ -168,7 +212,8 @@ defmodule Finch do
       count: valid[:count],
       conn_opts: conn_opts,
       protocol: valid[:protocol],
-      max_idle_time: to_native(valid[:max_idle_time])
+      conn_max_idle_time: to_native(valid[:max_idle_time] || valid[:conn_max_idle_time]),
+      pool_max_idle_time: valid[:pool_max_idle_time]
     }
   end
 
@@ -179,15 +224,28 @@ defmodule Finch do
   defp manager_name(name), do: :"#{name}.PoolManager"
   defp pool_supervisor_name(name), do: :"#{name}.PoolSupervisor"
 
+  defmacrop request_span(request, name, do: block) do
+    quote do
+      start_meta = %{request: unquote(request), name: unquote(name)}
+
+      Finch.Telemetry.span(:request, start_meta, fn ->
+        result = unquote(block)
+        end_meta = Map.put(start_meta, :result, result)
+        {result, end_meta}
+      end)
+    end
+  end
+
   @doc """
   Builds an HTTP request to be sent with `request/3` or `stream/4`.
 
-  When making HTTP/1.x requests, it is possible to send the request body in a streaming fashion.
-  In order to do so, the `body` parameter needs to take form of a tuple `{:stream, body_stream}`,
-  where `body_stream` is a `Stream`. This feature is not yet supported for HTTP/2 requests.
+  It is possible to send the request body in a streaming fashion. In order to do so, the
+  `body` parameter needs to take form of a tuple `{:stream, body_stream}`, where `body_stream`
+  is a `Stream`.
   """
-  @spec build(Request.method(), Request.url(), Request.headers(), Request.body()) :: Request.t()
-  defdelegate build(method, url, headers \\ [], body \\ nil), to: Request
+  @spec build(Request.method(), Request.url(), Request.headers(), Request.body(), Keyword.t()) ::
+          Request.t()
+  defdelegate build(method, url, headers \\ [], body \\ nil, opts \\ []), to: Request
 
   @doc """
   Streams an HTTP request and returns the accumulator.
@@ -212,11 +270,28 @@ defmodule Finch do
       Default value is `15_000`.
 
   """
-  @spec stream(Request.t(), name(), acc, stream(acc), keyword) :: {:ok, acc} | {:error, Mint.Types.error()} when acc: term()
+  @spec stream(Request.t(), name(), acc, stream(acc), keyword) ::
+          {:ok, acc} | {:error, Exception.t()}
+        when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
-    %{scheme: scheme, host: host, port: port} = req
-    {pool, pool_mod} = PoolManager.get_pool(name, {scheme, host, port})
+    request_span req, name do
+      __stream__(req, name, acc, fun, opts)
+    end
+  end
+
+  defp __stream__(%Request{} = req, name, acc, fun, opts) when is_function(fun, 2) do
+    shp = build_shp(req)
+    {pool, pool_mod} = PoolManager.get_pool(name, shp)
     pool_mod.request(pool, req, acc, fun, opts)
+  end
+
+  defp build_shp(%Request{scheme: scheme, unix_socket: unix_socket})
+       when is_binary(unix_socket) do
+    {scheme, {:local, unix_socket}, 0}
+  end
+
+  defp build_shp(%Request{scheme: scheme, host: host, port: port}) do
+    {scheme, host, port}
   end
 
   @doc """
@@ -231,26 +306,29 @@ defmodule Finch do
       Default value is `15_000`.
 
   """
-  @spec request(Request.t(), name(), keyword()) :: {:ok, Response.t()}
-                                                 | {:error, Mint.Types.error()}
+  @spec request(Request.t(), name(), keyword()) ::
+          {:ok, Response.t()}
+          | {:error, Exception.t()}
   def request(req, name, opts \\ [])
 
   def request(%Request{} = req, name, opts) do
-    acc = {nil, [], []}
+    request_span req, name do
+      acc = {nil, [], []}
 
-    fun = fn
-      {:status, value}, {_, headers, body} -> {value, headers, body}
-      {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
-      {:data, value}, {status, headers, body} -> {status, headers, [value | body]}
-    end
+      fun = fn
+        {:status, value}, {_, headers, body} -> {value, headers, body}
+        {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
+        {:data, value}, {status, headers, body} -> {status, headers, [value | body]}
+      end
 
-    with {:ok, {status, headers, body}} <- stream(req, name, acc, fun, opts) do
-      {:ok,
-       %Response{
-         status: status,
-         headers: headers,
-         body: body |> Enum.reverse() |> IO.iodata_to_binary()
-       }}
+      with {:ok, {status, headers, body}} <- __stream__(req, name, acc, fun, opts) do
+        {:ok,
+         %Response{
+           status: status,
+           headers: headers,
+           body: body |> Enum.reverse() |> IO.iodata_to_binary()
+         }}
+      end
     end
   end
 
@@ -259,8 +337,9 @@ defmodule Finch do
     request(name, method, url, [])
   end
 
+  @doc false
   def request(name, method, url, headers, body \\ nil, opts \\ []) do
-    IO.warn("Finch.request/6 is deprecated, use Finch.build/4 + Finch.request/3 instead")
+    IO.warn("Finch.request/6 is deprecated, use Finch.build/5 + Finch.request/3 instead")
 
     build(method, url, headers, body)
     |> request(name, opts)

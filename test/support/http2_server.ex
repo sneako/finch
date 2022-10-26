@@ -40,6 +40,7 @@ defmodule Finch.HTTP2Server.PlugRouter do
 
   get "/" do
     name = conn.params["name"] || "world"
+
     conn
     |> send_resp(200, "Hello #{name}!")
     |> halt()

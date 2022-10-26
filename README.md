@@ -1,9 +1,14 @@
-<img alt="Finch" height="350px" src="assets/Finch_logo_onWhite.png?raw=true">
+![Finch](./assets/Finch_logo_onWhite.png#gh-light-mode-only)
+![Finch](./assets/Finch_logo_all-White.png#gh-dark-mode-only)
+
+[![Build Status](https://github.com/sneako/finch/workflows/CI/badge.svg?branch=main)](https://github.com/sneako/finch/actions) [![Hex pm](https://img.shields.io/hexpm/v/finch.svg?style=flat)](https://hex.pm/packages/finch) [![Hexdocs.pm](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/finch/)
 
 <!-- MDOC !-->
 
 An HTTP client with a focus on performance, built on top of
 [Mint](https://github.com/elixir-mint/mint) and [NimblePool](https://github.com/dashbitco/nimble_pool).
+
+We try to achieve this goal by providing efficient connection pooling strategies and avoiding copying wherever possible.
 
 ## Usage
 
@@ -50,13 +55,46 @@ children = [
 
 Pools will be started for each configured `{scheme, host, port}` when Finch is started.
 For any unconfigured `{scheme, host, port}`, the pool will be started the first time
-it is requested. Note pools are not automatically terminated if they are unused, so
-Finch is best suited when you are requesting a known list of static hosts.
+it is requested. Note pools are not automatically terminated by default, if you need to
+terminate them after some idle time, use the `pool_max_idle_time` option (available only for HTTP1 pools).
 
 ## Telemetry
 
 Finch uses Telemetry to provide instrumentation. See the `Finch.Telemetry`
 module for details on specific events.
+
+## Logging TLS Secrets
+
+Finch supports logging TLS secrets to a file. These can be later used in a tool such as
+Wireshark to decrypt HTTPS sessions. To use this feature you must specify the file to
+which the secrets should be written. If you are using TLSv1.3 you must also add
+`keep_secrets: true` to your pool `:transport_opts`. For example:
+
+```elixir
+{Finch,
+ name: MyFinch,
+ pools: %{
+   default: [conn_opts: [transport_opts: [keep_secrets: true]]]
+ }}
+```
+
+There are two different ways to specify this file:
+
+1. The `:ssl_key_log_file` connection option in your pool configuration. For example:
+
+```elixir
+{Finch,
+ name: MyFinch,
+ pools: %{
+   default: [
+     conn_opts: [
+       ssl_key_log_file: "/writable/path/to/the/sslkey.log"
+     ]
+   ]
+ }}
+```
+
+2. Alternatively, you could also set the `SSLKEYLOGFILE` environment variable.
 
 <!-- MDOC !-->
 
@@ -67,7 +105,7 @@ The package can be installed by adding `finch` to your list of dependencies in `
 ```elixir
 def deps do
   [
-    {:finch, "~> 0.6"}
+    {:finch, "~> 0.13"}
   ]
 end
 ```
