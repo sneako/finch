@@ -60,9 +60,10 @@ defmodule Finch.HTTP1.Pool do
           {:timeout, {NimblePool, :checkout, _affected_pids}} ->
             reraise(
               """
-              Finch was unable to provide a connection within the timeout due to excess queueing for connections.\
-              This could be because the downstream system can't keep up with the amount of requests being sent or\
-              because you have an insufficient number of connections and need to increase your pool counts.
+              Finch was unable to provide a connection within the timeout due to excess queuing \
+              for connections. Consider adjusting the pool size, count, timeout or reducing the \
+              rate of requests if it is possible that the downstream service is unable to keep up \
+              with the current rate.
               """,
               __STACKTRACE__
             )
