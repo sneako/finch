@@ -14,8 +14,8 @@ jobs:
              elixir: '1.7.4'
              otp: '22.x'
          - pair:
-             elixir: '1.12.3'
-             otp: '24.x'
+             elixir: '1.14.1'
+             otp: '25.x'
            lint: lint
 
    runs-on: ubuntu-18.04
