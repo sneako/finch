@@ -36,7 +36,7 @@ defmodule Finch.MixProject do
       {:mint, "~> 1.3"},
       {:castore, "~> 0.1"},
       {:nimble_pool, "~> 0.2.6"},
-      {:nimble_options, "~> 0.4"},
+      {:nimble_options, "~> 0.5"},
       {:telemetry, "~> 0.4 or ~> 1.0"},
       {:mime, "~> 1.0 or ~> 2.0"},
       {:ex_doc, "~> 0.28", only: :dev, runtime: false},
