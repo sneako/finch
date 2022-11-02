@@ -516,11 +516,12 @@ defmodule FinchTest do
 
       :sys.suspend(finch_name)
 
-      assert {:timeout, _} =
-               catch_exit(
-                 Finch.build(:get, endpoint(bypass))
-                 |> Finch.request(finch_name, pool_timeout: 0)
-               )
+      assert_raise RuntimeError,
+                   ~r/Finch was unable to provide a connection within the timeout/,
+                   fn ->
+                     Finch.build(:get, endpoint(bypass))
+                     |> Finch.request(finch_name, pool_timeout: 0)
+                   end
 
       :sys.resume(finch_name)
 

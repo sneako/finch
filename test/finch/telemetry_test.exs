@@ -230,15 +230,14 @@ defmodule Finch.TelemetryTest do
 
     Bypass.down(bypass)
 
-    try do
-      Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name, pool_timeout: 0)
-    catch
-      :exit, reason ->
-        assert {:timeout, _} = reason
-    end
+    assert_raise RuntimeError,
+                 ~r/Finch was unable to provide a connection within the timeout/,
+                 fn ->
+                   Finch.build(:get, endpoint(bypass))
+                   |> Finch.request(finch_name, pool_timeout: 0)
+                 end
 
     assert_receive {^ref, :start}
-    assert_receive {^ref, :exception}
 
     :telemetry.detach(to_string(finch_name))
   end
@@ -295,12 +294,12 @@ defmodule Finch.TelemetryTest do
 
     Bypass.down(bypass)
 
-    try do
-      Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name, pool_timeout: 0)
-    catch
-      :exit, reason ->
-        assert {:timeout, _} = reason
-    end
+    assert_raise RuntimeError,
+                 ~r/Finch was unable to provide a connection within the timeout/,
+                 fn ->
+                   Finch.build(:get, endpoint(bypass))
+                   |> Finch.request(finch_name, pool_timeout: 0)
+                 end
 
     assert_receive {^ref, :start}
     assert_receive {^ref, :exception}

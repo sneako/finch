@@ -54,7 +54,23 @@ defmodule Finch.HTTP1.Pool do
     catch
       :exit, data ->
         Telemetry.exception(:queue, start_time, :exit, data, __STACKTRACE__, metadata)
-        exit(data)
+
+        # Provide helpful error messages for known errors
+        case data do
+          {:timeout, {NimblePool, :checkout, _affected_pids}} ->
+            reraise(
+              """
+              Finch was unable to provide a connection within the timeout due to excess queuing \
+              for connections. Consider adjusting the pool size, count, timeout or reducing the \
+              rate of requests if it is possible that the downstream service is unable to keep up \
+              with the current rate.
+              """,
+              __STACKTRACE__
+            )
+
+          _ ->
+            exit(data)
+        end
     end
   end
 
