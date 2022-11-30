@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.14.0 (2022-11-30)
+
+### Enhancements
+
+- Improve error message for pool timeouts #126
+- Relax nimble_options version to allow usage with 0.5.0 #204
+
 ## v0.13.0 (2022-07-26)
 
 ### Enhancements
