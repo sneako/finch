@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.15.0 (2023-03-16)
+
+### Enhancements
+
+- allow usage with nimble_options 1.0
+- allow usage with castore 1.0
+
 ## v0.14.0 (2022-11-30)
 
 ### Enhancements
