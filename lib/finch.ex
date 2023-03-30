@@ -332,6 +332,19 @@ defmodule Finch do
     end
   end
 
+  # Catch-all for backwards compatibility below
+  def request(name, method, url) do
+    request(name, method, url, [])
+  end
+
+  @doc false
+  def request(name, method, url, headers, body \\ nil, opts \\ []) do
+    IO.warn("Finch.request/6 is deprecated, use Finch.build/5 + Finch.request/3 instead")
+
+    build(method, url, headers, body)
+    |> request(name, opts)
+  end
+
   @doc """
   Sends an HTTP request and returns a `Finch.Response` struct
   or raises an exception in case of failure.
@@ -346,18 +359,5 @@ defmodule Finch do
     else
       {:error, exception} -> raise exception
     end
-  end
-
-  # Catch-all for backwards compatibility below
-  def request(name, method, url) do
-    request(name, method, url, [])
-  end
-
-  @doc false
-  def request(name, method, url, headers, body \\ nil, opts \\ []) do
-    IO.warn("Finch.request/6 is deprecated, use Finch.build/5 + Finch.request/3 instead")
-
-    build(method, url, headers, body)
-    |> request(name, opts)
   end
 end
