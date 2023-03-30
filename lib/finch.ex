@@ -332,6 +332,22 @@ defmodule Finch do
     end
   end
 
+  @doc """
+  Sends an HTTP request and returns a `Finch.Response` struct
+  or raises an exception in case of failure.
+
+  See `request/3` for more detailed information.
+  """
+  @spec request!(Request.t(), name(), keyword()) ::
+          Response.t()
+  def request!(%Request{} = req, name, opts \\ []) do
+    with {:ok, resp} <- request(req, name, opts) do
+      resp
+    else
+      {:error, exception} -> raise exception
+    end
+  end
+
   # Catch-all for backwards compatibility below
   def request(name, method, url) do
     request(name, method, url, [])
