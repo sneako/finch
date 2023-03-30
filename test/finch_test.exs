@@ -542,14 +542,14 @@ defmodule FinchTest do
 
       assert %{status: 200} =
                Finch.build(:get, endpoint(bypass, "?" <> query_string))
-               |> Finch.request(finch_name)
+               |> Finch.request!(finch_name)
     end
 
     test "raises exception on bad request", %{finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
 
-      assert_raise(Exception, fn ->
-        Finch.build(:get, "http://idontexist.wat") |> Finch.request(finch_name)
+      assert_raise(Mint.TransportError, fn ->
+        Finch.build(:get, "http://idontexist.wat") |> Finch.request!(finch_name)
       end)
     end
   end
