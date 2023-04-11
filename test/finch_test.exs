@@ -530,6 +530,30 @@ defmodule FinchTest do
     end
   end
 
+  describe "request!/3" do
+    test "returns response on successful request", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+      query_string = "query=value"
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        assert conn.query_string == query_string
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      assert %{status: 200} =
+               Finch.build(:get, endpoint(bypass, "?" <> query_string))
+               |> Finch.request!(finch_name)
+    end
+
+    test "raises exception on bad request", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      assert_raise(Mint.TransportError, fn ->
+        Finch.build(:get, "http://idontexist.wat") |> Finch.request!(finch_name)
+      end)
+    end
+  end
+
   describe "connection options" do
     test "are passed through to the conn", %{bypass: bypass} do
       expect_any(bypass)
