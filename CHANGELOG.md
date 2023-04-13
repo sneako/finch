@@ -1,11 +1,18 @@
 # Changelog
 
+## v0.16.0 (2023-04-13)
+
+### Enhancements
+
+- add `Finch.request!/3` #219
+- allow usage with nimble_pool 1.0 #220
+
 ## v0.15.0 (2023-03-16)
 
 ### Enhancements
 
-- allow usage with nimble_options 1.0
-- allow usage with castore 1.0
+- allow usage with nimble_options 1.0 #218
+- allow usage with castore 1.0 #210
 
 ## v0.14.0 (2022-11-30)
 
