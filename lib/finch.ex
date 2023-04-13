@@ -354,7 +354,7 @@ defmodule Finch do
   @spec request!(Request.t(), name(), keyword()) ::
           Response.t()
   def request!(%Request{} = req, name, opts \\ []) do
-    case request(req, name, opts) do
+    case Finch.request(req, name, opts) do
       {:ok, resp} -> resp
       {:error, exception} -> raise exception
     end
