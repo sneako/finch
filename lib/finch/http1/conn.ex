@@ -190,8 +190,12 @@ defmodule Finch.Conn do
   defp receive_response(entries, acc, fun, mint, ref, timeout, status \\ nil, headers \\ [])
 
   defp receive_response([], acc, fun, mint, ref, timeout, status, headers) do
+    start_time = System.monotonic_time(:millisecond)
+
     case MintHTTP1.recv(mint, 0, timeout) do
       {:ok, mint, entries} ->
+        elapsed_time = System.monotonic_time(:millisecond) - start_time
+        timeout = timeout - elapsed_time
         receive_response(entries, acc, fun, mint, ref, timeout, status, headers)
 
       {:error, mint, error, _responses} ->
