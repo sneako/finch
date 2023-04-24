@@ -189,9 +189,21 @@ defmodule Finch.Conn do
 
   defp receive_response(entries, acc, fun, mint, ref, timeout, status \\ nil, headers \\ [])
 
+  defp receive_response([{:done, ref} | _], acc, _fun, mint, ref, _timeout, status, headers) do
+    {:ok, mint, acc, {status, headers}}
+  end
+
+  defp receive_response(_, _acc, _fun, mint, _ref, timeout, status, headers) when timeout < 0 do
+    {:error, mint, %Mint.TransportError{reason: :timeout}, {status, headers}}
+  end
+
   defp receive_response([], acc, fun, mint, ref, timeout, status, headers) do
+    start_time = System.monotonic_time(:millisecond)
+
     case MintHTTP1.recv(mint, 0, timeout) do
       {:ok, mint, entries} ->
+        elapsed_time = System.monotonic_time(:millisecond) - start_time
+        timeout = timeout - elapsed_time
         receive_response(entries, acc, fun, mint, ref, timeout, status, headers)
 
       {:error, mint, error, _responses} ->
@@ -236,9 +248,6 @@ defmodule Finch.Conn do
           status,
           headers
         )
-
-      {:done, ^ref} ->
-        {:ok, mint, acc, {status, headers}}
 
       {:error, ^ref, error} ->
         {:error, mint, error, {status, headers}}
