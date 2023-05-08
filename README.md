@@ -8,7 +8,9 @@
 An HTTP client with a focus on performance, built on top of
 [Mint](https://github.com/elixir-mint/mint) and [NimblePool](https://github.com/dashbitco/nimble_pool).
 
-We try to achieve this goal by providing efficient connection pooling strategies and avoiding copying wherever possible.
+We attempt to achieve this goal by providing efficient connection pooling strategies and avoiding copying of memory wherever possible.
+
+Most developers will most likely prefer to use the fabulous HTTP client [Req](https://github.com/wojtekmach/req) which takes advantage of Finch's pooling and provides an extremely friendly and pleasant to use API.
 
 ## Usage
 
