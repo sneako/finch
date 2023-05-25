@@ -4,7 +4,7 @@ defmodule Finch.MockHTTP2Server do
 
   alias Mint.{HTTP2.Frame, HTTP2.HPACK}
 
-  defstruct [:socket, :encode_table, :decode_table]
+  defstruct [:socket, :encode_table, :decode_table, :listen_socket, :server_settings]
 
   @fixtures_dir Path.expand("../fixtures", __DIR__)
 
@@ -36,7 +36,9 @@ defmodule Finch.MockHTTP2Server do
     server = %__MODULE__{
       socket: server_socket,
       encode_table: HPACK.new(4096),
-      decode_table: HPACK.new(4096)
+      decode_table: HPACK.new(4096),
+      listen_socket: listen_socket,
+      server_settings: server_settings
     }
 
     {result, server}
@@ -105,6 +107,10 @@ defmodule Finch.MockHTTP2Server do
   @spec get_socket(%__MODULE__{}) :: :ssl.sslsocket()
   def get_socket(server) do
     server.socket
+  end
+
+  def accept_socket(%__MODULE__{listen_socket: listen_socket, server_settings: server_settings}) do
+    accept(listen_socket, self(), server_settings)
   end
 
   defp accept(listen_socket, parent, server_settings) do
