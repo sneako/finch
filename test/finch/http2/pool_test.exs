@@ -3,6 +3,7 @@ defmodule Finch.HTTP2.PoolTest do
 
   import Mint.HTTP2.Frame
 
+  alias Finch.PoolManager
   alias Finch.HTTP2.Pool
   alias Finch.MockHTTP2Server
 
@@ -410,6 +411,95 @@ defmodule Finch.HTTP2.PoolTest do
       assert_receive {^ref3, {:error, %Finch.Error{reason: :disconnected}}}
     end
 
+    test "if connections are in connected_read_only state, don't let clients check them out from the pool",
+         %{request: req} do
+      us = self()
+
+      port =
+        start_server_and_connect_with(fn port ->
+          start_supervised!(
+            {Finch,
+             name: TestFinch,
+             pools: %{
+               "https://localhost:#{port}" => [
+                 protocols: [:http2],
+                 count: 1,
+                 conn_opts: [
+                   transport_opts: [
+                     verify: :verify_none
+                   ]
+                 ]
+               ]
+             }}
+          )
+
+          port
+        end)
+
+      {pool, _} = PoolManager.lookup_pool(TestFinch, {:https, "localhost", port})
+
+      spawn(fn ->
+        result = request(pool, req, [])
+        send(us, {:resp, result})
+      end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      # Force the connection to enter read only mode
+      server_send_frames([
+        goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "all good")
+      ])
+
+      :timer.sleep(50)
+      # The connection should be discarded from the pool
+      assert :none = PoolManager.lookup_pool(TestFinch, {:https, "localhost", port})
+    end
+
+    test "if connections are in disconnected state, don't let clients check them out from the pool",
+         %{
+           request: req
+         } do
+      us = self()
+
+      port =
+        start_server_and_connect_with(fn port ->
+          start_supervised!(
+            {Finch,
+             name: TestFinch,
+             pools: %{
+               "https://localhost:#{port}" => [
+                 protocols: [:http2],
+                 count: 1,
+                 conn_opts: [
+                   transport_opts: [
+                     verify: :verify_none
+                   ]
+                 ]
+               ]
+             }}
+          )
+
+          port
+        end)
+
+      {pool, _} = PoolManager.lookup_pool(TestFinch, {:https, "localhost", port})
+
+      spawn(fn ->
+        result = request(pool, req, [])
+        send(us, {:resp, result})
+      end)
+
+      # If the server closes the socket, the connection should be discarded from the pool
+      :ok = :ssl.close(server_socket())
+      :timer.sleep(50)
+      assert :none = PoolManager.lookup_pool(TestFinch, {:https, "localhost", port})
+
+      # But after the client reconnects, it should be added back in
+      server_accept_socket()
+      :timer.sleep(50)
+      assert PoolManager.lookup_pool(TestFinch, {:https, "localhost", port}) != :none
+    end
+
     test "if server disconnects while there are waiting clients, we notify those clients", %{
       request: req
     } do
@@ -494,6 +584,11 @@ defmodule Finch.HTTP2.PoolTest do
     Process.put(@pdict_key, server)
 
     result
+  end
+
+  defp server_accept_socket() do
+    server = Process.get(@pdict_key)
+    MockHTTP2Server.accept_socket(server)
   end
 
   defp recv_next_frames(n) do
