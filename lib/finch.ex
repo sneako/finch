@@ -359,4 +359,34 @@ defmodule Finch do
       {:error, exception} -> raise exception
     end
   end
+
+  @opaque request_ref() :: Task.t()
+
+  @doc """
+  Sends an HTTP request asynchronously, returning a request reference.
+
+  Response information will be sent as messages to the process that
+  issued the request.
+  """
+  @spec async_request(Request.t(), name(), keyword()) :: request_ref()
+  def async_request(%Request{} = req, name, opts \\ []) do
+    task = Task.async(__MODULE__, :__async_request__, [req, name, opts, self()])
+    send(task.pid, {:task, task})
+    task
+  end
+
+  @doc false
+  def __async_request__(req, name, opts, owner) do
+    task = receive do: ({:task, task} -> task)
+
+    case stream(req, name, {owner, task}, &send_chunk/2, opts) do
+      {:ok, _} -> send(owner, {task, :done})
+      {:error, exception} -> send(owner, {task, {:error, exception}})
+    end
+  end
+
+  defp send_chunk(chunk, {owner, task}) do
+    send(owner, {task, chunk})
+    {owner, task}
+  end
 end
