@@ -115,6 +115,7 @@ defmodule Finch do
       registry_name: name,
       manager_name: manager_name(name),
       supervisor_name: pool_supervisor_name(name),
+      task_supervisor_name: task_supervisor_name(name),
       default_pool_config: default_pool_config,
       pools: pools
     }
@@ -133,6 +134,7 @@ defmodule Finch do
   def init(config) do
     children = [
       {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
+      {Task.Supervisor, name: config.task_supervisor_name},
       {Registry, [keys: :duplicate, name: config.registry_name, meta: [config: config]]},
       {PoolManager, config}
     ]
@@ -223,6 +225,7 @@ defmodule Finch do
   defp supervisor_name(name), do: :"#{name}.Supervisor"
   defp manager_name(name), do: :"#{name}.PoolManager"
   defp pool_supervisor_name(name), do: :"#{name}.PoolSupervisor"
+  defp task_supervisor_name(name), do: :"#{name}.TaskSupervisor"
 
   defmacrop request_span(request, name, do: block) do
     quote do
@@ -360,7 +363,7 @@ defmodule Finch do
     end
   end
 
-  @opaque request_ref() :: Task.t()
+  @opaque request_ref() :: {pid(), reference()}
 
   @doc """
   Sends an HTTP request asynchronously, returning a request reference.
@@ -370,23 +373,43 @@ defmodule Finch do
   """
   @spec async_request(Request.t(), name(), keyword()) :: request_ref()
   def async_request(%Request{} = req, name, opts \\ []) do
-    task = Task.async(__MODULE__, :__async_request__, [req, name, opts, self()])
-    send(task.pid, {:task, task})
-    task
+    # TODO: get supervisor from config when this moves into the adapter
+    sup = task_supervisor_name(name)
+
+    %{pid: pid, ref: ref} =
+      Task.Supervisor.async_nolink(sup, __MODULE__, :__async_request__, [self(), req, name, opts])
+
+    send(pid, {:ref, ref})
+
+    {pid, ref}
   end
 
   @doc false
-  def __async_request__(req, name, opts, owner) do
-    task = receive do: ({:task, task} -> task)
+  def __async_request__(owner, req, name, opts) do
+    ref = receive do: ({:ref, ref} -> ref)
+    request_ref = {self(), ref}
 
-    case stream(req, name, {owner, task}, &send_chunk/2, opts) do
-      {:ok, _} -> send(owner, {task, :done})
-      {:error, exception} -> send(owner, {task, {:error, exception}})
+    case stream(req, name, {owner, request_ref}, &send_chunk/2, opts) do
+      {:ok, _} -> send(owner, {request_ref, :done})
+      {:error, exception} -> send(owner, {request_ref, {:error, exception}})
     end
   end
 
-  defp send_chunk(chunk, {owner, task}) do
-    send(owner, {task, chunk})
-    {owner, task}
+  defp send_chunk(chunk, {owner, request_ref}) do
+    send(owner, {request_ref, chunk})
+    {owner, request_ref}
+  end
+
+  @doc """
+  Cancels a request sent with `async_request/3`.
+  """
+  @spec cancel_async_request(request_ref(), name()) :: :ok | {:error, :not_found}
+  def cancel_async_request(request_ref, name) do
+    # TODO: get supervisor from config when this moves into the adapter
+    sup = task_supervisor_name(name)
+
+    {pid, ref} = request_ref
+    Process.demonitor(ref, [:flush])
+    Task.Supervisor.terminate_child(sup, pid)
   end
 end

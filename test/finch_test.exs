@@ -725,8 +725,8 @@ defmodule FinchTest do
     end
   end
 
-  describe "async_request/3" do
-    test "sends response content to calling process", %{bypass: bypass, finch_name: finch_name} do
+  describe "async_request/3 with HTTP/1" do
+    test "sends response messages to calling process", %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
 
       Bypass.expect_once(bypass, "GET", "/", fn conn ->
@@ -741,6 +741,56 @@ defmodule FinchTest do
       assert_receive {^request_ref, {:headers, headers}} when is_list(headers)
       assert_receive {^request_ref, {:data, "OK"}}
       assert_receive {^request_ref, :done}
+    end
+
+    test "sends chunked response messages to calling process", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect(bypass, fn conn ->
+        conn = Plug.Conn.send_chunked(conn, 200)
+
+        Enum.reduce(1..5, conn, fn _, conn ->
+          {:ok, conn} = Plug.Conn.chunk(conn, "chunk-data")
+          conn
+        end)
+      end)
+
+      request_ref =
+        Finch.build(:get, endpoint(bypass))
+        |> Finch.async_request(finch_name)
+
+      assert_receive {^request_ref, {:status, 200}}
+      assert_receive {^request_ref, {:headers, headers}} when is_list(headers)
+      for _ <- 1..5, do: assert_receive({^request_ref, {:data, "chunk-data"}})
+      assert_receive {^request_ref, :done}
+    end
+
+    test "can be canceled with cancel_async_request/2", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect(bypass, fn conn ->
+        conn = Plug.Conn.send_chunked(conn, 200)
+
+        :timer.sleep(10)
+
+        Enum.reduce(1..5, conn, fn _, conn ->
+          {:ok, conn} = Plug.Conn.chunk(conn, "chunk-data")
+          conn
+        end)
+      end)
+
+      request_ref =
+        Finch.build(:get, endpoint(bypass))
+        |> Finch.async_request(finch_name)
+
+      assert_receive {^request_ref, {:status, 200}}, 10
+
+      Finch.cancel_async_request(request_ref, finch_name)
+
+      refute_receive {^request_ref, {:data, _}}
     end
   end
 
