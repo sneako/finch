@@ -27,7 +27,7 @@ defmodule Finch.HTTP2.Pool do
 
   # Call the pool with the request. The pool will multiplex multiple requests
   # and stream the result set back to the calling process using `send`
-  @impl true
+  @impl Finch.Pool
   def request(pool, request, acc, fun, opts) do
     opts = Keyword.put_new(opts, :receive_timeout, @default_receive_timeout)
     timeout = opts[:receive_timeout]
@@ -72,6 +72,16 @@ defmodule Finch.HTTP2.Pool do
           :erlang.raise(kind, error, __STACKTRACE__)
       end
     end
+  end
+
+  @impl Finch.Pool
+  def async_request(_pool, _req, _opts) do
+    throw(:not_implemented)
+  end
+
+  @impl Finch.Pool
+  def cancel_async_request(_request_ref) do
+    throw(:not_implemented)
   end
 
   defp response_waiting_loop(

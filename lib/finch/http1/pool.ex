@@ -74,6 +74,38 @@ defmodule Finch.HTTP1.Pool do
     end
   end
 
+  @impl Finch.Pool
+  def async_request(pool, req, opts) do
+    owner = self()
+
+    pid =
+      spawn(fn ->
+        request_ref = receive_next_within(10)
+        request(pool, req, {owner, request_ref}, &send_async_response/2, opts)
+        send(owner, {request_ref, :done})
+      end)
+
+    request_ref = {make_ref(), pool, __MODULE__, pid}
+    send(pid, request_ref)
+  end
+
+  defp receive_next_within(timeout) do
+    receive do
+      value -> value
+    after
+      timeout -> raise "no message received within #{timeout}"
+    end
+  end
+
+  defp send_async_response(response, {owner, request_ref}) do
+    send(owner, {request_ref, response})
+    {owner, request_ref}
+  end
+
+  @impl Finch.Pool
+  def cancel_async_request(_request_ref) do
+  end
+
   @impl NimblePool
   def init_pool({registry, shp, opts}) do
     # Register our pool with our module name as the key. This allows the caller
