@@ -103,7 +103,9 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl Finch.Pool
-  def cancel_async_request(_request_ref) do
+  def cancel_async_request({_, _, _, pid}) do
+    Process.exit(pid, :shutdown)
+    :ok
   end
 
   @impl NimblePool

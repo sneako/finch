@@ -1,6 +1,8 @@
 defmodule Finch.HTTP1.PoolTest do
   use FinchCase, async: true
 
+  alias Finch.HTTP1Server
+
   @tag capture_log: true
   test "should terminate pool after idle timeout", %{bypass: bypass, finch_name: finch_name} do
     test_name = to_string(finch_name)
@@ -46,5 +48,33 @@ defmodule Finch.HTTP1.PoolTest do
     assert_receive :telemetry_sent
 
     :telemetry.detach(test_name)
+  end
+
+  describe "async requests" do
+    @describetag bypass: false
+
+    setup do
+      port = 4005
+      endpoint = "http://localhost:#{port}"
+
+      start_supervised!({HTTP1Server, port: port})
+
+      {:ok, endpoint: endpoint}
+    end
+
+    test "can be canceled with cancel_async_request/1", %{
+      finch_name: finch_name,
+      endpoint: endpoint
+    } do
+      start_supervised!({Finch, name: finch_name, pools: %{default: [protocol: :http1]}})
+
+      ref =
+        Finch.build(:get, endpoint <> "/stream/1/50")
+        |> Finch.async_request(finch_name)
+
+      assert_receive {^ref, {:status, 200}}
+      Finch.HTTP1.Pool.cancel_async_request(ref)
+      refute_receive {^ref, {:data, _}}
+    end
   end
 end

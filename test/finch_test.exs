@@ -767,32 +767,6 @@ defmodule FinchTest do
       for _ <- 1..5, do: assert_receive({^request_ref, {:data, "chunk-data"}})
       assert_receive {^request_ref, :done}
     end
-
-    @tag :skip
-    test "can be canceled with cancel_async_request/1", %{bypass: bypass, finch_name: finch_name} do
-      start_supervised!({Finch, name: finch_name})
-
-      Bypass.expect(bypass, fn conn ->
-        conn = Plug.Conn.send_chunked(conn, 200)
-
-        :timer.sleep(10)
-
-        Enum.reduce(1..5, conn, fn _, conn ->
-          {:ok, conn} = Plug.Conn.chunk(conn, "chunk-data")
-          conn
-        end)
-      end)
-
-      request_ref =
-        Finch.build(:get, endpoint(bypass))
-        |> Finch.async_request(finch_name)
-
-      assert_receive {^request_ref, {:status, 200}}, 10
-
-      Finch.cancel_async_request(request_ref)
-
-      refute_receive {^request_ref, {:data, _}}
-    end
   end
 
   defp get_pools(name, shp) do
