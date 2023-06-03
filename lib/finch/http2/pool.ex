@@ -31,12 +31,12 @@ defmodule Finch.HTTP2.Pool do
   def request(pool, request, acc, fun, opts) do
     opts = Keyword.put_new(opts, :receive_timeout, @default_receive_timeout)
     timeout = opts[:receive_timeout]
+    request_ref = make_request_ref(pool)
 
     metadata = %{request: request}
-
     start_time = Telemetry.start(:send, metadata)
 
-    with {:ok, ref} <- :gen_statem.call(pool, {:request, request, opts}) do
+    with {:ok, ref} <- :gen_statem.call(pool, {:request, request, request_ref, opts}) do
       Telemetry.stop(:send, start_time, metadata)
       monitor = Process.monitor(pool)
       # If the timeout is an integer, we add a fail-safe "after" clause that fires
@@ -48,7 +48,7 @@ defmodule Finch.HTTP2.Pool do
       start_time = Telemetry.start(:recv, metadata)
 
       try do
-        result = response_waiting_loop(acc, fun, ref, monitor, fail_safe_timeout)
+        result = response_waiting_loop(acc, fun, request_ref, monitor, fail_safe_timeout)
 
         case result do
           {:ok, acc, {status, headers}} ->
@@ -66,7 +66,7 @@ defmodule Finch.HTTP2.Pool do
           Telemetry.exception(:recv, start_time, kind, error, __STACKTRACE__, metadata)
 
           :gen_statem.call(pool, {:cancel, ref})
-          clean_responses(ref)
+          clean_responses(request_ref)
           Process.demonitor(monitor)
 
           :erlang.raise(kind, error, __STACKTRACE__)
@@ -84,56 +84,68 @@ defmodule Finch.HTTP2.Pool do
     throw(:not_implemented)
   end
 
+  defp make_request_ref(pool) do
+    {make_ref(), pool, __MODULE__, nil}
+  end
+
   defp response_waiting_loop(
          acc,
          fun,
-         ref,
+         request_ref,
          monitor_ref,
          fail_safe_timeout,
          status \\ nil,
          headers \\ []
        )
 
-  defp response_waiting_loop(acc, fun, ref, monitor_ref, fail_safe_timeout, status, headers) do
+  defp response_waiting_loop(
+         acc,
+         fun,
+         request_ref,
+         monitor_ref,
+         fail_safe_timeout,
+         status,
+         headers
+       ) do
     receive do
-      {:status, ^ref, value} ->
+      {^request_ref, {:status, value}} ->
         response_waiting_loop(
           fun.({:status, value}, acc),
           fun,
-          ref,
+          request_ref,
           monitor_ref,
           fail_safe_timeout,
           value,
           headers
         )
 
-      {:headers, ^ref, value} ->
+      {^request_ref, {:headers, value}} ->
         response_waiting_loop(
           fun.({:headers, value}, acc),
           fun,
-          ref,
+          request_ref,
           monitor_ref,
           fail_safe_timeout,
           status,
           headers ++ value
         )
 
-      {:data, ^ref, value} ->
+      {^request_ref, {:data, value}} ->
         response_waiting_loop(
           fun.({:data, value}, acc),
           fun,
-          ref,
+          request_ref,
           monitor_ref,
           fail_safe_timeout,
           status,
           headers
         )
 
-      {:done, ^ref} ->
+      {^request_ref, :done} ->
         Process.demonitor(monitor_ref)
         {:ok, acc, {status, headers}}
 
-      {:error, ^ref, error} ->
+      {^request_ref, {:error, error}} ->
         Process.demonitor(monitor_ref)
         {:error, error, {status, headers}}
 
@@ -149,19 +161,11 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  defp clean_responses(ref) do
+  defp clean_responses(request_ref) do
     receive do
-      {kind, ^ref, _value} when kind in [:status, :headers, :data] ->
-        clean_responses(ref)
-
-      {:done, ^ref} ->
-        :ok
-
-      {:error, ^ref, _error} ->
-        :ok
+      {^request_ref, _} -> clean_responses(request_ref)
     after
-      0 ->
-        :ok
+      0 -> :ok
     end
   end
 
@@ -198,8 +202,11 @@ defmodule Finch.HTTP2.Pool do
   # requests
   def disconnected(:enter, _, data) do
     :ok =
-      Enum.each(data.requests, fn {ref, request} ->
-        send(request.from_pid, {:error, ref, Error.exception(:connection_closed)})
+      Enum.each(data.requests, fn {_ref, request} ->
+        send(
+          request.from_pid,
+          {request.request_ref, {:error, Error.exception(:connection_closed)}}
+        )
       end)
 
     # It's possible that we're entering this state before we are alerted of the
@@ -257,7 +264,7 @@ defmodule Finch.HTTP2.Pool do
   end
 
   # Immediately fail a request if we're disconnected
-  def disconnected({:call, from}, {:request, _, _}, _data) do
+  def disconnected({:call, from}, {:request, _, _, _}, _data) do
     {:keep_state_and_data, {:reply, from, {:error, Error.exception(:disconnected)}}}
   end
 
@@ -292,8 +299,8 @@ defmodule Finch.HTTP2.Pool do
 
   # Issue request to the upstream server. We store a ref to the request so we
   # know who to respond to when we've completed everything
-  def connected({:call, from}, {:request, req, opts}, data) do
-    request = RequestStream.new(req.body, from)
+  def connected({:call, from}, {:request, req, request_ref, opts}, data) do
+    request = RequestStream.new(req.body, from, request_ref)
 
     with {:ok, data, ref} <- request(data, req),
          data = put_in(data.requests[ref], request),
@@ -378,7 +385,7 @@ defmodule Finch.HTTP2.Pool do
     with {:pop, {request, data}} when not is_nil(request) <- {:pop, pop_in(data.requests[ref])},
          {:ok, conn} <- HTTP2.cancel_request(data.conn, ref) do
       data = put_in(data.conn, conn)
-      send(request.from_pid, {:error, ref, Error.exception(:request_timeout)})
+      send(request.from_pid, {request.request_ref, {:error, Error.exception(:request_timeout)}})
       {:keep_state, data}
     else
       {:error, conn, _error} ->
@@ -424,7 +431,7 @@ defmodule Finch.HTTP2.Pool do
   end
 
   # If we're in a read only state than respond with an error immediately
-  def connected_read_only({:call, from}, {:request, _, _}, _) do
+  def connected_read_only({:call, from}, {:request, _, _, _}, _) do
     {:keep_state_and_data, {:reply, from, {:error, Error.exception(:read_only)}}}
   end
 
@@ -482,7 +489,7 @@ defmodule Finch.HTTP2.Pool do
 
     # Its possible that the request doesn't exist so we guard against that here.
     if request != nil do
-      send(request.from_pid, {:error, ref, Error.exception(:request_timeout)})
+      send(request.from_pid, {request.request_ref, {:error, Error.exception(:request_timeout)}})
     end
 
     # If we're out of requests then we should enter the disconnected state.
@@ -500,24 +507,24 @@ defmodule Finch.HTTP2.Pool do
     end)
   end
 
-  defp handle_response(data, {kind, ref, _value} = response, actions)
+  defp handle_response(data, {kind, ref, value}, actions)
        when kind in [:status, :headers, :data] do
     if request = data.requests[ref] do
-      send(request.from_pid, response)
+      send(request.from_pid, {request.request_ref, {kind, value}})
     end
 
     {data, actions}
   end
 
-  defp handle_response(data, {:done, ref} = response, actions) do
+  defp handle_response(data, {:done, ref}, actions) do
     {request, data} = pop_in(data.requests[ref])
-    if request, do: send(request.from_pid, response)
+    if request, do: send(request.from_pid, {request.request_ref, :done})
     {data, [cancel_request_timeout_action(ref) | actions]}
   end
 
-  defp handle_response(data, {:error, ref, _error} = response, actions) do
+  defp handle_response(data, {:error, ref, error}, actions) do
     {request, data} = pop_in(data.requests[ref])
-    if request, do: send(request.from_pid, response)
+    if request, do: send(request.from_pid, {request.request_ref, {:error, error}})
     {data, [cancel_request_timeout_action(ref) | actions]}
   end
 
