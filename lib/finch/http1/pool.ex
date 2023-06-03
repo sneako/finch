@@ -80,16 +80,20 @@ defmodule Finch.HTTP1.Pool do
 
     pid =
       spawn(fn ->
-        request_ref = receive_next_within(10)
-        request(pool, req, {owner, request_ref}, &send_async_response/2, opts)
-        send(owner, {request_ref, :done})
+        monitor = Process.monitor(owner)
+        request_ref = receive_next_within!(10)
+
+        case request(pool, req, {owner, monitor, request_ref}, &send_async_response/2, opts) do
+          {:ok, _} -> send(owner, {request_ref, :done})
+          {:error, error} -> send(owner, {request_ref, {:error, error}})
+        end
       end)
 
     request_ref = {make_ref(), pool, __MODULE__, pid}
     send(pid, request_ref)
   end
 
-  defp receive_next_within(timeout) do
+  defp receive_next_within!(timeout) do
     receive do
       value -> value
     after
@@ -97,9 +101,21 @@ defmodule Finch.HTTP1.Pool do
     end
   end
 
-  defp send_async_response(response, {owner, request_ref}) do
+  defp send_async_response(response, {owner, monitor, request_ref}) do
+    if process_down?(monitor) do
+      exit(:shutdown)
+    end
+
     send(owner, {request_ref, response})
-    {owner, request_ref}
+    {owner, monitor, request_ref}
+  end
+
+  defp process_down?(monitor) do
+    receive do
+      {:DOWN, ^monitor, _, _, _} -> true
+    after
+      0 -> false
+    end
   end
 
   @impl Finch.Pool

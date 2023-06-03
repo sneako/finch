@@ -53,11 +53,12 @@ defmodule Finch.HTTP1.PoolTest do
   describe "async requests" do
     @describetag bypass: false
 
-    setup do
+    setup %{finch_name: finch_name} do
       port = 4005
       endpoint = "http://localhost:#{port}"
 
       start_supervised!({HTTP1Server, port: port})
+      start_supervised!({Finch, name: finch_name, pools: %{default: [protocol: :http1]}})
 
       {:ok, endpoint: endpoint}
     end
@@ -66,8 +67,6 @@ defmodule Finch.HTTP1.PoolTest do
       finch_name: finch_name,
       endpoint: endpoint
     } do
-      start_supervised!({Finch, name: finch_name, pools: %{default: [protocol: :http1]}})
-
       ref =
         Finch.build(:get, endpoint <> "/stream/1/50")
         |> Finch.async_request(finch_name)
@@ -75,6 +74,26 @@ defmodule Finch.HTTP1.PoolTest do
       assert_receive {^ref, {:status, 200}}
       Finch.HTTP1.Pool.cancel_async_request(ref)
       refute_receive {^ref, {:data, _}}
+    end
+
+    test "are canceled if calling process exits", %{finch_name: finch_name, endpoint: endpoint} do
+      outer = self()
+
+      caller =
+        spawn(fn ->
+          {_, _, _, pid} =
+            Finch.build(:get, endpoint <> "/stream/5/50")
+            |> Finch.async_request(finch_name)
+
+          send(outer, {:req_pid, pid})
+        end)
+
+      assert_receive {:req_pid, pid}
+
+      Process.exit(caller, :kill)
+      Process.sleep(100)
+
+      refute Process.alive?(pid)
     end
   end
 end
