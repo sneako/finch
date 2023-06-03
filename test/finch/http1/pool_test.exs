@@ -50,7 +50,7 @@ defmodule Finch.HTTP1.PoolTest do
     :telemetry.detach(test_name)
   end
 
-  describe "async requests" do
+  describe "async_request" do
     @describetag bypass: false
 
     setup %{finch_name: finch_name} do
@@ -63,7 +63,26 @@ defmodule Finch.HTTP1.PoolTest do
       {:ok, endpoint: endpoint}
     end
 
-    test "can be canceled with cancel_async_request/1", %{
+    test "sends responses to the caller", %{finch_name: finch_name, endpoint: endpoint} do
+      request_ref =
+        Finch.build(:get, endpoint <> "/stream/5/5")
+        |> Finch.async_request(finch_name)
+
+      assert_receive {^request_ref, {:status, 200}}
+      assert_receive {^request_ref, {:headers, headers}} when is_list(headers)
+      for _ <- 1..5, do: assert_receive({^request_ref, {:data, _}})
+      assert_receive {^request_ref, :done}
+    end
+
+    test "sends errors to the caller", %{finch_name: finch_name, endpoint: endpoint} do
+      request_ref =
+        Finch.build(:get, endpoint <> "/wait/100")
+        |> Finch.async_request(finch_name, receive_timeout: 10)
+
+      assert_receive {^request_ref, {:error, %{reason: :timeout}}}
+    end
+
+    test "canceled with cancel_async_request/1", %{
       finch_name: finch_name,
       endpoint: endpoint
     } do
@@ -76,7 +95,7 @@ defmodule Finch.HTTP1.PoolTest do
       refute_receive {^ref, {:data, _}}
     end
 
-    test "are canceled if calling process exits", %{finch_name: finch_name, endpoint: endpoint} do
+    test "canceled if calling process exits", %{finch_name: finch_name, endpoint: endpoint} do
       outer = self()
 
       caller =
