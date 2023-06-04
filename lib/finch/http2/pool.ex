@@ -314,33 +314,8 @@ defmodule Finch.HTTP2.Pool do
   # Issue request to the upstream server. We store a ref to the request so we
   # know who to respond to when we've completed everything
   def connected({:call, from}, {:request, request_ref, req, opts}, data) do
-    with {:ok, data, ref} <- request(data, req),
-         request = RequestStream.new(req.body, from, request_ref),
-         data = put_request(data, ref, request),
-         {:ok, data, actions} <- continue_request(data, ref) do
-      # Set a timeout to close the request after a given timeout
-      request_timeout = {{:timeout, {:request_timeout, ref}}, opts[:receive_timeout], nil}
-
-      {:keep_state, data, actions ++ [request_timeout]}
-    else
-      {:error, data, %HTTPError{reason: :closed_for_writing}} ->
-        actions = [{:reply, from, {:error, "read_only"}}]
-
-        if HTTP2.open?(data.conn, :read) && Enum.any?(data.requests) do
-          {:next_state, :connected_read_only, data, actions}
-        else
-          {:next_state, :disconnected, data, actions}
-        end
-
-      {:error, data, error} ->
-        actions = [{:reply, from, {:error, error}}]
-
-        if HTTP2.open?(data.conn) do
-          {:keep_state, data, actions}
-        else
-          {:next_state, :disconnected, data, actions}
-        end
-    end
+    request = RequestStream.new(req.body, from, request_ref)
+    send_request(data, request, req, opts)
   end
 
   def connected({:call, from}, {:cancel, request_ref}, data) do
@@ -349,33 +324,8 @@ defmodule Finch.HTTP2.Pool do
   end
 
   def connected(:cast, {:async_request, pid, request_ref, req, opts}, data) do
-    with {:ok, data, ref} <- request(data, req),
-         request = RequestStream.new(req.body, nil, pid, request_ref),
-         data = put_request(data, ref, request),
-         {:ok, data, _actions} <- continue_request(data, ref) do
-      # Set a timeout to close the request after a given timeout
-      request_timeout = {{:timeout, {:request_timeout, ref}}, opts[:receive_timeout], nil}
-
-      {:keep_state, data, [request_timeout]}
-    else
-      {:error, data, %HTTPError{reason: :closed_for_writing}} ->
-        send(pid, {request_ref, {:error, "read_only"}})
-
-        if HTTP2.open?(data.conn, :read) && Enum.any?(data.requests) do
-          {:next_state, :connected_read_only, data}
-        else
-          {:next_state, :disconnected, data}
-        end
-
-      {:error, data, error} ->
-        send(pid, {request_ref, {:error, error}})
-
-        if HTTP2.open?(data.conn) do
-          {:keep_state, data}
-        else
-          {:next_state, :disconnected, data}
-        end
-    end
+    request = RequestStream.new(req.body, nil, pid, request_ref)
+    send_request(data, request, req, opts)
   end
 
   def connected(:info, message, data) do
@@ -386,8 +336,8 @@ defmodule Finch.HTTP2.Pool do
 
         cond do
           HTTP2.open?(data.conn, :write) ->
-            {data, streaming_actions} = continue_requests(data)
-            {:keep_state, data, response_actions ++ streaming_actions}
+            data = continue_requests(data)
+            {:keep_state, data, response_actions}
 
           HTTP2.open?(data.conn, :read) && Enum.any?(data.requests) ->
             {:next_state, :connected_read_only, data, response_actions}
@@ -451,19 +401,20 @@ defmodule Finch.HTTP2.Pool do
   def connected_read_only(event, content, data)
 
   def connected_read_only(:enter, _old_state, data) do
-    {actions, data} =
-      Enum.flat_map_reduce(data.requests, data, fn
+    data =
+      Enum.reduce(data.requests, data, fn
         # request is awaiting a response and should stay in state
         {_ref, %{status: :done}}, data ->
-          {[], data}
+          data
 
         # request is still sending data and should be discarded
         {ref, %{status: :streaming} = request}, data ->
           {^request, data} = pop_request(data, ref)
-          {[{:reply, request.from, {:error, Error.exception(:read_only)}}], data}
+          reply(request, {:error, Error.exception(:read_only)})
+          data
       end)
 
-    {:keep_state, data, actions}
+    {:keep_state, data}
   end
 
   # If we're in a read only state than respond with an error immediately
@@ -539,6 +490,35 @@ defmodule Finch.HTTP2.Pool do
       {:next_state, :disconnected, data}
     else
       {:keep_state, data}
+    end
+  end
+
+  defp send_request(data, request, req, opts) do
+    with {:ok, data, ref} <- request(data, req),
+         data = put_request(data, ref, request),
+         {:ok, data} <- continue_request(data, ref) do
+      # Set a timeout to close the request after a given timeout
+      request_timeout = {{:timeout, {:request_timeout, ref}}, opts[:receive_timeout], nil}
+
+      {:keep_state, data, [request_timeout]}
+    else
+      {:error, data, %HTTPError{reason: :closed_for_writing}} ->
+        reply(request, {:error, "read_only"})
+
+        if HTTP2.open?(data.conn, :read) && Enum.any?(data.requests) do
+          {:next_state, :connected_read_only, data}
+        else
+          {:next_state, :disconnected, data}
+        end
+
+      {:error, data, error} ->
+        reply(request, {:error, error})
+
+        if HTTP2.open?(data.conn) do
+          {:keep_state, data}
+        else
+          {:next_state, :disconnected, data}
+        end
     end
   end
 
@@ -623,39 +603,43 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp continue_requests(data) do
-    Enum.reduce(data.requests, {data, []}, fn {ref, request}, {data, actions} ->
+    Enum.reduce(data.requests, data, fn {ref, request}, data ->
       with true <- request.status == :streaming,
            true <- HTTP2.open?(data.conn, :write),
-           {:ok, data, new_actions} <- continue_request(data, ref) do
-        {data, new_actions ++ actions}
+           {:ok, data} <- continue_request(data, ref) do
+        data
       else
         false ->
-          {data, actions}
+          data
 
         {:error, data, %HTTPError{reason: :closed_for_writing}} ->
-          {data, [{:reply, request.from, {:error, "read_only"}} | actions]}
+          reply(request, {:error, "read_only"})
+          data
 
         {:error, data, reason} ->
-          {data, [{:reply, request.from, {:error, reason}} | actions]}
+          reply(request, {:error, reason})
+          data
       end
     end)
   end
 
   defp continue_request(data, ref) do
     request = data.requests[ref]
-    reply_action = {:reply, request.from, :ok}
 
     with :streaming <- request.status,
          window = smallest_window(data.conn, ref),
          {request, chunks} = RequestStream.next_chunk(request, window),
          data = put_in(data.requests[ref], request),
          {:ok, data} <- stream_chunks(data, ref, chunks) do
-      actions = if request.status == :done, do: [reply_action], else: []
+      if request.status == :done do
+        reply(request, :ok)
+      end
 
-      {:ok, data, actions}
+      {:ok, data}
     else
       :done ->
-        {:ok, data, [reply_action]}
+        reply(request, :ok)
+        {:ok, data}
 
       {:error, data, reason} ->
         {_from, data} = pop_request(data, ref)
@@ -704,5 +688,13 @@ defmodule Finch.HTTP2.Pool do
         {_ref, data} = pop_in(data.refs[request.request_ref])
         {request, data}
     end
+  end
+
+  defp reply(%RequestStream{from: nil, from_pid: pid, request_ref: request_ref}, reply) do
+    send(pid, {request_ref, reply})
+  end
+
+  defp reply(%RequestStream{from: from}, reply) do
+    :gen_statem.reply(from, reply)
   end
 end
