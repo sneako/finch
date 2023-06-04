@@ -515,7 +515,7 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp handle_request({:error, data, %HTTPError{reason: :closed_for_writing}}, request, _opts) do
-    reply(request, {:error, "read_only"})
+    reply(request, {:error, Error.exception(:read_only)})
 
     if HTTP2.open?(data.conn, :read) && Enum.any?(data.requests) do
       {:next_state, :connected_read_only, data}
@@ -625,7 +625,7 @@ defmodule Finch.HTTP2.Pool do
           data
 
         {:error, data, %HTTPError{reason: :closed_for_writing}} ->
-          reply(request, {:error, "read_only"})
+          reply(request, {:error, Error.exception(:read_only)})
           data
 
         {:error, data, reason} ->
