@@ -4,6 +4,10 @@ defmodule Finch.HTTP2.RequestStream do
   defstruct [:body, :from, :from_pid, :request_ref, :status, :buffer, :continuation]
 
   def new(body, {from_pid, _from_ref} = from, request_ref) do
+    new(body, from, from_pid, request_ref)
+  end
+
+  def new(body, from, from_pid, request_ref) do
     enumerable =
       case body do
         {:stream, stream} -> Stream.map(stream, &with_byte_size/1)

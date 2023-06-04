@@ -4,6 +4,7 @@ defmodule Finch.HTTP2.PoolTest do
   import Mint.HTTP2.Frame
 
   alias Finch.HTTP2.Pool
+  alias Finch.HTTP2Server
   alias Finch.MockHTTP2Server
 
   defmacrop assert_recv_frames(frames) when is_list(frames) do
@@ -264,6 +265,62 @@ defmodule Finch.HTTP2.PoolTest do
     assert_recv_frames([rst_stream(stream_id: ^stream_id, error_code: :cancel)])
 
     assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}}}
+  end
+
+  describe "async_request" do
+    setup %{test: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocol: :http2,
+             count: 5,
+             conn_opts: [
+               transport_opts: [
+                 verify: :verify_none
+               ]
+             ]
+           ]
+         }}
+      )
+
+      port = 4006
+      url = "https://localhost:#{port}"
+
+      start_supervised!({HTTP2Server, port: port})
+
+      {:ok, finch_name: finch_name, url: url}
+    end
+
+    test "sends responses to the caller", %{finch_name: finch_name, url: url} do
+      request_ref =
+        Finch.build(:get, url)
+        |> Finch.async_request(finch_name)
+
+      assert_receive {^request_ref, {:status, 200}}, 300
+      assert_receive {^request_ref, {:headers, headers}} when is_list(headers)
+      assert_receive {^request_ref, {:data, "Hello world!"}}
+      assert_receive {^request_ref, :done}
+    end
+
+    test "sends errors to the caller", %{finch_name: finch_name, url: url} do
+      request_ref =
+        Finch.build(:get, url <> "/wait/100")
+        |> Finch.async_request(finch_name, receive_timeout: 10)
+
+      assert_receive {^request_ref, {:error, %{reason: :request_timeout}}}, 300
+    end
+
+    test "canceled with cancel_async_request/1", %{finch_name: finch_name, url: url} do
+      ref =
+        Finch.build(:get, url <> "/stream/1/50")
+        |> Finch.async_request(finch_name)
+
+      assert_receive {^ref, {:status, 200}}
+      Finch.HTTP2.Pool.cancel_async_request(ref)
+      refute_receive {^ref, {:data, _}}
+    end
   end
 
   @pdict_key {__MODULE__, :http2_test_server}

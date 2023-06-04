@@ -65,7 +65,7 @@ defmodule Finch.HTTP2.Pool do
         kind, error ->
           Telemetry.exception(:recv, start_time, kind, error, __STACKTRACE__, metadata)
 
-          :gen_statem.call(pool, {:cancel, request_ref})
+          :ok = :gen_statem.call(pool, {:cancel, request_ref})
           clean_responses(request_ref)
           Process.demonitor(monitor)
 
@@ -75,13 +75,20 @@ defmodule Finch.HTTP2.Pool do
   end
 
   @impl Finch.Pool
-  def async_request(_pool, _req, _opts) do
-    throw(:not_implemented)
+  def async_request(pool, req, opts) do
+    opts = Keyword.put_new(opts, :receive_timeout, @default_receive_timeout)
+    request_ref = make_request_ref(pool)
+
+    :ok = :gen_statem.cast(pool, {:async_request, self(), request_ref, req, opts})
+
+    request_ref
   end
 
   @impl Finch.Pool
-  def cancel_async_request(_request_ref) do
-    throw(:not_implemented)
+  def cancel_async_request(request_ref) do
+    {_ref, pool, _mod, _state} = request_ref
+    :ok = :gen_statem.call(pool, {:cancel, request_ref})
+    clean_responses(request_ref)
   end
 
   defp make_request_ref(pool) do
@@ -274,6 +281,12 @@ defmodule Finch.HTTP2.Pool do
     {:keep_state_and_data, {:reply, from, {:error, Error.exception(:disconnected)}}}
   end
 
+  # Immediately fail a request if we're disconnected
+  def disconnected(:cast, {:async_request, pid, request_ref, _, _}, _data) do
+    send(pid, {request_ref, {:error, Error.exception(:disconnected)}})
+    :keep_state_and_data
+  end
+
   # We cancel all request timeouts as soon as we enter the :disconnected state, but
   # some timeouts might fire while changing states, so we need to handle them here.
   # Since we replied to all pending requests when entering the :disconnected state,
@@ -331,21 +344,37 @@ defmodule Finch.HTTP2.Pool do
   end
 
   def connected({:call, from}, {:cancel, request_ref}, data) do
-    # If the Mint ref isn't present, it was removed because the request
-    # already completed and there's nothing to cancel.
-    if ref = data.refs[request_ref] do
-      conn =
-        case HTTP2.cancel_request(data.conn, ref) do
-          {:ok, conn} -> conn
-          {:error, conn, _error} -> conn
+    data = cancel_request(data, request_ref)
+    {:keep_state, data, {:reply, from, :ok}}
+  end
+
+  def connected(:cast, {:async_request, pid, request_ref, req, opts}, data) do
+    with {:ok, data, ref} <- request(data, req),
+         request = RequestStream.new(req.body, nil, pid, request_ref),
+         data = put_request(data, ref, request),
+         {:ok, data, _actions} <- continue_request(data, ref) do
+      # Set a timeout to close the request after a given timeout
+      request_timeout = {{:timeout, {:request_timeout, ref}}, opts[:receive_timeout], nil}
+
+      {:keep_state, data, [request_timeout]}
+    else
+      {:error, data, %HTTPError{reason: :closed_for_writing}} ->
+        send(pid, {request_ref, {:error, "read_only"}})
+
+        if HTTP2.open?(data.conn, :read) && Enum.any?(data.requests) do
+          {:next_state, :connected_read_only, data}
+        else
+          {:next_state, :disconnected, data}
         end
 
-      data = put_in(data.conn, conn)
-      {_from, data} = pop_request(data, ref)
+      {:error, data, error} ->
+        send(pid, {request_ref, {:error, error}})
 
-      {:keep_state, data, {:reply, from, :ok}}
-    else
-      {:keep_state, data, {:reply, from, :ok}}
+        if HTTP2.open?(data.conn) do
+          {:keep_state, data}
+        else
+          {:next_state, :disconnected, data}
+        end
     end
   end
 
@@ -445,6 +474,11 @@ defmodule Finch.HTTP2.Pool do
   def connected_read_only({:call, from}, {:cancel, ref}, data) do
     {_from, data} = pop_request(data, ref)
     {:keep_state, data, {:reply, from, :ok}}
+  end
+
+  def connected_read_only(:cast, {:async_request, pid, request_ref, _, _}, _) do
+    send(pid, {request_ref, {:error, Error.exception(:read_only)}})
+    :keep_state_and_data
   end
 
   def connected_read_only(:info, message, data) do
@@ -635,6 +669,24 @@ defmodule Finch.HTTP2.Pool do
       HTTP2.get_window_size(conn, :connection),
       HTTP2.get_window_size(conn, {:request, ref})
     )
+  end
+
+  defp cancel_request(data, request_ref) do
+    # If the Mint ref isn't present, it was removed because the request
+    # already completed and there's nothing to cancel.
+    if ref = data.refs[request_ref] do
+      conn =
+        case HTTP2.cancel_request(data.conn, ref) do
+          {:ok, conn} -> conn
+          {:error, conn, _error} -> conn
+        end
+
+      data = put_in(data.conn, conn)
+      {_from, data} = pop_request(data, ref)
+      data
+    else
+      data
+    end
   end
 
   defp put_request(data, ref, request) do
