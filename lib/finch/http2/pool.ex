@@ -191,6 +191,7 @@ defmodule Finch.HTTP2.Pool do
       port: port,
       requests: %{},
       refs: %{},
+      requests_by_pid: %{},
       backoff_base: 500,
       backoff_max: 10_000,
       connect_opts: pool_opts[:conn_opts] || []
@@ -327,11 +328,19 @@ defmodule Finch.HTTP2.Pool do
   end
 
   def connected(:cast, {:async_request, pid, request_ref, req, opts}, data) do
+    if is_nil(data.requests_by_pid[pid]) do
+      Process.monitor(pid)
+    end
+
     request = RequestStream.new(req.body, nil, pid, request_ref)
 
     data
     |> request(req)
     |> handle_request(request, opts)
+  end
+
+  def connected(:info, {:DOWN, _, :process, pid, _}, data) do
+    {:keep_state, cancel_requests(data, pid)}
   end
 
   def connected(:info, message, data) do
@@ -436,6 +445,10 @@ defmodule Finch.HTTP2.Pool do
   def connected_read_only(:cast, {:async_request, pid, request_ref, _, _}, _) do
     send(pid, {request_ref, {:error, Error.exception(:read_only)}})
     :keep_state_and_data
+  end
+
+  def connected_read_only(:info, {:DOWN, _, :process, pid, _}, data) do
+    {:keep_state, cancel_requests(data, pid)}
   end
 
   def connected_read_only(:info, message, data) do
@@ -665,6 +678,16 @@ defmodule Finch.HTTP2.Pool do
     )
   end
 
+  defp cancel_requests(data, pid) do
+    if request_refs = data.requests_by_pid[pid] do
+      Enum.reduce(request_refs, data, fn request_ref, data ->
+        cancel_request(data, request_ref)
+      end)
+    else
+      data
+    end
+  end
+
   defp cancel_request(data, request_ref) do
     # If the Mint ref isn't present, it was removed because the request
     # already completed and there's nothing to cancel.
@@ -687,6 +710,7 @@ defmodule Finch.HTTP2.Pool do
     data
     |> put_in([:requests, ref], request)
     |> put_in([:refs, request.request_ref], ref)
+    |> put_pid(request.from_pid, request.request_ref)
   end
 
   defp pop_request(data, ref) do
@@ -695,9 +719,34 @@ defmodule Finch.HTTP2.Pool do
         {nil, data}
 
       {request, data} ->
-        {_ref, data} = pop_in(data.refs[request.request_ref])
+        {_ref, data} =
+          data
+          |> pop_pid(request.from_pid, request.request_ref)
+          |> pop_in([:refs, request.request_ref])
+
         {request, data}
     end
+  end
+
+  defp put_pid(data, pid, request_ref) do
+    update_in(data.requests_by_pid, fn requests_by_pid ->
+      Map.update(requests_by_pid, pid, MapSet.new([request_ref]), &MapSet.put(&1, request_ref))
+    end)
+  end
+
+  defp pop_pid(data, pid, request_ref) do
+    update_in(data.requests_by_pid, fn requests_by_pid ->
+      requests =
+        requests_by_pid
+        |> Map.get(pid, MapSet.new())
+        |> MapSet.delete(request_ref)
+
+      if Enum.empty?(requests) do
+        Map.delete(requests_by_pid, pid)
+      else
+        Map.put(requests_by_pid, pid, requests)
+      end
+    end)
   end
 
   defp reply(%RequestStream{from: nil, from_pid: pid, request_ref: request_ref}, reply) do

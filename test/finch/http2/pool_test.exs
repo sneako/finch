@@ -310,6 +310,32 @@ defmodule Finch.HTTP2.PoolTest do
       refute_receive {^ref, {:data, _}}
     end
 
+    test "canceled if calling process exits", %{test: finch_name} do
+      start_finch!(finch_name)
+      {:ok, url} = start_server!()
+
+      outer = self()
+
+      caller =
+        spawn(fn ->
+          ref =
+            Finch.build(:get, url <> "/stream/5/500")
+            |> Finch.async_request(finch_name)
+
+          send(outer, ref)
+        end)
+
+      assert_receive {_, pool, _, _} = ref
+
+      assert {_, %{refs: %{^ref => _}}} = :sys.get_state(pool)
+
+      Process.exit(caller, :kill)
+      Process.sleep(100)
+
+      assert {_, %{refs: refs}} = :sys.get_state(pool)
+      assert refs == %{}
+    end
+
     test "if server sends GOAWAY and then replies, we get the replies but are closed for writing",
          %{request: req} do
       {:ok, pool} =
