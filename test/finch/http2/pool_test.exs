@@ -272,32 +272,10 @@ defmodule Finch.HTTP2.PoolTest do
   end
 
   describe "async requests" do
-    setup %{test: finch_name} do
-      start_supervised!(
-        {Finch,
-         name: finch_name,
-         pools: %{
-           default: [
-             protocol: :http2,
-             count: 5,
-             conn_opts: [
-               transport_opts: [
-                 verify: :verify_none
-               ]
-             ]
-           ]
-         }}
-      )
+    test "sends responses to the caller", %{test: finch_name} do
+      start_finch!(finch_name)
+      {:ok, url} = start_server!()
 
-      port = 4006
-      url = "https://localhost:#{port}"
-
-      start_supervised!({HTTP2Server, port: port})
-
-      {:ok, finch_name: finch_name, url: url}
-    end
-
-    test "sends responses to the caller", %{finch_name: finch_name, url: url} do
       request_ref =
         Finch.build(:get, url)
         |> Finch.async_request(finch_name)
@@ -308,7 +286,10 @@ defmodule Finch.HTTP2.PoolTest do
       assert_receive {^request_ref, :done}
     end
 
-    test "sends errors to the caller", %{finch_name: finch_name, url: url} do
+    test "sends errors to the caller", %{test: finch_name} do
+      start_finch!(finch_name)
+      {:ok, url} = start_server!()
+
       request_ref =
         Finch.build(:get, url <> "/wait/100")
         |> Finch.async_request(finch_name, receive_timeout: 10)
@@ -316,7 +297,10 @@ defmodule Finch.HTTP2.PoolTest do
       assert_receive {^request_ref, {:error, %{reason: :request_timeout}}}, 300
     end
 
-    test "canceled with cancel_async_request/1", %{finch_name: finch_name, url: url} do
+    test "canceled with cancel_async_request/1", %{test: finch_name} do
+      start_finch!(finch_name)
+      {:ok, url} = start_server!()
+
       ref =
         Finch.build(:get, url <> "/stream/1/50")
         |> Finch.async_request(finch_name)
@@ -408,6 +392,33 @@ defmodule Finch.HTTP2.PoolTest do
       ref = Pool.async_request(pool, %{req | headers: [{"foo", "bar"}]}, [])
 
       assert_receive {^ref, {:error, %{reason: {:max_header_list_size_exceeded, _, _}}}}
+    end
+
+    defp start_finch!(finch_name) do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocol: :http2,
+             count: 5,
+             conn_opts: [
+               transport_opts: [
+                 verify: :verify_none
+               ]
+             ]
+           ]
+         }}
+      )
+    end
+
+    defp start_server! do
+      port = 4006
+      url = "https://localhost:#{port}"
+
+      start_supervised!({HTTP2Server, port: port})
+
+      {:ok, url}
     end
   end
 
