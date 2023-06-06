@@ -3,6 +3,15 @@ defmodule Finch.HTTP1.PoolTest do
 
   alias Finch.HTTP1Server
 
+  setup_all do
+    port = 4005
+    url = "http://localhost:#{port}"
+
+    start_supervised!({HTTP1Server, port: port})
+
+    {:ok, url: url}
+  end
+
   @tag capture_log: true
   test "should terminate pool after idle timeout", %{bypass: bypass, finch_name: finch_name} do
     test_name = to_string(finch_name)
@@ -54,54 +63,49 @@ defmodule Finch.HTTP1.PoolTest do
     @describetag bypass: false
 
     setup %{finch_name: finch_name} do
-      port = 4005
-      endpoint = "http://localhost:#{port}"
-
-      start_supervised!({HTTP1Server, port: port})
       start_supervised!({Finch, name: finch_name, pools: %{default: [protocol: :http1]}})
-
-      {:ok, endpoint: endpoint}
+      :ok
     end
 
-    test "sends responses to the caller", %{finch_name: finch_name, endpoint: endpoint} do
+    test "sends responses to the caller", %{finch_name: finch_name, url: url} do
       request_ref =
-        Finch.build(:get, endpoint <> "/stream/5/5")
+        Finch.build(:get, url <> "/stream/5/5")
         |> Finch.async_request(finch_name)
 
-      assert_receive {^request_ref, {:status, 200}}
+      assert_receive {^request_ref, {:status, 200}}, 500
       assert_receive {^request_ref, {:headers, headers}} when is_list(headers)
       for _ <- 1..5, do: assert_receive({^request_ref, {:data, _}})
       assert_receive {^request_ref, :done}
     end
 
-    test "sends errors to the caller", %{finch_name: finch_name, endpoint: endpoint} do
+    test "sends errors to the caller", %{finch_name: finch_name, url: url} do
       request_ref =
-        Finch.build(:get, endpoint <> "/wait/100")
+        Finch.build(:get, url <> "/wait/100")
         |> Finch.async_request(finch_name, receive_timeout: 10)
 
-      assert_receive {^request_ref, {:error, %{reason: :timeout}}}
+      assert_receive {^request_ref, {:error, %{reason: :timeout}}}, 500
     end
 
     test "canceled with cancel_async_request/1", %{
       finch_name: finch_name,
-      endpoint: endpoint
+      url: url
     } do
       ref =
-        Finch.build(:get, endpoint <> "/stream/1/50")
+        Finch.build(:get, url <> "/stream/1/50")
         |> Finch.async_request(finch_name)
 
-      assert_receive {^ref, {:status, 200}}
+      assert_receive {^ref, {:status, 200}}, 500
       Finch.HTTP1.Pool.cancel_async_request(ref)
       refute_receive {^ref, {:data, _}}
     end
 
-    test "canceled if calling process exits", %{finch_name: finch_name, endpoint: endpoint} do
+    test "canceled if calling process exits", %{finch_name: finch_name, url: url} do
       outer = self()
 
       caller =
         spawn(fn ->
           {_, _, _, pid} =
-            Finch.build(:get, endpoint <> "/stream/5/50")
+            Finch.build(:get, url <> "/stream/5/500")
             |> Finch.async_request(finch_name)
 
           send(outer, {:req_pid, pid})
@@ -110,7 +114,7 @@ defmodule Finch.HTTP1.PoolTest do
       assert_receive {:req_pid, pid}
 
       Process.exit(caller, :kill)
-      Process.sleep(100)
+      Process.sleep(200)
 
       refute Process.alive?(pid)
     end
