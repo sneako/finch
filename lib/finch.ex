@@ -85,18 +85,23 @@ defmodule Finch do
   @type name() :: atom()
 
   @typedoc """
+  Options used by request functions.
+  """
+  @type request_opts() :: [
+          {:pool_timeout, pos_integer()}
+          | {:receive_timeout, pos_integer()}
+        ]
+
+  @typedoc """
+  The reference used to identify a request sent using `async_request/3`.
+  """
+  @opaque request_ref() :: Finch.Pool.request_ref()
+
+  @typedoc """
   The stream function given to `stream/5`.
   """
   @type stream(acc) ::
           ({:status, integer} | {:headers, Mint.Types.headers()} | {:data, binary}, acc -> acc)
-
-  @typedoc """
-  The reference used to identify an async request sent using `async_request/3`.
-
-  This reference can be used to identify process messages associated with the request,
-  but its shape should not be relied on and is subject to change.
-  """
-  @opaque request_ref() :: Finch.Pool.request_ref()
 
   @doc """
   Start an instance of Finch.
@@ -272,14 +277,9 @@ defmodule Finch do
 
   ## Options
 
-    * `:pool_timeout` - This timeout is applied when we check out a connection from the pool.
-      Default value is `5_000`.
-
-    * `:receive_timeout` - The maximum time to wait for a response before returning an error.
-      Default value is `15_000`.
-
+  Shares the same options as `request/3`.
   """
-  @spec stream(Request.t(), name(), acc, stream(acc), keyword) ::
+  @spec stream(Request.t(), name(), acc, stream(acc), request_opts()) ::
           {:ok, acc} | {:error, Exception.t()}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
@@ -305,7 +305,7 @@ defmodule Finch do
       Default value is `15_000`.
 
   """
-  @spec request(Request.t(), name(), keyword()) ::
+  @spec request(Request.t(), name(), request_opts()) ::
           {:ok, Response.t()}
           | {:error, Exception.t()}
   def request(req, name, opts \\ [])
@@ -350,7 +350,7 @@ defmodule Finch do
 
   See `request/3` for more detailed information.
   """
-  @spec request!(Request.t(), name(), keyword()) ::
+  @spec request!(Request.t(), name(), request_opts()) ::
           Response.t()
   def request!(%Request{} = req, name, opts \\ []) do
     case request(req, name, opts) do
@@ -362,10 +362,52 @@ defmodule Finch do
   @doc """
   Sends an HTTP request asynchronously, returning a request reference.
 
-  Response information will be sent as messages to the process that
-  issued the request.
+  ## Responses
+
+  Response information is sent to the calling process as it is received
+  in `{ref, response}` tuples. Responses include:
+
+    * `{:status, status}` - HTTP response status
+    * `{:headers, headers}` - HTTP response headers
+    * `{:data, data}` - section of the HTTP response body
+    * `{:error, exception}` - an error occurred during the request
+    * `:done` - request has completed successfully
+
+  On a successful request, a single `:status` message will be followed
+  by a single `:headers` message, after which one or more `:data`
+  messages may be sent. If trailing headers are present, it is possible
+  that a final `:headers` message may be sent. A `:done` or an `:error`
+  message indicates that the request has succeeded or failed and no
+  further messages are expected.
+
+  ## Example
+
+      iex> Stream.resource(
+      ...>   fn ->
+      ...>     Finch.build(:get, "https://httpbin.org/stream/5")
+      ...>     |> Finch.async_request(MyFinch)
+      ...>   end,
+      ...>   fn ref ->
+      ...>     receive do
+      ...>       {^ref, :done} -> {:halt, ref}
+      ...>       {^ref, response} -> {[response], ref}
+      ...>     end
+      ...>   end,
+      ...>   fn _ref -> :ok end
+      ...> ) |> Enum.to_list()
+      [
+        {:status, 200},
+        {:headers, [...]},
+        {:data, "..."},
+        ...
+        :done
+      ]
+
+  ## Options
+
+  Shares the same options as `request/3`.
   """
-  @spec async_request(Request.t(), name(), keyword()) :: request_ref()
+  @spec async_request(Request.t(), name(), request_opts()) :: request_ref()
   def async_request(%Request{} = req, name, opts \\ []) do
     {pool, pool_mod} = get_pool(req, name)
     pool_mod.async_request(pool, req, opts)
