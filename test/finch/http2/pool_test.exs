@@ -36,238 +36,242 @@ defmodule Finch.HTTP2.PoolTest do
     )
   end
 
-  test "request/response", %{request: req} do
-    us = self()
+  describe "requests" do
+    test "request/response", %{request: req} do
+      us = self()
 
-    {:ok, pool} =
-      start_server_and_connect_with(fn port ->
-        start_pool(port)
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      spawn(fn ->
+        {:ok, resp} = request(pool, req, [])
+        send(us, {:resp, {:ok, resp}})
       end)
 
-    spawn(fn ->
-      {:ok, resp} = request(pool, req, [])
-      send(us, {:resp, {:ok, resp}})
-    end)
+      assert_recv_frames([headers(stream_id: stream_id)])
 
-    assert_recv_frames([headers(stream_id: stream_id)])
+      hbf = server_encode_headers([{":status", "200"}])
 
-    hbf = server_encode_headers([{":status", "200"}])
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
+        data(stream_id: stream_id, data: "hello to you", flags: set_flags(:data, [:end_stream]))
+      ])
 
-    server_send_frames([
-      headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
-      data(stream_id: stream_id, data: "hello to you", flags: set_flags(:data, [:end_stream]))
-    ])
+      assert_receive {:resp, {:ok, {200, [], "hello to you"}}}
+    end
 
-    assert_receive {:resp, {:ok, {200, [], "hello to you"}}}
-  end
+    test "errors such as :max_header_list_size_reached are returned to the caller", %{
+      request: req
+    } do
+      server_settings = [max_header_list_size: 5]
 
-  test "errors such as :max_header_list_size_reached are returned to the caller", %{request: req} do
-    server_settings = [max_header_list_size: 5]
+      {:ok, pool} =
+        start_server_and_connect_with([server_settings: server_settings], fn port ->
+          start_pool(port)
+        end)
 
-    {:ok, pool} =
-      start_server_and_connect_with([server_settings: server_settings], fn port ->
-        start_pool(port)
+      assert {:error, error} = request(pool, %{req | headers: [{"foo", "bar"}]}, [])
+      assert %{reason: {:max_header_list_size_exceeded, _, _}} = error
+    end
+
+    test "if server sends GOAWAY and then replies, we get the replies but are closed for writing",
+         %{request: req} do
+      us = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      spawn(fn ->
+        result = request(pool, req, [])
+        send(us, {:resp, result})
       end)
 
-    assert {:error, error} = request(pool, %{req | headers: [{"foo", "bar"}]}, [])
-    assert %{reason: {:max_header_list_size_exceeded, _, _}} = error
-  end
+      assert_recv_frames([headers(stream_id: stream_id)])
 
-  test "if server sends GOAWAY and then replies, we get the replies but are closed for writing",
-       %{request: req} do
-    us = self()
+      hbf = server_encode_headers([{":status", "200"}])
 
-    {:ok, pool} =
-      start_server_and_connect_with(fn port ->
-        start_pool(port)
+      # Force the connection to enter read only mode
+      server_send_frames([
+        goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "all good")
+      ])
+
+      :timer.sleep(10)
+
+      # We can't send any more requests since the connection is closed for writing.
+      assert {:error, %Finch.Error{reason: :read_only}} = request(pool, req, [])
+
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
+        data(stream_id: stream_id, data: "hello", flags: set_flags(:data, [:end_stream]))
+      ])
+
+      assert_receive {:resp, {:ok, {200, [], "hello"}}}
+
+      # If the server now closes the socket, we actually shut down.
+      :ok = :ssl.close(server_socket())
+
+      Process.sleep(50)
+
+      # If we try to make a request now that the server shut down, we get an error.
+      assert {:error, %Finch.Error{reason: :disconnected}} = request(pool, req, [])
+    end
+
+    test "if server disconnects while there are waiting clients, we notify those clients", %{
+      request: req
+    } do
+      us = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      spawn(fn ->
+        result = request(pool, req, [])
+        send(us, {:resp, result})
       end)
 
-    spawn(fn ->
-      result = request(pool, req, [])
-      send(us, {:resp, result})
-    end)
+      assert_recv_frames([headers(stream_id: stream_id)])
 
-    assert_recv_frames([headers(stream_id: stream_id)])
+      hbf = server_encode_headers([{":status", "200"}])
 
-    hbf = server_encode_headers([{":status", "200"}])
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers]))
+      ])
 
-    # Force the connection to enter read only mode
-    server_send_frames([
-      goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "all good")
-    ])
+      :ok = :ssl.close(server_socket())
 
-    :timer.sleep(10)
+      assert_receive {:resp, {:error, %Finch.Error{reason: :connection_closed}}}
+    end
 
-    # We can't send any more requests since the connection is closed for writing.
-    assert {:error, %Finch.Error{reason: :read_only}} = request(pool, req, [])
+    test "if connections reaches max concurrent streams, we return an error", %{request: req} do
+      server_settings = [max_concurrent_streams: 1]
 
-    server_send_frames([
-      headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
-      data(stream_id: stream_id, data: "hello", flags: set_flags(:data, [:end_stream]))
-    ])
+      {:ok, pool} =
+        start_server_and_connect_with([server_settings: server_settings], fn port ->
+          start_pool(port)
+        end)
 
-    assert_receive {:resp, {:ok, {200, [], "hello"}}}
-
-    # If the server now closes the socket, we actually shut down.
-    :ok = :ssl.close(server_socket())
-
-    Process.sleep(50)
-
-    # If we try to make a request now that the server shut down, we get an error.
-    assert {:error, %Finch.Error{reason: :disconnected}} = request(pool, req, [])
-  end
-
-  test "if server disconnects while there are waiting clients, we notify those clients", %{
-    request: req
-  } do
-    us = self()
-
-    {:ok, pool} =
-      start_server_and_connect_with(fn port ->
-        start_pool(port)
+      spawn(fn ->
+        request(pool, req, [])
       end)
 
-    spawn(fn ->
-      result = request(pool, req, [])
-      send(us, {:resp, result})
-    end)
+      assert_recv_frames([headers(stream_id: _stream_id)])
 
-    assert_recv_frames([headers(stream_id: stream_id)])
+      assert {:error, %Mint.HTTPError{reason: :too_many_concurrent_requests}} =
+               request(pool, req, [])
+    end
 
-    hbf = server_encode_headers([{":status", "200"}])
+    test "request timeout with timeout of 0", %{request: req} do
+      us = self()
 
-    server_send_frames([
-      headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers]))
-    ])
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
 
-    :ok = :ssl.close(server_socket())
-
-    assert_receive {:resp, {:error, %Finch.Error{reason: :connection_closed}}}
-  end
-
-  test "if connections reaches max concurrent streams, we return an error", %{request: req} do
-    server_settings = [max_concurrent_streams: 1]
-
-    {:ok, pool} =
-      start_server_and_connect_with([server_settings: server_settings], fn port ->
-        start_pool(port)
+      spawn(fn ->
+        resp = request(pool, req, receive_timeout: 0)
+        send(us, {:resp, resp})
       end)
 
-    spawn(fn ->
-      request(pool, req, [])
-    end)
+      assert_recv_frames([headers(stream_id: stream_id), rst_stream(stream_id: stream_id)])
 
-    assert_recv_frames([headers(stream_id: _stream_id)])
+      assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}}}
+    end
 
-    assert {:error, %Mint.HTTPError{reason: :too_many_concurrent_requests}} =
-             request(pool, req, [])
-  end
+    test "request timeout with timeout > 0", %{request: req} do
+      us = self()
 
-  test "request timeout with timeout of 0", %{request: req} do
-    us = self()
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
 
-    {:ok, pool} =
-      start_server_and_connect_with(fn port ->
-        start_pool(port)
+      spawn(fn ->
+        resp = request(pool, req, receive_timeout: 50)
+        send(us, {:resp, resp})
       end)
 
-    spawn(fn ->
-      resp = request(pool, req, receive_timeout: 0)
-      send(us, {:resp, resp})
-    end)
+      assert_recv_frames([headers(stream_id: stream_id)])
 
-    assert_recv_frames([headers(stream_id: stream_id), rst_stream(stream_id: stream_id)])
+      hbf = server_encode_headers([{":status", "200"}])
 
-    assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}}}
-  end
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers]))
+      ])
 
-  test "request timeout with timeout > 0", %{request: req} do
-    us = self()
+      assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}}}
+    end
 
-    {:ok, pool} =
-      start_server_and_connect_with(fn port ->
-        start_pool(port)
+    test "request timeout with timeout > 0 that fires after request is done", %{request: req} do
+      us = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      spawn(fn ->
+        resp = request(pool, req, receive_timeout: 50)
+        send(us, {:resp, resp})
       end)
 
-    spawn(fn ->
-      resp = request(pool, req, receive_timeout: 50)
-      send(us, {:resp, resp})
-    end)
+      assert_recv_frames([headers(stream_id: stream_id)])
 
-    assert_recv_frames([headers(stream_id: stream_id)])
+      server_send_frames([
+        headers(
+          stream_id: stream_id,
+          hbf: server_encode_headers([{":status", "200"}]),
+          flags: set_flags(:headers, [:end_headers, :end_stream])
+        )
+      ])
 
-    hbf = server_encode_headers([{":status", "200"}])
+      assert_receive {:resp, {:ok, _}}
 
-    server_send_frames([
-      headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers]))
-    ])
+      assert_recv_frames([rst_stream(stream_id: ^stream_id, error_code: :no_error)])
 
-    assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}}}
-  end
+      refute_receive _any, 200
+    end
 
-  test "request timeout with timeout > 0 that fires after request is done", %{request: req} do
-    us = self()
+    test "request timeout with timeout > 0 where :done arrives after timeout", %{request: req} do
+      us = self()
 
-    {:ok, pool} =
-      start_server_and_connect_with(fn port ->
-        start_pool(port)
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      spawn(fn ->
+        resp = request(pool, req, receive_timeout: 10)
+        send(us, {:resp, resp})
       end)
 
-    spawn(fn ->
-      resp = request(pool, req, receive_timeout: 50)
-      send(us, {:resp, resp})
-    end)
+      assert_recv_frames([headers(stream_id: stream_id)])
 
-    assert_recv_frames([headers(stream_id: stream_id)])
+      # We sleep enough so that the timeout fires, then we send a response.
+      Process.sleep(30)
 
-    server_send_frames([
-      headers(
-        stream_id: stream_id,
-        hbf: server_encode_headers([{":status", "200"}]),
-        flags: set_flags(:headers, [:end_headers, :end_stream])
-      )
-    ])
+      server_send_frames([
+        headers(
+          stream_id: stream_id,
+          hbf: server_encode_headers([{":status", "200"}]),
+          flags: set_flags(:headers, [:end_headers, :end_stream])
+        )
+      ])
 
-    assert_receive {:resp, {:ok, _}}
+      # When there's a timeout, we cancel the request.
+      assert_recv_frames([rst_stream(stream_id: ^stream_id, error_code: :cancel)])
 
-    assert_recv_frames([rst_stream(stream_id: ^stream_id, error_code: :no_error)])
-
-    refute_receive _any, 200
+      assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}}}
+    end
   end
 
-  test "request timeout with timeout > 0 where :done arrives after timeout", %{request: req} do
-    us = self()
-
-    {:ok, pool} =
-      start_server_and_connect_with(fn port ->
-        start_pool(port)
-      end)
-
-    spawn(fn ->
-      resp = request(pool, req, receive_timeout: 10)
-      send(us, {:resp, resp})
-    end)
-
-    assert_recv_frames([headers(stream_id: stream_id)])
-
-    # We sleep enough so that the timeout fires, then we send a response.
-    Process.sleep(30)
-
-    server_send_frames([
-      headers(
-        stream_id: stream_id,
-        hbf: server_encode_headers([{":status", "200"}]),
-        flags: set_flags(:headers, [:end_headers, :end_stream])
-      )
-    ])
-
-    # When there's a timeout, we cancel the request.
-    assert_recv_frames([rst_stream(stream_id: ^stream_id, error_code: :cancel)])
-
-    assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}}}
-  end
-
-  describe "async_request" do
+  describe "async requests" do
     setup %{test: finch_name} do
       start_supervised!(
         {Finch,
@@ -320,6 +324,90 @@ defmodule Finch.HTTP2.PoolTest do
       assert_receive {^ref, {:status, 200}}
       Finch.HTTP2.Pool.cancel_async_request(ref)
       refute_receive {^ref, {:data, _}}
+    end
+
+    test "if server sends GOAWAY and then replies, we get the replies but are closed for writing",
+         %{request: req} do
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      ref = Pool.async_request(pool, req, [])
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      hbf = server_encode_headers([{":status", "200"}])
+
+      # Force the connection to enter read only mode
+      server_send_frames([
+        goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "all good")
+      ])
+
+      :timer.sleep(10)
+
+      # We can't send any more requests since the connection is closed for writing.
+      ref2 = Pool.async_request(pool, req, [])
+      assert_receive {^ref2, {:error, %Finch.Error{reason: :read_only}}}
+
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
+        data(stream_id: stream_id, data: "hello", flags: set_flags(:data, [:end_stream]))
+      ])
+
+      assert_receive {^ref, {:status, 200}}
+      assert_receive {^ref, {:headers, []}}
+      assert_receive {^ref, {:data, "hello"}}
+
+      # If the server now closes the socket, we actually shut down.
+      :ok = :ssl.close(server_socket())
+
+      Process.sleep(50)
+
+      # If we try to make a request now that the server shut down, we get an error.
+      ref3 = Pool.async_request(pool, req, [])
+      assert_receive {^ref3, {:error, %Finch.Error{reason: :disconnected}}}
+    end
+
+    test "if server disconnects while there are waiting clients, we notify those clients", %{
+      request: req
+    } do
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      ref = Pool.async_request(pool, req, [])
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers]))
+      ])
+
+      assert_receive {^ref, {:status, 200}}
+      assert_receive {^ref, {:headers, []}}
+
+      :ok = :ssl.close(server_socket())
+
+      assert_receive {^ref, {:error, %Finch.Error{reason: :connection_closed}}}
+    end
+
+    test "errors such as :max_header_list_size_reached are returned to the caller", %{
+      request: req
+    } do
+      server_settings = [max_header_list_size: 5]
+
+      {:ok, pool} =
+        start_server_and_connect_with([server_settings: server_settings], fn port ->
+          start_pool(port)
+        end)
+
+      ref = Pool.async_request(pool, %{req | headers: [{"foo", "bar"}]}, [])
+
+      assert_receive {^ref, {:error, %{reason: {:max_header_list_size_exceeded, _, _}}}}
     end
   end
 
