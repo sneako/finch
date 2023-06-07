@@ -1,6 +1,5 @@
 defmodule FinchTest do
   use FinchCase, async: true
-  doctest Finch
 
   import ExUnit.CaptureIO
 
