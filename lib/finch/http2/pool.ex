@@ -654,14 +654,14 @@ defmodule Finch.HTTP2.Pool do
          {request, chunks} = RequestStream.next_chunk(request, window),
          data = put_in(data.requests[ref], request),
          {:ok, data} <- stream_chunks(data, ref, chunks) do
-      if request.status == :done do
+      if request.status == :done && request.from do
         reply(request, :ok)
       end
 
       {:ok, data}
     else
       :done ->
-        reply(request, :ok)
+        if request.from, do: reply(request, :ok)
         {:ok, data}
 
       {:error, data, reason} ->
@@ -751,6 +751,7 @@ defmodule Finch.HTTP2.Pool do
 
   defp reply(%RequestStream{from: nil, from_pid: pid, request_ref: request_ref}, reply) do
     send(pid, {request_ref, reply})
+    :ok
   end
 
   defp reply(%RequestStream{from: from}, reply) do
