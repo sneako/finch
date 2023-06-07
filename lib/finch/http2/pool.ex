@@ -314,12 +314,8 @@ defmodule Finch.HTTP2.Pool do
 
   # Issue request to the upstream server. We store a ref to the request so we
   # know who to respond to when we've completed everything
-  def connected({:call, from}, {:request, request_ref, req, opts}, data) do
-    request = RequestStream.new(req.body, from, request_ref)
-
-    data
-    |> request(req)
-    |> handle_request(request, opts)
+  def connected({:call, {from_pid, _from_ref} = from}, {:request, request_ref, req, opts}, data) do
+    send_request(from, from_pid, request_ref, req, opts, data)
   end
 
   def connected({:call, from}, {:cancel, request_ref}, data) do
@@ -332,11 +328,7 @@ defmodule Finch.HTTP2.Pool do
       Process.monitor(pid)
     end
 
-    request = RequestStream.new(req.body, nil, pid, request_ref)
-
-    data
-    |> request(req)
-    |> handle_request(request, opts)
+    send_request(nil, pid, request_ref, req, opts, data)
   end
 
   def connected(:info, {:DOWN, _, :process, pid, _}, data) do
@@ -510,6 +502,14 @@ defmodule Finch.HTTP2.Pool do
     else
       {:keep_state, data}
     end
+  end
+
+  defp send_request(from, from_pid, request_ref, req, opts, data) do
+    request = RequestStream.new(req.body, from, from_pid, request_ref)
+
+    data
+    |> request(req)
+    |> handle_request(request, opts)
   end
 
   defp handle_request({:ok, data, ref}, request, opts) do
