@@ -429,8 +429,8 @@ defmodule Finch.HTTP2.Pool do
     {:keep_state_and_data, {:reply, from, {:error, Error.exception(:read_only)}}}
   end
 
-  def connected_read_only({:call, from}, {:cancel, ref}, data) do
-    {_from, data} = pop_request(data, ref)
+  def connected_read_only({:call, from}, {:cancel, request_ref}, data) do
+    data = cancel_request(data, request_ref)
     {:keep_state, data, {:reply, from, :ok}}
   end
 
