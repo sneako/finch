@@ -515,11 +515,11 @@ defmodule Finch.HTTP2.Pool do
     body = if req.body == nil, do: nil, else: :stream
 
     data
-    |> open_connection(req.method, Finch.Request.request_path(req), req.headers, body)
+    |> start_request(req.method, Finch.Request.request_path(req), req.headers, body)
     |> stream_request(request, opts)
   end
 
-  defp open_connection(data, method, path, headers, body) do
+  defp start_request(data, method, path, headers, body) do
     case HTTP2.request(data.conn, method, path, headers, body) do
       {:ok, conn, ref} -> {:ok, put_in(data.conn, conn), ref}
       {:error, conn, reason} -> {:error, put_in(data.conn, conn), reason}
