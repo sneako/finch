@@ -411,11 +411,11 @@ defmodule Finch.HTTP2.Pool do
     data =
       Enum.reduce(data.requests, data, fn
         # request is awaiting a response and should stay in state
-        {_ref, %{status: :done}}, data ->
+        {_ref, %{stream: %{status: :done}}}, data ->
           data
 
         # request is still sending data and should be discarded
-        {ref, %{status: :streaming} = request}, data ->
+        {ref, %{stream: %{status: :streaming}} = request}, data ->
           {^request, data} = pop_request(data, ref)
           reply(request, {:error, Error.exception(:read_only)})
           data
@@ -505,14 +505,28 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp send_request(from, from_pid, request_ref, req, opts, data) do
-    request = RequestStream.new(req.body, from, from_pid, request_ref)
+    request = %{
+      stream: RequestStream.new(req.body),
+      from: from,
+      from_pid: from_pid,
+      request_ref: request_ref
+    }
+
+    body = if req.body == nil, do: nil, else: :stream
 
     data
-    |> request(req)
-    |> handle_request(request, opts)
+    |> open_connection(req.method, Finch.Request.request_path(req), req.headers, body)
+    |> stream_request(request, opts)
   end
 
-  defp handle_request({:ok, data, ref}, request, opts) do
+  defp open_connection(data, method, path, headers, body) do
+    case HTTP2.request(data.conn, method, path, headers, body) do
+      {:ok, conn, ref} -> {:ok, put_in(data.conn, conn), ref}
+      {:error, conn, reason} -> {:error, put_in(data.conn, conn), reason}
+    end
+  end
+
+  defp stream_request({:ok, data, ref}, request, opts) do
     data = put_request(data, ref, request)
 
     case continue_request(data, ref, request) do
@@ -523,11 +537,11 @@ defmodule Finch.HTTP2.Pool do
         {:keep_state, data, [request_timeout]}
 
       error ->
-        handle_request(error, request, opts)
+        stream_request(error, request, opts)
     end
   end
 
-  defp handle_request({:error, data, %HTTPError{reason: :closed_for_writing}}, request, _opts) do
+  defp stream_request({:error, data, %HTTPError{reason: :closed_for_writing}}, request, _opts) do
     reply(request, {:error, Error.exception(:read_only)})
 
     if HTTP2.open?(data.conn, :read) && Enum.any?(data.requests) do
@@ -537,7 +551,7 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  defp handle_request({:error, data, error}, request, _opts) do
+  defp stream_request({:error, data, error}, request, _opts) do
     reply(request, {:error, error})
 
     if HTTP2.open?(data.conn) do
@@ -598,17 +612,6 @@ defmodule Finch.HTTP2.Pool do
     :rand.uniform(max_sleep)
   end
 
-  # a wrapper around Mint.HTTP2.request/5
-  # wrapping allows us to more easily encapsulate the conn within `data`
-  defp request(data, req) do
-    body = if req.body == nil, do: nil, else: :stream
-
-    case HTTP2.request(data.conn, req.method, Finch.Request.request_path(req), req.headers, body) do
-      {:ok, conn, ref} -> {:ok, put_in(data.conn, conn), ref}
-      {:error, conn, reason} -> {:error, put_in(data.conn, conn), reason}
-    end
-  end
-
   # this is also a wrapper (Mint.HTTP2.stream_request_body/3)
   defp stream_request_body(data, ref, body) do
     case HTTP2.stream_request_body(data.conn, ref, body) do
@@ -619,7 +622,7 @@ defmodule Finch.HTTP2.Pool do
 
   defp stream_chunks(data, ref, body) do
     with {:ok, data} <- stream_request_body(data, ref, body) do
-      if data.requests[ref].status == :done do
+      if data.requests[ref].stream.status == :done do
         stream_request_body(data, ref, :eof)
       else
         {:ok, data}
@@ -629,7 +632,7 @@ defmodule Finch.HTTP2.Pool do
 
   defp continue_requests(data) do
     Enum.reduce(data.requests, data, fn {ref, request}, data ->
-      with true <- request.status == :streaming,
+      with true <- request.stream.status == :streaming,
            true <- HTTP2.open?(data.conn, :write),
            {:ok, data} <- continue_request(data, ref, request) do
         data
@@ -649,12 +652,13 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp continue_request(data, ref, request) do
-    with :streaming <- request.status,
+    with :streaming <- request.stream.status,
          window = smallest_window(data.conn, ref),
-         {request, chunks} = RequestStream.next_chunk(request, window),
+         {stream, chunks} = RequestStream.next_chunk(request.stream, window),
+         request = %{request | stream: stream},
          data = put_in(data.requests[ref], request),
          {:ok, data} <- stream_chunks(data, ref, chunks) do
-      if request.status == :done && request.from do
+      if request.stream.status == :done && request.from do
         reply(request, :ok)
       end
 
@@ -749,12 +753,12 @@ defmodule Finch.HTTP2.Pool do
     end)
   end
 
-  defp reply(%RequestStream{from: nil, from_pid: pid, request_ref: request_ref}, reply) do
+  defp reply(%{from: nil, from_pid: pid, request_ref: request_ref}, reply) do
     send(pid, {request_ref, reply})
     :ok
   end
 
-  defp reply(%RequestStream{from: from}, reply) do
+  defp reply(%{from: from}, reply) do
     :gen_statem.reply(from, reply)
   end
 end

@@ -1,9 +1,9 @@
 defmodule Finch.HTTP2.RequestStream do
   @moduledoc false
 
-  defstruct [:body, :from, :from_pid, :request_ref, :status, :buffer, :continuation]
+  defstruct [:body, :status, :buffer, :continuation]
 
-  def new(body, from, from_pid, request_ref) do
+  def new(body) do
     enumerable =
       case body do
         {:stream, stream} -> Stream.map(stream, &with_byte_size/1)
@@ -15,9 +15,6 @@ defmodule Finch.HTTP2.RequestStream do
 
     %__MODULE__{
       body: body,
-      from: from,
-      from_pid: from_pid,
-      request_ref: request_ref,
       status: if(body == nil, do: :done, else: :streaming),
       buffer: <<>>,
       continuation: &Enumerable.reduce(enumerable, &1, reducer)
