@@ -160,9 +160,7 @@ defmodule Finch.HTTP2.Pool do
   end
 
   @impl true
-  def init({{scheme, host, port} = shp, registry, _pool_size, pool_opts}) do
-    {:ok, _} = Registry.register(registry, shp, __MODULE__)
-
+  def init({{scheme, host, port}, registry, _pool_size, pool_opts}) do
     data = %{
       conn: nil,
       scheme: scheme,
@@ -171,7 +169,8 @@ defmodule Finch.HTTP2.Pool do
       requests: %{},
       backoff_base: 500,
       backoff_max: 10_000,
-      connect_opts: pool_opts[:conn_opts] || []
+      connect_opts: pool_opts[:conn_opts] || [],
+      registry: registry
     }
 
     {:ok, :disconnected, data, {:next_event, :internal, {:connect, 0}}}
@@ -187,6 +186,8 @@ defmodule Finch.HTTP2.Pool do
   # When entering a disconnected state we need to fail all of the pending
   # requests
   def disconnected(:enter, _, data) do
+    Registry.unregister(data.registry, {data.scheme, data.host, data.port})
+
     :ok =
       Enum.each(data.requests, fn {ref, request} ->
         send(request.from_pid, {:error, ref, Error.exception(:connection_closed)})
@@ -276,7 +277,8 @@ defmodule Finch.HTTP2.Pool do
   @doc false
   def connected(event, content, data)
 
-  def connected(:enter, _old_state, _data) do
+  def connected(:enter, _old_state, data) do
+    {:ok, _} = Registry.register(data.registry, {data.scheme, data.host, data.port}, __MODULE__)
     :keep_state_and_data
   end
 
@@ -398,6 +400,8 @@ defmodule Finch.HTTP2.Pool do
   def connected_read_only(event, content, data)
 
   def connected_read_only(:enter, _old_state, data) do
+    Registry.unregister(data.registry, {data.scheme, data.host, data.port})
+
     {actions, data} =
       Enum.flat_map_reduce(data.requests, data, fn
         # request is awaiting a response and should stay in state
