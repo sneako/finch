@@ -160,7 +160,7 @@ defmodule Finch.HTTP2.Pool do
   end
 
   @impl true
-  def init({{scheme, host, port} = shp, registry, _pool_size, pool_opts}) do
+  def init({{scheme, host, port}, registry, _pool_size, pool_opts}) do
     data = %{
       conn: nil,
       scheme: scheme,

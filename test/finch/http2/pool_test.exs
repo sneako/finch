@@ -163,9 +163,10 @@ defmodule Finch.HTTP2.PoolTest do
              request(pool, req, [])
   end
 
-  test "if connections are in connected_read_only state, don't let clients check them out from the pool", %{
-    request: req
-  } do
+  test "if connections are in connected_read_only state, don't let clients check them out from the pool",
+       %{
+         request: req
+       } do
     us = self()
 
     port =
@@ -198,8 +199,6 @@ defmodule Finch.HTTP2.PoolTest do
 
     assert_recv_frames([headers(stream_id: stream_id)])
 
-    hbf = server_encode_headers([{":status", "200"}])
-
     # Force the connection to enter read only mode
     server_send_frames([
       goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "all good")
@@ -210,9 +209,10 @@ defmodule Finch.HTTP2.PoolTest do
     assert :none = PoolManager.lookup_pool(TestFinch, {:https, "localhost", port})
   end
 
-  test "if connections are in disconnected state, don't let clients check them out from the pool", %{
-    request: req
-  } do
+  test "if connections are in disconnected state, don't let clients check them out from the pool",
+       %{
+         request: req
+       } do
     us = self()
 
     port =
