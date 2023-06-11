@@ -276,7 +276,7 @@ defmodule Finch do
 
   ## Options
 
-  Shares the same options as `request/3`.
+  Shares options with `request/3`.
   """
   @spec stream(Request.t(), name(), acc, stream(acc), request_opts()) ::
           {:ok, acc} | {:error, Exception.t()}
@@ -361,10 +361,20 @@ defmodule Finch do
   @doc """
   Sends an HTTP request asynchronously, returning a request reference.
 
-  ## Responses
+  If the request is sent using HTTP1, an extra process is spawned to
+  consume messages from the underlying socket. If you wish to maximize
+  request rate, a strategy using `request/3` or `stream/5` should be
+  used to avoid this overhead.
+
+  ## Receiving the response
 
   Response information is sent to the calling process as it is received
-  in `{ref, response}` tuples. Responses include:
+  in `{ref, response}` tuples.
+
+  If the calling process exits before the request has completed, the
+  request will be canceled.
+
+  Responses include:
 
     * `{:status, status}` - HTTP response status
     * `{:headers, headers}` - HTTP response headers
@@ -373,11 +383,11 @@ defmodule Finch do
     * `:done` - request has completed successfully
 
   On a successful request, a single `:status` message will be followed
-  by a single `:headers` message, after which one or more `:data`
-  messages may be sent. If trailing headers are present, it is possible
-  that a final `:headers` message may be sent. A `:done` or an `:error`
-  message indicates that the request has succeeded or failed and no
-  further messages are expected.
+  by a single `:headers` message, after which more than one `:data`
+  messages may be sent. If trailing headers are present, a final
+  `:headers` message may be sent. Any `:done` or `:error` message
+  indicates that the request has succeeded or failed and no further
+  messages are expected.
 
   ## Example
 
@@ -404,7 +414,7 @@ defmodule Finch do
 
   ## Options
 
-  Shares the same options as `request/3`.
+  Shares options with `request/3`.
   """
   @spec async_request(Request.t(), name(), request_opts()) :: request_ref()
   def async_request(%Request{} = req, name, opts \\ []) do
