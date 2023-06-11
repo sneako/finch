@@ -79,7 +79,7 @@ defmodule Finch.HTTP1.Pool do
     owner = self()
 
     pid =
-      spawn(fn ->
+      spawn_link(fn ->
         monitor = Process.monitor(owner)
         request_ref = receive_next_within!(10)
 
@@ -120,6 +120,7 @@ defmodule Finch.HTTP1.Pool do
 
   @impl Finch.Pool
   def cancel_async_request({_, _, _, pid}) do
+    Process.unlink(pid)
     Process.exit(pid, :shutdown)
     :ok
   end

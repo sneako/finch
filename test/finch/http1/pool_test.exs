@@ -113,7 +113,7 @@ defmodule Finch.HTTP1.PoolTest do
 
       assert_receive {:req_pid, pid}
 
-      Process.exit(caller, :kill)
+      Process.exit(caller, :shutdown)
       Process.sleep(200)
 
       refute Process.alive?(pid)
