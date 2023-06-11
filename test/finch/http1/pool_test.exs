@@ -104,14 +104,14 @@ defmodule Finch.HTTP1.PoolTest do
 
       caller =
         spawn(fn ->
-          {_, _, _, pid} =
+          ref =
             Finch.build(:get, url <> "/stream/5/500")
             |> Finch.async_request(finch_name)
 
-          send(outer, {:req_pid, pid})
+          send(outer, ref)
         end)
 
-      assert_receive {:req_pid, pid}
+      assert_receive {Finch.HTTP1.Pool, pid} when is_pid(pid)
 
       Process.exit(caller, :shutdown)
       Process.sleep(200)

@@ -325,7 +325,7 @@ defmodule Finch.HTTP2.PoolTest do
           send(outer, ref)
         end)
 
-      assert_receive {_, pool, _, _} = ref
+      assert_receive {Finch.HTTP2.Pool, {pool, _}} = ref
 
       assert {_, %{refs: %{^ref => _}}} = :sys.get_state(pool)
 

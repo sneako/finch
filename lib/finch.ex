@@ -417,7 +417,7 @@ defmodule Finch do
   """
   @spec cancel_async_request(request_ref()) :: :ok
   def cancel_async_request(request_ref) when Finch.Pool.is_request_ref(request_ref) do
-    {_ref, _pool, pool_mod, _state} = request_ref
+    {pool_mod, _cancel_ref} = request_ref
     pool_mod.cancel_async_request(request_ref)
   end
 

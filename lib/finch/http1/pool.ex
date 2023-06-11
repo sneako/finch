@@ -81,7 +81,7 @@ defmodule Finch.HTTP1.Pool do
     pid =
       spawn_link(fn ->
         monitor = Process.monitor(owner)
-        request_ref = receive_next_within!(10)
+        request_ref = {__MODULE__, self()}
 
         case request(pool, req, {owner, monitor, request_ref}, &send_async_response/2, opts) do
           {:ok, _} -> send(owner, {request_ref, :done})
@@ -89,16 +89,7 @@ defmodule Finch.HTTP1.Pool do
         end
       end)
 
-    request_ref = {make_ref(), pool, __MODULE__, pid}
-    send(pid, request_ref)
-  end
-
-  defp receive_next_within!(timeout) do
-    receive do
-      value -> value
-    after
-      timeout -> raise "no message received within #{timeout}"
-    end
+    {__MODULE__, pid}
   end
 
   defp send_async_response(response, {owner, monitor, request_ref}) do
@@ -119,7 +110,7 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl Finch.Pool
-  def cancel_async_request({_, _, _, pid}) do
+  def cancel_async_request({_, pid} = _request_ref) do
     Process.unlink(pid)
     Process.exit(pid, :shutdown)
     :ok

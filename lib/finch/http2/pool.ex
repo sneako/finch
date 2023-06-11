@@ -85,14 +85,13 @@ defmodule Finch.HTTP2.Pool do
   end
 
   @impl Finch.Pool
-  def cancel_async_request(request_ref) do
-    {_ref, pool, _mod, _state} = request_ref
+  def cancel_async_request({_, {pool, _}} = request_ref) do
     :ok = :gen_statem.call(pool, {:cancel, request_ref})
     clean_responses(request_ref)
   end
 
   defp make_request_ref(pool) do
-    {make_ref(), pool, __MODULE__, nil}
+    {__MODULE__, {pool, make_ref()}}
   end
 
   defp response_waiting_loop(
