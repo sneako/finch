@@ -84,13 +84,12 @@ defmodule Finch do
   """
   @type name() :: atom()
 
+  @type request_opt() :: {:pool_timeout, pos_integer()} | {:receive_timeout, pos_integer()}
+
   @typedoc """
   Options used by request functions.
   """
-  @type request_opts() :: [
-          {:pool_timeout, pos_integer()}
-          | {:receive_timeout, pos_integer()}
-        ]
+  @type request_opts() :: [request_opt()]
 
   @typedoc """
   The reference used to identify a request sent using `async_request/3`.
