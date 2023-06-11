@@ -102,21 +102,19 @@ defmodule Finch.HTTP1.PoolTest do
     test "canceled if calling process exits normally", %{finch_name: finch_name, url: url} do
       outer = self()
 
-      caller =
-        spawn(fn ->
-          ref =
-            Finch.build(:get, url <> "/stream/5/500")
-            |> Finch.async_request(finch_name)
+      spawn(fn ->
+        ref =
+          Finch.build(:get, url <> "/stream/5/500")
+          |> Finch.async_request(finch_name)
 
-          # allow process to exit normally after sending
-          send(outer, ref)
-        end)
+        # allow process to exit normally after sending
+        send(outer, ref)
+      end)
 
       assert_receive {Finch.HTTP1.Pool, pid} when is_pid(pid)
 
-      Process.sleep(100)
-      refute Process.alive?(caller)
-      refute Process.alive?(pid)
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, _, _, _}, 500
     end
 
     test "canceled if calling process exits abnormally", %{finch_name: finch_name, url: url} do
@@ -136,10 +134,9 @@ defmodule Finch.HTTP1.PoolTest do
 
       assert_receive {Finch.HTTP1.Pool, pid} when is_pid(pid)
 
+      ref = Process.monitor(pid)
       Process.exit(caller, :shutdown)
-      Process.sleep(100)
-      refute Process.alive?(caller)
-      refute Process.alive?(pid)
+      assert_receive {:DOWN, ^ref, _, _, _}, 500
     end
   end
 end
