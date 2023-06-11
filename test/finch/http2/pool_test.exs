@@ -310,7 +310,34 @@ defmodule Finch.HTTP2.PoolTest do
       refute_receive {^ref, {:data, _}}
     end
 
-    test "canceled if calling process exits", %{test: finch_name} do
+    test "canceled if calling process exits normally", %{test: finch_name} do
+      start_finch!(finch_name)
+      {:ok, url} = start_server!()
+
+      outer = self()
+
+      caller =
+        spawn(fn ->
+          ref =
+            Finch.build(:get, url <> "/stream/5/500")
+            |> Finch.async_request(finch_name)
+
+          # allow process to exit normally after sending
+          send(outer, ref)
+        end)
+
+      assert_receive {Finch.HTTP2.Pool, {pool, _}} = ref
+
+      assert {_, %{refs: %{^ref => _}}} = :sys.get_state(pool)
+
+      Process.sleep(100)
+      refute Process.alive?(caller)
+
+      assert {_, %{refs: refs}} = :sys.get_state(pool)
+      assert refs == %{}
+    end
+
+    test "canceled if calling process exits abnormally", %{test: finch_name} do
       start_finch!(finch_name)
       {:ok, url} = start_server!()
 
@@ -323,14 +350,18 @@ defmodule Finch.HTTP2.PoolTest do
             |> Finch.async_request(finch_name)
 
           send(outer, ref)
+
+          # ensure process stays alive until explicitly exited
+          Process.sleep(:infinity)
         end)
 
       assert_receive {Finch.HTTP2.Pool, {pool, _}} = ref
 
       assert {_, %{refs: %{^ref => _}}} = :sys.get_state(pool)
 
-      Process.exit(caller, :kill)
+      Process.exit(caller, :shutdown)
       Process.sleep(100)
+      refute Process.alive?(caller)
 
       assert {_, %{refs: refs}} = :sys.get_state(pool)
       assert refs == %{}
