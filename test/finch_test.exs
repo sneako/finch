@@ -1,6 +1,5 @@
 defmodule FinchTest do
   use FinchCase, async: true
-  doctest Finch
 
   import ExUnit.CaptureIO
 
@@ -722,6 +721,50 @@ defmodule FinchTest do
                  {:stream, req_stream}
                )
                |> Finch.stream(finch_name, acc, fun)
+    end
+  end
+
+  describe "async_request/3 with HTTP/1" do
+    test "sends response messages to calling process", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request_ref =
+        Finch.build(:get, endpoint(bypass))
+        |> Finch.async_request(finch_name)
+
+      assert_receive {^request_ref, {:status, 200}}
+      assert_receive {^request_ref, {:headers, headers}} when is_list(headers)
+      assert_receive {^request_ref, {:data, "OK"}}
+      assert_receive {^request_ref, :done}
+    end
+
+    test "sends chunked response messages to calling process", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect(bypass, fn conn ->
+        conn = Plug.Conn.send_chunked(conn, 200)
+
+        Enum.reduce(1..5, conn, fn _, conn ->
+          {:ok, conn} = Plug.Conn.chunk(conn, "chunk-data")
+          conn
+        end)
+      end)
+
+      request_ref =
+        Finch.build(:get, endpoint(bypass))
+        |> Finch.async_request(finch_name)
+
+      assert_receive {^request_ref, {:status, 200}}
+      assert_receive {^request_ref, {:headers, headers}} when is_list(headers)
+      for _ <- 1..5, do: assert_receive({^request_ref, {:data, "chunk-data"}})
+      assert_receive {^request_ref, :done}
     end
   end
 

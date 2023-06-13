@@ -8,8 +8,14 @@ defmodule FinchCase do
     end
   end
 
-  setup %{test: finch_name} do
-    {:ok, bypass: Bypass.open(), finch_name: finch_name}
+  setup context do
+    bypass =
+      case context do
+        %{bypass: false} -> []
+        %{} -> [bypass: Bypass.open()]
+      end
+
+    {:ok, bypass ++ [finch_name: context.test]}
   end
 
   @doc "Returns the url for a Bypass instance"

@@ -149,9 +149,45 @@ defmodule Finch.HTTP2.IntegrationTest do
     )
 
     assert catch_throw(
-             Finch.stream(Finch.build(:get, url), TestFinch, :ok, fn {:status, _}, :ok ->
-               throw(:error)
-             end)
+             Finch.stream(
+               Finch.build(:get, url <> "/stream/1/500"),
+               TestFinch,
+               :ok,
+               fn {:status, _}, :ok ->
+                 throw(:error)
+               end
+             )
+           ) == :error
+
+    refute_receive _
+  end
+
+  test "cancel completed streaming response", %{url: url} do
+    start_supervised!(
+      {Finch,
+       name: TestFinch,
+       pools: %{
+         default: [
+           protocol: :http2,
+           conn_opts: [
+             transport_opts: [
+               verify: :verify_none
+             ]
+           ]
+         ]
+       }}
+    )
+
+    assert catch_throw(
+             Finch.stream(
+               Finch.build(:get, url),
+               TestFinch,
+               :ok,
+               fn
+                 {:data, _}, :ok -> throw(:error)
+                 _, :ok -> :ok
+               end
+             )
            ) == :error
 
     refute_receive _

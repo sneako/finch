@@ -55,7 +55,7 @@ defmodule Finch.Telemetry do
 
   ### Queue Start
 
-  `[:finch, :queue, :start]` - Executed before checking out a connection from the pool.
+  `[:finch, :queue, :start]` - Executed before checking out an HTTP1 connection from the pool.
 
   #### Measurements
 
@@ -68,7 +68,7 @@ defmodule Finch.Telemetry do
 
   ### Queue Stop
 
-  `[:finch, :queue, :stop]` - Executed after a connection is retrieved from the pool.
+  `[:finch, :queue, :stop]` - Executed after an HTTP1 connection is retrieved from the pool.
 
   #### Measurements
 
@@ -82,7 +82,7 @@ defmodule Finch.Telemetry do
 
   ### Queue Exception
 
-  `[:finch, :queue, :exception]` - Executed if checking out a connection throws an exception.
+  `[:finch, :queue, :exception]` - Executed if checking out an HTTP1 connection throws an exception.
 
   #### Measurements
 
@@ -199,7 +199,7 @@ defmodule Finch.Telemetry do
 
   ### Reused Connection
 
-  `[:finch, :reused_connection]` - Executed if an existing connection is reused. There are no measurements provided with this event.
+  `[:finch, :reused_connection]` - Executed if an existing HTTP1 connection is reused. There are no measurements provided with this event.
 
   #### Metadata
 
@@ -209,7 +209,7 @@ defmodule Finch.Telemetry do
 
   ### Conn Max Idle Time Exceeded
 
-  `[:finch, :conn_max_idle_time_exceeded]` - Executed if a connection was discarded because the `conn_max_idle_time` had been reached.
+  `[:finch, :conn_max_idle_time_exceeded]` - Executed if an HTTP1 connection was discarded because the `conn_max_idle_time` had been reached.
 
   #### Measurements
 
@@ -223,7 +223,7 @@ defmodule Finch.Telemetry do
 
   ### Pool Max Idle Time Exceeded
 
-  `[:finch, :pool_max_idle_time_exceeded]` - Executed if a pool was terminated because the `pool_max_idle_time` has been reached. There are no measurements provided with this event.
+  `[:finch, :pool_max_idle_time_exceeded]` - Executed if an HTTP1 pool was terminated because the `pool_max_idle_time` has been reached. There are no measurements provided with this event.
 
   #### Metadata
 
@@ -233,7 +233,7 @@ defmodule Finch.Telemetry do
 
   ### Max Idle Time Exceeded (Deprecated)
 
-  `[:finch, :max_idle_time_exceeded]` - Executed if a connection was discarded because the `max_idle_time` had been reached.
+  `[:finch, :max_idle_time_exceeded]` - Executed if an HTTP1 connection was discarded because the `max_idle_time` had been reached.
 
   *Deprecated:* use `:conn_max_idle_time_exceeded` event instead.
 

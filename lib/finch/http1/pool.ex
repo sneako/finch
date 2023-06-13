@@ -74,6 +74,48 @@ defmodule Finch.HTTP1.Pool do
     end
   end
 
+  @impl Finch.Pool
+  def async_request(pool, req, opts) do
+    owner = self()
+
+    pid =
+      spawn_link(fn ->
+        monitor = Process.monitor(owner)
+        request_ref = {__MODULE__, self()}
+
+        case request(pool, req, {owner, monitor, request_ref}, &send_async_response/2, opts) do
+          {:ok, _} -> send(owner, {request_ref, :done})
+          {:error, error} -> send(owner, {request_ref, {:error, error}})
+        end
+      end)
+
+    {__MODULE__, pid}
+  end
+
+  defp send_async_response(response, {owner, monitor, request_ref}) do
+    if process_down?(monitor) do
+      exit(:shutdown)
+    end
+
+    send(owner, {request_ref, response})
+    {owner, monitor, request_ref}
+  end
+
+  defp process_down?(monitor) do
+    receive do
+      {:DOWN, ^monitor, _, _, _} -> true
+    after
+      0 -> false
+    end
+  end
+
+  @impl Finch.Pool
+  def cancel_async_request({_, pid} = _request_ref) do
+    Process.unlink(pid)
+    Process.exit(pid, :shutdown)
+    :ok
+  end
+
   @impl NimblePool
   def init_pool({registry, shp, opts}) do
     # Register our pool with our module name as the key. This allows the caller

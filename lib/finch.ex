@@ -6,6 +6,7 @@ defmodule Finch do
              |> Enum.fetch!(1)
 
   alias Finch.{PoolManager, Request, Response}
+  require Finch.Pool
 
   use Supervisor
 
@@ -82,6 +83,18 @@ defmodule Finch do
   The `:name` provided to Finch in `start_link/1`.
   """
   @type name() :: atom()
+
+  @type request_opt() :: {:pool_timeout, pos_integer()} | {:receive_timeout, pos_integer()}
+
+  @typedoc """
+  Options used by request functions.
+  """
+  @type request_opts() :: [request_opt()]
+
+  @typedoc """
+  The reference used to identify a request sent using `async_request/3`.
+  """
+  @opaque request_ref() :: Finch.Pool.request_ref()
 
   @typedoc """
   The stream function given to `stream/5`.
@@ -263,14 +276,9 @@ defmodule Finch do
 
   ## Options
 
-    * `:pool_timeout` - This timeout is applied when we check out a connection from the pool.
-      Default value is `5_000`.
-
-    * `:receive_timeout` - The maximum time to wait for a response before returning an error.
-      Default value is `15_000`.
-
+  Shares options with `request/3`.
   """
-  @spec stream(Request.t(), name(), acc, stream(acc), keyword) ::
+  @spec stream(Request.t(), name(), acc, stream(acc), request_opts()) ::
           {:ok, acc} | {:error, Exception.t()}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
@@ -280,18 +288,8 @@ defmodule Finch do
   end
 
   defp __stream__(%Request{} = req, name, acc, fun, opts) when is_function(fun, 2) do
-    shp = build_shp(req)
-    {pool, pool_mod} = PoolManager.get_pool(name, shp)
+    {pool, pool_mod} = get_pool(req, name)
     pool_mod.request(pool, req, acc, fun, opts)
-  end
-
-  defp build_shp(%Request{scheme: scheme, unix_socket: unix_socket})
-       when is_binary(unix_socket) do
-    {scheme, {:local, unix_socket}, 0}
-  end
-
-  defp build_shp(%Request{scheme: scheme, host: host, port: port}) do
-    {scheme, host, port}
   end
 
   @doc """
@@ -306,7 +304,7 @@ defmodule Finch do
       Default value is `15_000`.
 
   """
-  @spec request(Request.t(), name(), keyword()) ::
+  @spec request(Request.t(), name(), request_opts()) ::
           {:ok, Response.t()}
           | {:error, Exception.t()}
   def request(req, name, opts \\ [])
@@ -351,12 +349,94 @@ defmodule Finch do
 
   See `request/3` for more detailed information.
   """
-  @spec request!(Request.t(), name(), keyword()) ::
+  @spec request!(Request.t(), name(), request_opts()) ::
           Response.t()
   def request!(%Request{} = req, name, opts \\ []) do
     case request(req, name, opts) do
       {:ok, resp} -> resp
       {:error, exception} -> raise exception
     end
+  end
+
+  @doc """
+  Sends an HTTP request asynchronously, returning a request reference.
+
+  If the request is sent using HTTP1, an extra process is spawned to
+  consume messages from the underlying socket. If you wish to maximize
+  request rate, a strategy using `request/3` or `stream/5` should be
+  used to avoid this overhead.
+
+  ## Receiving the response
+
+  Response information is sent to the calling process as it is received
+  in `{ref, response}` tuples.
+
+  If the calling process exits before the request has completed, the
+  request will be canceled.
+
+  Responses include:
+
+    * `{:status, status}` - HTTP response status
+    * `{:headers, headers}` - HTTP response headers
+    * `{:data, data}` - section of the HTTP response body
+    * `{:error, exception}` - an error occurred during the request
+    * `:done` - request has completed successfully
+
+  On a successful request, a single `:status` message will be followed
+  by a single `:headers` message, after which more than one `:data`
+  messages may be sent. If trailing headers are present, a final
+  `:headers` message may be sent. Any `:done` or `:error` message
+  indicates that the request has succeeded or failed and no further
+  messages are expected.
+
+  ## Example
+
+      iex> Stream.resource(
+      ...>   fn ->
+      ...>     Finch.build(:get, "https://httpbin.org/stream/5")
+      ...>     |> Finch.async_request(MyFinch)
+      ...>   end,
+      ...>   fn ref ->
+      ...>     receive do
+      ...>       {^ref, :done} -> {:halt, ref}
+      ...>       {^ref, response} -> {[response], ref}
+      ...>     end
+      ...>   end,
+      ...>   fn _ref -> :ok end
+      ...> ) |> Enum.to_list()
+      [
+        {:status, 200},
+        {:headers, [...]},
+        {:data, "..."},
+        ...
+        :done
+      ]
+
+  ## Options
+
+  Shares options with `request/3`.
+  """
+  @spec async_request(Request.t(), name(), request_opts()) :: request_ref()
+  def async_request(%Request{} = req, name, opts \\ []) do
+    {pool, pool_mod} = get_pool(req, name)
+    pool_mod.async_request(pool, req, opts)
+  end
+
+  @doc """
+  Cancels a request sent with `async_request/3`.
+  """
+  @spec cancel_async_request(request_ref()) :: :ok
+  def cancel_async_request(request_ref) when Finch.Pool.is_request_ref(request_ref) do
+    {pool_mod, _cancel_ref} = request_ref
+    pool_mod.cancel_async_request(request_ref)
+  end
+
+  defp get_pool(%Request{scheme: scheme, unix_socket: unix_socket}, name)
+       when is_binary(unix_socket) do
+    PoolManager.get_pool(name, {scheme, {:local, unix_socket}, 0})
+  end
+
+  defp get_pool(%Request{scheme: scheme, host: host, port: port}, name) do
+    PoolManager.get_pool(name, {scheme, host, port})
   end
 end
