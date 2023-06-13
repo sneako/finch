@@ -43,15 +43,7 @@ defmodule Finch.HTTP2.Pool do
       fail_safe_timeout = if is_integer(timeout), do: max(2000, timeout * 2), else: :infinity
 
       try do
-        result = response_waiting_loop(acc, fun, request_ref, monitor, fail_safe_timeout)
-
-        case result do
-          {:ok, acc, _} ->
-            {:ok, acc}
-
-          {:error, error, _} ->
-            {:error, error}
-        end
+        response_waiting_loop(acc, fun, request_ref, monitor, fail_safe_timeout)
       catch
         kind, error ->
           Telemetry.exception(:recv, recv_start, kind, error, __STACKTRACE__, %{request: request})
@@ -85,25 +77,9 @@ defmodule Finch.HTTP2.Pool do
     {__MODULE__, {pool, make_ref()}}
   end
 
-  defp response_waiting_loop(
-         acc,
-         fun,
-         request_ref,
-         monitor_ref,
-         fail_safe_timeout,
-         status \\ nil,
-         headers \\ []
-       )
+  defp response_waiting_loop(acc, fun, request_ref, monitor_ref, fail_safe_timeout)
 
-  defp response_waiting_loop(
-         acc,
-         fun,
-         request_ref,
-         monitor_ref,
-         fail_safe_timeout,
-         status,
-         headers
-       ) do
+  defp response_waiting_loop(acc, fun, request_ref, monitor_ref, fail_safe_timeout) do
     receive do
       {^request_ref, {:status, value}} ->
         response_waiting_loop(
@@ -111,9 +87,7 @@ defmodule Finch.HTTP2.Pool do
           fun,
           request_ref,
           monitor_ref,
-          fail_safe_timeout,
-          value,
-          headers
+          fail_safe_timeout
         )
 
       {^request_ref, {:headers, value}} ->
@@ -122,9 +96,7 @@ defmodule Finch.HTTP2.Pool do
           fun,
           request_ref,
           monitor_ref,
-          fail_safe_timeout,
-          status,
-          headers ++ value
+          fail_safe_timeout
         )
 
       {^request_ref, {:data, value}} ->
@@ -133,21 +105,19 @@ defmodule Finch.HTTP2.Pool do
           fun,
           request_ref,
           monitor_ref,
-          fail_safe_timeout,
-          status,
-          headers
+          fail_safe_timeout
         )
 
       {^request_ref, :done} ->
         Process.demonitor(monitor_ref)
-        {:ok, acc, {status, headers}}
+        {:ok, acc}
 
       {^request_ref, {:error, error}} ->
         Process.demonitor(monitor_ref)
-        {:error, error, {status, headers}}
+        {:error, error}
 
       {:DOWN, ^monitor_ref, _, _, _} ->
-        {:error, :connection_process_went_down, {status, headers}}
+        {:error, :connection_process_went_down}
     after
       fail_safe_timeout ->
         Process.demonitor(monitor_ref)
