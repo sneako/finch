@@ -649,10 +649,10 @@ defmodule Finch.HTTP2.Pool do
          {stream, chunks} = RequestStream.next_chunk(request.stream, window),
          request = %{request | stream: stream},
          {:ok, data} <- stream_chunks(data, ref, chunks, request) do
-      {:ok, maybe_complete_request(data, ref, request)}
+      {:ok, complete_request_if_done(data, ref, request)}
     else
       :done ->
-        {:ok, maybe_complete_request(data, ref, request)}
+        {:ok, complete_request_if_done(data, ref, request)}
 
       {:error, data, reason} ->
         {_from, data} = pop_request(data, ref)
@@ -661,7 +661,7 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  defp maybe_complete_request(data, ref, %{stream: %{status: :done}} = request) do
+  defp complete_request_if_done(data, ref, %{stream: %{status: :done}} = request) do
     %{from: from, telemetry: telemetry} = request
     Telemetry.stop(:send, telemetry.send, telemetry.metadata)
     recv_start = Telemetry.start(:recv, telemetry.metadata)
@@ -674,7 +674,7 @@ defmodule Finch.HTTP2.Pool do
     put_in(data.requests[ref], request)
   end
 
-  defp maybe_complete_request(data, ref, request) do
+  defp complete_request_if_done(data, ref, request) do
     put_in(data.requests[ref], request)
   end
 
