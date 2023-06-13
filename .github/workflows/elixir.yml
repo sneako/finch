@@ -11,15 +11,12 @@ jobs:
       matrix:
         include:
           - pair:
-              elixir: '1.7.4'
-              otp: '22.x'
+              elixir: "1.7.4"
+              otp: "22.x"
           - pair:
-              elixir: '1.14.5'
-              otp: '25.x'
+              elixir: "1.14.5"
+              otp: "25.x"
             lint: lint
-          - pair:
-              elixir: '1.14.5'
-              otp: '26'
 
     runs-on: ubuntu-20.04
     steps:
