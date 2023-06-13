@@ -277,6 +277,26 @@ defmodule Finch do
   ## Options
 
   Shares options with `request/3`.
+
+  ## Examples
+
+      path = "/tmp/big-file.zip"
+      file = File.open!(path, [:write, :exclusive])
+      url = "https://domain.com/url/big-file.zip"
+      request = Finch.build(:get, url)
+
+      Finch.stream(request, MyFinch, nil, fn
+        {:status, status}, _acc ->
+          IO.inspect(status)
+
+        {:headers, headers}, _acc ->
+          IO.inspect(headers)
+
+        {:data, data}, _acc ->
+          IO.binwrite(file, data)
+      end)
+
+      File.close(file)
   """
   @spec stream(Request.t(), name(), acc, stream(acc), request_opts()) ::
           {:ok, acc} | {:error, Exception.t()}
