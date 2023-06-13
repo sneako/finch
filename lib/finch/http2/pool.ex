@@ -34,10 +34,8 @@ defmodule Finch.HTTP2.Pool do
     request_ref = make_request_ref(pool)
 
     metadata = %{request: request}
-    start_time = Telemetry.start(:send, metadata)
 
     with :ok <- :gen_statem.call(pool, {:request, request_ref, request, opts}) do
-      Telemetry.stop(:send, start_time, metadata)
       monitor = Process.monitor(pool)
       # If the timeout is an integer, we add a fail-safe "after" clause that fires
       # after a timeout that is double the original timeout (min 2000ms). This means
@@ -504,11 +502,17 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp send_request(from, from_pid, request_ref, req, opts, data) do
+    telemetry_metadata = %{request: req}
+
     request = %{
       stream: RequestStream.new(req.body),
       from: from,
       from_pid: from_pid,
-      request_ref: request_ref
+      request_ref: request_ref,
+      telemetry: %{
+        metadata: telemetry_metadata,
+        send: Telemetry.start(:send, telemetry_metadata)
+      }
     }
 
     body = if req.body == nil, do: nil, else: :stream
@@ -657,14 +661,11 @@ defmodule Finch.HTTP2.Pool do
          request = %{request | stream: stream},
          data = put_in(data.requests[ref], request),
          {:ok, data} <- stream_chunks(data, ref, chunks) do
-      if request.stream.status == :done && request.from do
-        reply(request, :ok)
-      end
-
+      reply_if_sent(request)
       {:ok, data}
     else
       :done ->
-        if request.from, do: reply(request, :ok)
+        reply_if_sent(request)
         {:ok, data}
 
       {:error, data, reason} ->
@@ -673,6 +674,14 @@ defmodule Finch.HTTP2.Pool do
         {:error, data, reason}
     end
   end
+
+  defp reply_if_sent(%{stream: %{status: :done}} = request) do
+    if request.from, do: reply(request, :ok)
+    Telemetry.stop(:send, request.telemetry.send, request.telemetry.metadata)
+    :ok
+  end
+
+  defp reply_if_sent(_), do: :ok
 
   defp smallest_window(conn, ref) do
     min(

@@ -204,6 +204,12 @@ defmodule Finch.HTTP2.TelemetryTest do
     assert_receive {^ref, :start}
     assert_receive {^ref, :stop}
 
+    request_ref = Finch.build(:get, endpoint(bypass)) |> Finch.async_request(finch_name)
+
+    assert_receive {^ref, :start}
+    assert_receive {^ref, :stop}
+    assert_receive {^request_ref, {:status, 200}}
+
     :telemetry.detach(to_string(finch_name))
   end
 
