@@ -33,9 +33,7 @@ defmodule Finch.HTTP2.Pool do
     timeout = opts[:receive_timeout]
     request_ref = make_request_ref(pool)
 
-    metadata = %{request: request}
-
-    with :ok <- :gen_statem.call(pool, {:request, request_ref, request, opts}) do
+    with {:ok, recv_start} <- :gen_statem.call(pool, {:request, request_ref, request, opts}) do
       monitor = Process.monitor(pool)
       # If the timeout is an integer, we add a fail-safe "after" clause that fires
       # after a timeout that is double the original timeout (min 2000ms). This means
@@ -43,25 +41,20 @@ defmodule Finch.HTTP2.Pool do
       # returned, but otherwise we have a way to escape this code, raise an error, and
       # get the process unstuck.
       fail_safe_timeout = if is_integer(timeout), do: max(2000, timeout * 2), else: :infinity
-      start_time = Telemetry.start(:recv, metadata)
 
       try do
         result = response_waiting_loop(acc, fun, request_ref, monitor, fail_safe_timeout)
 
         case result do
-          {:ok, acc, {status, headers}} ->
-            metadata = Map.merge(metadata, %{status: status, headers: headers})
-            Telemetry.stop(:recv, start_time, metadata)
+          {:ok, acc, _} ->
             {:ok, acc}
 
-          {:error, error, {status, headers}} ->
-            metadata = Map.merge(metadata, %{error: error, status: status, headers: headers})
-            Telemetry.stop(:recv, start_time, metadata)
+          {:error, error, _} ->
             {:error, error}
         end
       catch
         kind, error ->
-          Telemetry.exception(:recv, start_time, kind, error, __STACKTRACE__, metadata)
+          Telemetry.exception(:recv, recv_start, kind, error, __STACKTRACE__, %{request: request})
 
           :ok = :gen_statem.call(pool, {:cancel, request_ref})
           clean_responses(request_ref)
@@ -571,9 +564,22 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp handle_response(data, {kind, ref, value}, actions)
-       when kind in [:status, :headers, :data] do
+       when kind in [:status, :headers] do
+    data =
+      if request = data.requests[ref] do
+        send(request.from_pid, {request.request_ref, {kind, value}})
+        request = put_in(request.telemetry.metadata[kind], value)
+        put_in(data.requests[ref], request)
+      else
+        data
+      end
+
+    {data, actions}
+  end
+
+  defp handle_response(data, {:data, ref, value}, actions) do
     if request = data.requests[ref] do
-      send(request.from_pid, {request.request_ref, {kind, value}})
+      send(request.from_pid, {request.request_ref, {:data, value}})
     end
 
     {data, actions}
@@ -581,13 +587,28 @@ defmodule Finch.HTTP2.Pool do
 
   defp handle_response(data, {:done, ref}, actions) do
     {request, data} = pop_request(data, ref)
-    if request, do: send(request.from_pid, {request.request_ref, :done})
+
+    if request do
+      send(request.from_pid, {request.request_ref, :done})
+      Telemetry.stop(:recv, request.telemetry.recv, request.telemetry.metadata)
+    end
+
     {data, [cancel_request_timeout_action(ref) | actions]}
   end
 
   defp handle_response(data, {:error, ref, error}, actions) do
     {request, data} = pop_request(data, ref)
-    if request, do: send(request.from_pid, {request.request_ref, {:error, error}})
+
+    if request do
+      send(request.from_pid, {request.request_ref, {:error, error}})
+
+      Telemetry.stop(
+        :recv,
+        request.telemetry.recv,
+        Map.put(request.telemetry.metadata, :error, error)
+      )
+    end
+
     {data, [cancel_request_timeout_action(ref) | actions]}
   end
 
@@ -623,15 +644,13 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  defp stream_chunks(data, ref, body) do
+  defp stream_chunks(data, ref, body, %{stream: %{status: :done}}) do
     with {:ok, data} <- stream_request_body(data, ref, body) do
-      if data.requests[ref].stream.status == :done do
-        stream_request_body(data, ref, :eof)
-      else
-        {:ok, data}
-      end
+      stream_request_body(data, ref, :eof)
     end
   end
+
+  defp stream_chunks(data, ref, body, _), do: stream_request_body(data, ref, body)
 
   defp continue_requests(data) do
     Enum.reduce(data.requests, data, fn {ref, request}, data ->
@@ -659,14 +678,11 @@ defmodule Finch.HTTP2.Pool do
          window = smallest_window(data.conn, ref),
          {stream, chunks} = RequestStream.next_chunk(request.stream, window),
          request = %{request | stream: stream},
-         data = put_in(data.requests[ref], request),
-         {:ok, data} <- stream_chunks(data, ref, chunks) do
-      reply_if_sent(request)
-      {:ok, data}
+         {:ok, data} <- stream_chunks(data, ref, chunks, request) do
+      {:ok, maybe_complete_request(data, ref, request)}
     else
       :done ->
-        reply_if_sent(request)
-        {:ok, data}
+        {:ok, maybe_complete_request(data, ref, request)}
 
       {:error, data, reason} ->
         {_from, data} = pop_request(data, ref)
@@ -675,13 +691,22 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  defp reply_if_sent(%{stream: %{status: :done}} = request) do
-    if request.from, do: reply(request, :ok)
-    Telemetry.stop(:send, request.telemetry.send, request.telemetry.metadata)
-    :ok
+  defp maybe_complete_request(data, ref, %{stream: %{status: :done}} = request) do
+    %{from: from, telemetry: telemetry} = request
+    Telemetry.stop(:send, telemetry.send, telemetry.metadata)
+    recv_start = Telemetry.start(:recv, telemetry.metadata)
+    request = put_in(request.telemetry[:recv], recv_start)
+
+    if from do
+      reply(request, {:ok, recv_start})
+    end
+
+    put_in(data.requests[ref], request)
   end
 
-  defp reply_if_sent(_), do: :ok
+  defp maybe_complete_request(data, ref, request) do
+    put_in(data.requests[ref], request)
+  end
 
   defp smallest_window(conn, ref) do
     min(
