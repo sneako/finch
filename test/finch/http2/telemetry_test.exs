@@ -191,8 +191,7 @@ defmodule Finch.HTTP2.TelemetryTest do
       to_string(finch_name),
       [
         [:finch, :send, :start],
-        [:finch, :send, :stop],
-        [:finch, :send, :exception]
+        [:finch, :send, :stop]
       ],
       handler,
       nil
@@ -203,6 +202,12 @@ defmodule Finch.HTTP2.TelemetryTest do
 
     assert_receive {^ref, :start}
     assert_receive {^ref, :stop}
+
+    request_ref = Finch.build(:get, endpoint(bypass)) |> Finch.async_request(finch_name)
+
+    assert_receive {^ref, :start}
+    assert_receive {^ref, :stop}
+    assert_receive {^request_ref, {:status, 200}}
 
     :telemetry.detach(to_string(finch_name))
   end
@@ -245,6 +250,57 @@ defmodule Finch.HTTP2.TelemetryTest do
 
     assert_receive {^ref, :start}
     assert_receive {^ref, :stop}
+
+    request_ref = Finch.build(:get, endpoint(bypass)) |> Finch.async_request(finch_name)
+
+    assert_receive {^ref, :start}
+    assert_receive {^ref, :stop}
+    assert_receive {^request_ref, {:status, 200}}
+
+    :telemetry.detach(to_string(finch_name))
+  end
+
+  test "reports recv exceptions", %{bypass: bypass, finch_name: finch_name} do
+    parent = self()
+    ref = make_ref()
+
+    handler = fn event, measurements, meta, _config ->
+      case event do
+        [:finch, :recv, :start] ->
+          send(parent, {ref, :start})
+
+        [:finch, :recv, :exception] ->
+          assert is_integer(measurements.duration)
+          assert %Finch.Request{} = meta.request
+          assert meta.kind == :exit
+          assert meta.reason == :cancel
+          assert meta.stacktrace != nil
+          send(parent, {ref, :exception})
+
+        _ ->
+          flunk("Unknown event")
+      end
+    end
+
+    :telemetry.attach_many(
+      to_string(finch_name),
+      [
+        [:finch, :recv, :start],
+        [:finch, :recv, :exception]
+      ],
+      handler,
+      nil
+    )
+
+    spawn(fn ->
+      Finch.build(:get, endpoint(bypass))
+      |> Finch.stream(finch_name, :ok, fn _, _ ->
+        exit(:cancel)
+      end)
+    end)
+
+    assert_receive {^ref, :start}
+    assert_receive {^ref, :exception}
 
     :telemetry.detach(to_string(finch_name))
   end

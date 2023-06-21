@@ -384,8 +384,7 @@ defmodule Finch.HTTP1.TelemetryTest do
       to_string(finch_name),
       [
         [:finch, :send, :start],
-        [:finch, :send, :stop],
-        [:finch, :send, :exception]
+        [:finch, :send, :stop]
       ],
       handler,
       nil
