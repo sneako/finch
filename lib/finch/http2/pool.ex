@@ -329,7 +329,7 @@ defmodule Finch.HTTP2.Pool do
         end
 
       :unknown ->
-        Logger.warn(["Received unknown message: ", inspect(message)])
+        Logger.warning(["Received unknown message: ", inspect(message)])
         :keep_state_and_data
     end
   end
@@ -437,7 +437,7 @@ defmodule Finch.HTTP2.Pool do
         end
 
       :unknown ->
-        Logger.warn(["Received unknown message: ", inspect(message)])
+        Logger.warning(["Received unknown message: ", inspect(message)])
         :keep_state_and_data
     end
   end
