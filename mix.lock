@@ -25,5 +25,5 @@
   "plug_crypto": {:hex, :plug_crypto, "1.2.2", "05654514ac717ff3a1843204b424477d9e60c143406aa94daf2274fdd280794d", [:mix], [], "hexpm", "87631c7ad914a5a445f0a3809f99b079113ae4ed4b867348dd9eec288cecb6db"},
   "ranch": {:hex, :ranch, "1.8.0", "8c7a100a139fd57f17327b6413e4167ac559fbc04ca7448e9be9057311597a1d", [:make, :rebar3], [], "hexpm", "49fbcfd3682fab1f5d109351b61257676da1a2fdbe295904176d5e521a2ddfe5"},
   "telemetry": {:hex, :telemetry, "1.0.0", "0f453a102cdf13d506b7c0ab158324c337c41f1cc7548f0bc0e130bbf0ae9452", [:rebar3], [], "hexpm", "73bc09fa59b4a0284efb4624335583c528e07ec9ae76aca96ea0673850aec57a"},
-  "x509": {:hex, :x509, "0.8.3", "2306b7e9e9dce35cf16a2608c8d85027fa35f37b33c500b775362bbfd388d224", [:mix], [], "hexpm", "101650f2f35de8528878ae9cd449cb2d0cdcd9974733640ef320fad757594684"},
+  "x509": {:hex, :x509, "0.8.7", "576130ad83731613fdb5787917f2fadbe308b6f5a48ed6e865a4b6be3fa802d0", [:mix], [], "hexpm", "3604125d6a0171da6e8a935810b58c999fccab0e3d20b2ed28d97fa2d9e2f6b4"},
 }
