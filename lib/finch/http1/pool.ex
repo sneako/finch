@@ -21,7 +21,7 @@ defmodule Finch.HTTP1.Pool do
       worker: {__MODULE__, {registry_name, shp, conn_opts}},
       pool_size: pool_size,
       lazy: true,
-      worker_idle_timeout: pool_idle_timout(pool_max_idle_time)
+      worker_idle_timeout: pool_idle_timeout(pool_max_idle_time)
     )
   end
 
@@ -231,6 +231,6 @@ defmodule Finch.HTTP1.Pool do
   defp restart_option(:infinity), do: :permanent
   defp restart_option(_pool_max_idle_time), do: :transient
 
-  defp pool_idle_timout(:infinity), do: nil
-  defp pool_idle_timout(pool_max_idle_time), do: pool_max_idle_time
+  defp pool_idle_timeout(:infinity), do: nil
+  defp pool_idle_timeout(pool_max_idle_time), do: pool_max_idle_time
 end

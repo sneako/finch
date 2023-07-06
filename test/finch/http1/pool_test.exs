@@ -17,7 +17,7 @@ defmodule Finch.HTTP1.PoolTest do
     test_name = to_string(finch_name)
     parent = self()
 
-    handler = fn event, _measurments, meta, _config ->
+    handler = fn event, _measurements, meta, _config ->
       assert event == [:finch, :pool_max_idle_time_exceeded]
       assert is_atom(meta.scheme)
       assert is_binary(meta.host)
