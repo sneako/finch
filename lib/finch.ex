@@ -381,6 +381,10 @@ defmodule Finch do
   @doc """
   Sends an HTTP request asynchronously, returning a request reference.
 
+  This function works as a firehose and it will send messages to the
+  current process as the HTTP response arrives. If you want more control
+  over how messages are streamed, see `stream/5`.
+
   If the request is sent using HTTP1, an extra process is spawned to
   consume messages from the underlying socket. If you wish to maximize
   request rate, a strategy using `request/3` or `stream/5` should be
@@ -411,26 +415,13 @@ defmodule Finch do
 
   ## Example
 
-      iex> Stream.resource(
-      ...>   fn ->
-      ...>     Finch.build(:get, "https://httpbin.org/stream/5")
-      ...>     |> Finch.async_request(MyFinch)
-      ...>   end,
-      ...>   fn ref ->
-      ...>     receive do
-      ...>       {^ref, :done} -> {:halt, ref}
-      ...>       {^ref, response} -> {[response], ref}
-      ...>     end
-      ...>   end,
-      ...>   fn _ref -> :ok end
-      ...> ) |> Enum.to_list()
-      [
-        {:status, 200},
-        {:headers, [...]},
-        {:data, "..."},
-        ...
-        :done
-      ]
+      iex> req = Finch.build(:get, "https://httpbin.org/stream/5")
+      iex> ref = Finch.async_request(req, MyFinch)
+      iex> flush()
+      {ref, {:status, 200}}
+      {ref, {:headers, [...]}}
+      {ref, {:data, "..."}}
+      {ref, :done}
 
   ## Options
 
