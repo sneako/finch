@@ -381,14 +381,12 @@ defmodule Finch do
   @doc """
   Sends an HTTP request asynchronously, returning a request reference.
 
-  This function works as a firehose and it will send messages to the
-  current process as the HTTP response arrives. If you want more control
-  over how messages are streamed, see `stream/5`.
-
   If the request is sent using HTTP1, an extra process is spawned to
-  consume messages from the underlying socket. If you wish to maximize
-  request rate, a strategy using `request/3` or `stream/5` should be
-  used to avoid this overhead.
+  consume messages from the underlying socket. The messages are sent
+  to the current process as soon as they arrive, as a firehose.  If
+  you wish to maximize request rate or have more control over how
+  messages are streamed, a strategy using `request/3` or `stream/5`
+  should be used instead.
 
   ## Receiving the response
 
