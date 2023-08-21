@@ -724,6 +724,202 @@ defmodule FinchTest do
     end
   end
 
+  describe "stream_while/5" do
+    test "successful get request with HTTP/1", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      acc = {nil, [], ""}
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {:cont, {value, headers, body}}
+        {:headers, value}, {status, headers, body} -> {:cont, {status, headers ++ value, body}}
+        {:data, value}, {status, headers, body} -> {:cont, {status, headers, body <> value}}
+      end
+
+      assert {:ok, {200, [_ | _], "OK"}} =
+               Finch.build(:get, endpoint(bypass))
+               |> Finch.stream_while(finch_name, acc, fun)
+    end
+
+    defmodule InfiniteStream do
+      def init(options), do: options
+
+      def call(conn, []) do
+        conn = Plug.Conn.send_chunked(conn, 200)
+
+        Enum.reduce(Stream.cycle(["chunk"]), conn, fn chunk, conn ->
+          {:ok, conn} = Plug.Conn.chunk(conn, chunk)
+          Process.sleep(10)
+          conn
+        end)
+      end
+    end
+
+    test "function halts on HTTP/1", %{test: test, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      # Start custom server, as opposed to Bypass, because the latter would complain when
+      # it outlives test process.
+      start_supervised!({Plug.Cowboy, scheme: :http, plug: InfiniteStream, port: 0, ref: test})
+      url = "http://localhost:#{:ranch.get_port(test)}"
+
+      acc = {nil, [], ""}
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {:halt, {value, headers, body}}
+      end
+
+      assert {:ok, {200, [], ""}} =
+               Finch.build(:get, url)
+               |> Finch.stream_while(finch_name, acc, fun)
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {:cont, {value, headers, body}}
+        {:headers, value}, {status, headers, body} -> {:halt, {status, headers ++ value, body}}
+      end
+
+      assert {:ok, {200, [_ | _], ""}} =
+               Finch.build(:get, url)
+               |> Finch.stream_while(finch_name, acc, fun)
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {:cont, {value, headers, body}}
+        {:headers, value}, {status, headers, body} -> {:cont, {status, headers ++ value, body}}
+        {:data, value}, {status, headers, body} -> {:halt, {status, headers, body <> value}}
+      end
+
+      assert {:ok, {200, [_ | _], "chunk"}} =
+               Finch.build(:get, url)
+               |> Finch.stream_while(finch_name, acc, fun)
+    end
+
+    test "invalid return value on HTTP/1", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.stub(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      acc = {nil, [], ""}
+
+      fun = fn
+        {:status, _value}, _acc -> :bad
+      end
+
+      assert_raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: :bad", fn ->
+        Finch.build(:get, endpoint(bypass))
+        |> Finch.stream_while(finch_name, acc, fun)
+      end
+    end
+
+    test "successful get request with HTTP/2", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocol: :http2
+           ]
+         }}
+      )
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      acc = {nil, [], ""}
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {:cont, {value, headers, body}}
+        {:headers, value}, {status, headers, body} -> {:cont, {status, headers ++ value, body}}
+        {:data, value}, {status, headers, body} -> {:cont, {status, headers, body <> value}}
+      end
+
+      assert {:ok, {200, [_ | _], "OK"}} =
+               Finch.build(:get, endpoint(bypass))
+               |> Finch.stream_while(finch_name, acc, fun)
+    end
+
+    test "function halts on HTTP/2", %{test: test, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocol: :http2
+           ]
+         }}
+      )
+
+      # Start custom server, as opposed to Bypass, because the latter would complain when
+      # it outlives test process.
+      start_supervised!({Plug.Cowboy, scheme: :http, plug: InfiniteStream, port: 0, ref: test})
+      url = "http://localhost:#{:ranch.get_port(test)}"
+
+      acc = {nil, [], ""}
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {:halt, {value, headers, body}}
+      end
+
+      assert {:ok, {200, [], ""}} =
+               Finch.build(:get, url)
+               |> Finch.stream_while(finch_name, acc, fun)
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {:cont, {value, headers, body}}
+        {:headers, value}, {status, headers, body} -> {:halt, {status, headers ++ value, body}}
+      end
+
+      assert {:ok, {200, [_ | _], ""}} =
+               Finch.build(:get, url)
+               |> Finch.stream_while(finch_name, acc, fun)
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {:cont, {value, headers, body}}
+        {:headers, value}, {status, headers, body} -> {:cont, {status, headers ++ value, body}}
+        {:data, value}, {status, headers, body} -> {:halt, {status, headers, body <> value}}
+      end
+
+      assert {:ok, {200, [_ | _], "chunk"}} =
+               Finch.build(:get, url)
+               |> Finch.stream_while(finch_name, acc, fun)
+
+      Process.sleep(5000)
+    end
+
+    test "invalid return value on HTTP/2", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocol: :http2
+           ]
+         }}
+      )
+
+      Bypass.stub(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      acc = {nil, [], ""}
+
+      fun = fn
+        {:status, _value}, _acc -> :bad
+      end
+
+      assert_raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: :bad", fn ->
+        Finch.build(:get, endpoint(bypass))
+        |> Finch.stream_while(finch_name, acc, fun)
+      end
+    end
+  end
+
   describe "async_request/3 with HTTP/1" do
     test "sends response messages to calling process", %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})

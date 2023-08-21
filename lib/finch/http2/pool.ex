@@ -82,31 +82,64 @@ defmodule Finch.HTTP2.Pool do
   defp response_waiting_loop(acc, fun, request_ref, monitor_ref, fail_safe_timeout) do
     receive do
       {^request_ref, {:status, value}} ->
-        response_waiting_loop(
-          fun.({:status, value}, acc),
-          fun,
-          request_ref,
-          monitor_ref,
-          fail_safe_timeout
-        )
+        case fun.({:status, value}, acc) do
+          {:cont, acc} ->
+            response_waiting_loop(
+              acc,
+              fun,
+              request_ref,
+              monitor_ref,
+              fail_safe_timeout
+            )
+
+          {:halt, acc} ->
+            cancel_async_request(request_ref)
+            Process.demonitor(monitor_ref)
+            {:ok, acc}
+
+          other ->
+            raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: #{inspect(other)}"
+        end
 
       {^request_ref, {:headers, value}} ->
-        response_waiting_loop(
-          fun.({:headers, value}, acc),
-          fun,
-          request_ref,
-          monitor_ref,
-          fail_safe_timeout
-        )
+        case fun.({:headers, value}, acc) do
+          {:cont, acc} ->
+            response_waiting_loop(
+              acc,
+              fun,
+              request_ref,
+              monitor_ref,
+              fail_safe_timeout
+            )
+
+          {:halt, acc} ->
+            cancel_async_request(request_ref)
+            Process.demonitor(monitor_ref)
+            {:ok, acc}
+
+          other ->
+            raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: #{inspect(other)}"
+        end
 
       {^request_ref, {:data, value}} ->
-        response_waiting_loop(
-          fun.({:data, value}, acc),
-          fun,
-          request_ref,
-          monitor_ref,
-          fail_safe_timeout
-        )
+        case fun.({:data, value}, acc) do
+          {:cont, acc} ->
+            response_waiting_loop(
+              acc,
+              fun,
+              request_ref,
+              monitor_ref,
+              fail_safe_timeout
+            )
+
+          {:halt, acc} ->
+            cancel_async_request(request_ref)
+            Process.demonitor(monitor_ref)
+            {:ok, acc}
+
+          other ->
+            raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: #{inspect(other)}"
+        end
 
       {^request_ref, :done} ->
         Process.demonitor(monitor_ref)
