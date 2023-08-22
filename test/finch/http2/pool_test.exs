@@ -307,7 +307,7 @@ defmodule Finch.HTTP2.PoolTest do
 
       assert_receive {^ref, {:status, 200}}
       Finch.HTTP2.Pool.cancel_async_request(ref)
-      refute_receive {^ref, {:data, _}}
+      refute_receive _
     end
 
     test "canceled if calling process exits normally", %{test: finch_name} do
@@ -485,9 +485,9 @@ defmodule Finch.HTTP2.PoolTest do
     acc = {nil, [], ""}
 
     fun = fn
-      {:status, value}, {_, headers, body} -> {value, headers, body}
-      {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
-      {:data, value}, {status, headers, body} -> {status, headers, body <> value}
+      {:status, value}, {_, headers, body} -> {:cont, {value, headers, body}}
+      {:headers, value}, {status, headers, body} -> {:cont, {status, headers ++ value, body}}
+      {:data, value}, {status, headers, body} -> {:cont, {status, headers, body <> value}}
     end
 
     Pool.request(pool, req, acc, fun, opts)

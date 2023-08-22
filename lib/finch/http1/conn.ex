@@ -214,40 +214,70 @@ defmodule Finch.Conn do
   defp receive_response([entry | entries], acc, fun, mint, ref, timeout, status, headers) do
     case entry do
       {:status, ^ref, value} ->
-        receive_response(
-          entries,
-          fun.({:status, value}, acc),
-          fun,
-          mint,
-          ref,
-          timeout,
-          value,
-          headers
-        )
+        case fun.({:status, value}, acc) do
+          {:cont, acc} ->
+            receive_response(
+              entries,
+              acc,
+              fun,
+              mint,
+              ref,
+              timeout,
+              value,
+              headers
+            )
+
+          {:halt, acc} ->
+            {:ok, mint} = Mint.HTTP1.close(mint)
+            {:ok, mint, acc, {status, headers}}
+
+          other ->
+            raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: #{inspect(other)}"
+        end
 
       {:headers, ^ref, value} ->
-        receive_response(
-          entries,
-          fun.({:headers, value}, acc),
-          fun,
-          mint,
-          ref,
-          timeout,
-          status,
-          headers ++ value
-        )
+        case fun.({:headers, value}, acc) do
+          {:cont, acc} ->
+            receive_response(
+              entries,
+              acc,
+              fun,
+              mint,
+              ref,
+              timeout,
+              status,
+              headers ++ value
+            )
+
+          {:halt, acc} ->
+            {:ok, mint} = Mint.HTTP1.close(mint)
+            {:ok, mint, acc, {status, headers}}
+
+          other ->
+            raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: #{inspect(other)}"
+        end
 
       {:data, ^ref, value} ->
-        receive_response(
-          entries,
-          fun.({:data, value}, acc),
-          fun,
-          mint,
-          ref,
-          timeout,
-          status,
-          headers
-        )
+        case fun.({:data, value}, acc) do
+          {:cont, acc} ->
+            receive_response(
+              entries,
+              acc,
+              fun,
+              mint,
+              ref,
+              timeout,
+              status,
+              headers
+            )
+
+          {:halt, acc} ->
+            {:ok, mint} = Mint.HTTP1.close(mint)
+            {:ok, mint, acc, {status, headers}}
+
+          other ->
+            raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: #{inspect(other)}"
+        end
 
       {:error, ^ref, error} ->
         {:error, mint, error, {status, headers}}

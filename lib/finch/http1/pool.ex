@@ -98,7 +98,7 @@ defmodule Finch.HTTP1.Pool do
     end
 
     send(owner, {request_ref, response})
-    {owner, monitor, request_ref}
+    {:cont, {owner, monitor, request_ref}}
   end
 
   defp process_down?(monitor) do

@@ -102,6 +102,13 @@ defmodule Finch do
   @type stream(acc) ::
           ({:status, integer} | {:headers, Mint.Types.headers()} | {:data, binary}, acc -> acc)
 
+  @typedoc """
+  The stream function given to `stream_while/5`.
+  """
+  @type stream_while(acc) ::
+          ({:status, integer} | {:headers, Mint.Types.headers()} | {:data, binary}, acc ->
+             {:cont, acc} | {:halt, acc})
+
   @doc """
   Start an instance of Finch.
 
@@ -268,6 +275,8 @@ defmodule Finch do
   accumulator. The function must return a potentially updated
   accumulator.
 
+  See also `stream_while/5`.
+
   ## Stream commands
 
     * `{:status, status}` - the status of the http response
@@ -302,12 +311,71 @@ defmodule Finch do
           {:ok, acc} | {:error, Exception.t()}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
+    fun =
+      fn entry, acc ->
+        {:cont, fun.(entry, acc)}
+      end
+
+    stream_while(req, name, acc, fun, opts)
+  end
+
+  @doc """
+  Streams an HTTP request until it finishes or `fun` returns `{:halt, acc}`.
+
+  A function of arity 2 is expected as argument. The first argument
+  is a tuple, as listed below, and the second argument is the
+  accumulator.
+
+  The function must return:
+
+    * `{:cont, acc}` to continue streaming
+    * `{:halt, acc}` to halt streaming
+
+  See also `stream/5`.
+
+  ## Stream commands
+
+    * `{:status, status}` - the status of the http response
+    * `{:headers, headers}` - the headers of the http response
+    * `{:data, data}` - a streaming section of the http body
+
+  ## Options
+
+  Shares options with `request/3`.
+
+  ## Examples
+
+      path = "/tmp/big-file.zip"
+      file = File.open!(path, [:write, :exclusive])
+      url = "https://domain.com/url/big-file.zip"
+      request = Finch.build(:get, url)
+
+      Finch.stream_while(request, MyFinch, nil, fn
+        {:status, status}, acc ->
+          IO.inspect(status)
+          {:cont, acc}
+
+        {:headers, headers}, acc ->
+          IO.inspect(headers)
+          {:cont, acc}
+
+        {:data, data}, acc ->
+          IO.binwrite(file, data)
+          {:cont, acc}
+      end)
+
+      File.close(file)
+  """
+  @spec stream_while(Request.t(), name(), acc, stream_while(acc), request_opts()) ::
+          {:ok, acc} | {:error, Exception.t()}
+        when acc: term()
+  def stream_while(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
     request_span req, name do
       __stream__(req, name, acc, fun, opts)
     end
   end
 
-  defp __stream__(%Request{} = req, name, acc, fun, opts) when is_function(fun, 2) do
+  defp __stream__(%Request{} = req, name, acc, fun, opts) do
     {pool, pool_mod} = get_pool(req, name)
     pool_mod.request(pool, req, acc, fun, opts)
   end
@@ -334,9 +402,9 @@ defmodule Finch do
       acc = {nil, [], []}
 
       fun = fn
-        {:status, value}, {_, headers, body} -> {value, headers, body}
-        {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
-        {:data, value}, {status, headers, body} -> {status, headers, [value | body]}
+        {:status, value}, {_, headers, body} -> {:cont, {value, headers, body}}
+        {:headers, value}, {status, headers, body} -> {:cont, {status, headers ++ value, body}}
+        {:data, value}, {status, headers, body} -> {:cont, {status, headers, [value | body]}}
       end
 
       with {:ok, {status, headers, body}} <- __stream__(req, name, acc, fun, opts) do
