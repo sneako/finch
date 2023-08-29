@@ -43,7 +43,7 @@ defmodule Finch.HTTP2.Pool do
       fail_safe_timeout = if is_integer(timeout), do: max(2000, timeout * 2), else: :infinity
 
       try do
-        response_waiting_loop(acc, fun, request_ref, monitor, fail_safe_timeout)
+        response_waiting_loop(acc, fun, request_ref, monitor, fail_safe_timeout, :headers)
       catch
         kind, error ->
           Telemetry.exception(:recv, recv_start, kind, error, __STACKTRACE__, %{request: request})
@@ -77,9 +77,9 @@ defmodule Finch.HTTP2.Pool do
     {__MODULE__, {pool, make_ref()}}
   end
 
-  defp response_waiting_loop(acc, fun, request_ref, monitor_ref, fail_safe_timeout)
+  defp response_waiting_loop(acc, fun, request_ref, monitor_ref, fail_safe_timeout, fields)
 
-  defp response_waiting_loop(acc, fun, request_ref, monitor_ref, fail_safe_timeout) do
+  defp response_waiting_loop(acc, fun, request_ref, monitor_ref, fail_safe_timeout, fields) do
     receive do
       {^request_ref, {:status, value}} ->
         case fun.({:status, value}, acc) do
@@ -89,7 +89,8 @@ defmodule Finch.HTTP2.Pool do
               fun,
               request_ref,
               monitor_ref,
-              fail_safe_timeout
+              fail_safe_timeout,
+              fields
             )
 
           {:halt, acc} ->
@@ -102,14 +103,15 @@ defmodule Finch.HTTP2.Pool do
         end
 
       {^request_ref, {:headers, value}} ->
-        case fun.({:headers, value}, acc) do
+        case fun.({fields, value}, acc) do
           {:cont, acc} ->
             response_waiting_loop(
               acc,
               fun,
               request_ref,
               monitor_ref,
-              fail_safe_timeout
+              fail_safe_timeout,
+              :trailers
             )
 
           {:halt, acc} ->
@@ -129,7 +131,8 @@ defmodule Finch.HTTP2.Pool do
               fun,
               request_ref,
               monitor_ref,
-              fail_safe_timeout
+              fail_safe_timeout,
+              fields
             )
 
           {:halt, acc} ->
