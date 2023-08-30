@@ -249,7 +249,7 @@ defmodule Finch.HTTP2.Pool do
         metadata = Map.put(metadata, :error, error)
         Telemetry.stop(:connect, start, metadata)
 
-        Logger.error([
+        Logger.warning([
           "Failed to connect to #{data.scheme}://#{data.host}:#{data.port}: ",
           Exception.message(error)
         ])
