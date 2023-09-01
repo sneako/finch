@@ -516,26 +516,32 @@ defmodule FinchTest do
       finch_name: finch_name
     } do
       start_supervised!({Finch, name: finch_name})
-
       timeout = 600
 
       Bypass.expect(bypass, fn conn ->
+        Process.flag(:trap_exit, true)
         conn = Plug.Conn.send_chunked(conn, 200)
 
-        Enum.reduce(1..5, conn, fn _, conn ->
+        Enum.reduce_while(1..5, conn, fn _, conn ->
           Process.sleep(timeout - 100)
-          {_, conn} = Plug.Conn.chunk(conn, "chunk-data")
-          conn
+
+          receive do
+            {:EXIT, _, _} -> {:halt, conn}
+          after
+            0 ->
+              {_, conn} = Plug.Conn.chunk(conn, "chunk-data")
+              {:cont, conn}
+          end
         end)
       end)
 
       assert {:error, %{reason: :timeout}} =
                Finch.build(:get, endpoint(bypass))
-               |> Finch.request(finch_name, receive_timeout: timeout)
+               |> Finch.request(finch_name, request_timeout: timeout)
 
       assert {:ok, %Response{}} =
                Finch.build(:get, endpoint(bypass))
-               |> Finch.request(finch_name, receive_timeout: timeout * 10)
+               |> Finch.request(finch_name, request_timeout: timeout * 10)
     end
 
     test "returns error when requesting bad address", %{finch_name: finch_name} do

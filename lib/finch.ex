@@ -399,8 +399,13 @@ defmodule Finch do
     * `:pool_timeout` - This timeout is applied when we check out a connection from the pool.
       Default value is `5_000`.
 
-    * `:receive_timeout` - The maximum time to wait for a response before returning an error.
+    * `:receive_timeout` - The maximum time to wait for each chunk to be received before returning an error.
       Default value is `15_000`.
+
+    * `:request_timeout` - The amount of time to wait for a complete response before returning an error.
+      This timeout only applies to HTTP/1, and its current implementation is a best effort timeout,
+      it does not guarantee the call will return precisely when the time has elapsed.
+      Default value is `:infinity`.
 
   """
   @spec request(Request.t(), name(), request_opts()) ::
