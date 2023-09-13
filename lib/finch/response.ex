@@ -8,12 +8,14 @@ defmodule Finch.Response do
   defstruct [
     :status,
     body: "",
-    headers: []
+    headers: [],
+    trailers: []
   ]
 
   @type t :: %Response{
           status: Mint.Types.status(),
           body: binary(),
-          headers: Mint.Types.headers()
+          headers: Mint.Types.headers(),
+          trailers: Mint.Types.headers()
         }
 end

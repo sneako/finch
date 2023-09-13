@@ -47,7 +47,7 @@ defmodule Finch.HTTP1.IntegrationTest do
     start_finch([:"tlsv1.2", :"tlsv1.3"])
 
     try do
-      assert {:ok, _} = Finch.build(:get, url) |> Finch.request(H2Finch)
+      assert {:ok, _} = Finch.build(:get, url) |> Finch.request(H1Finch)
       assert File.stat!(log_file).size > 0
     after
       File.rm!(log_file)
@@ -65,7 +65,7 @@ defmodule Finch.HTTP1.IntegrationTest do
     start_finch([:"tlsv1.3"])
 
     try do
-      {:ok, _} = Finch.build(:get, "https://rabbitmq.com") |> Finch.request(H2Finch)
+      {:ok, _} = Finch.build(:get, "https://rabbitmq.com") |> Finch.request(H1Finch)
       assert File.stat!(log_file).size > 0
     after
       File.rm!(log_file)
@@ -79,16 +79,57 @@ defmodule Finch.HTTP1.IntegrationTest do
     start_finch([:"tlsv1.2", :"tlsv1.3"])
 
     assert catch_throw(
-             Finch.stream(Finch.build(:get, url), H2Finch, :ok, fn {:status, _}, :ok ->
+             Finch.stream(Finch.build(:get, url), H1Finch, :ok, fn {:status, _}, :ok ->
                throw(:error)
              end)
            ) == :error
   end
 
+  test "trailers" do
+    handler = fn transport, socket ->
+      data = """
+      HTTP/1.1 200 OK
+      transfer-encoding: chunked
+      trailer: x-foo, x-bar
+
+      6\r
+      chunk1\r
+      6\r
+      chunk2\r
+      0\r
+      x-foo: foo\r
+      x-bar: bar\r
+      \r
+      """
+
+      :ok = transport.send(socket, data)
+    end
+
+    {:ok, socket} = Finch.MockSocketServer.start(socket: {nil, []}, handler: handler)
+    {:ok, port} = :inet.port(socket)
+    url = "http://localhost:#{port}"
+
+    start_supervised!(
+      {Finch,
+       name: H1Finch,
+       pools: %{
+         default: [
+           protocol: :http1
+         ]
+       }}
+    )
+
+    {:ok, resp} = Finch.build(:get, url) |> Finch.request(H1Finch)
+    assert resp.status == 200
+    assert resp.headers == [{"transfer-encoding", "chunked"}, {"trailer", "x-foo, x-bar"}]
+    assert resp.body == "chunk1chunk2"
+    assert resp.trailers == [{"x-foo", "foo"}, {"x-bar", "bar"}]
+  end
+
   defp start_finch(tls_versions) do
     start_supervised!(
       {Finch,
-       name: H2Finch,
+       name: H1Finch,
        pools: %{
          default: [
            protocol: :http1,

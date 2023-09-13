@@ -16,54 +16,38 @@ defmodule Finch.MockSocketServer do
     keyfile: Path.join([@fixtures_dir, "selfsigned_key.pem"])
   ]
 
-  @http_response "HTTP/1.1 200 OK\r\n\r\n"
-
   def start(opts \\ []) do
-    ssl? = Keyword.get(opts, :ssl?, false)
+    transport = Keyword.get(opts, :transport, :gen_tcp)
+    handler = Keyword.get(opts, :handler, &default_handler/2)
+    address = Keyword.get(opts, :address)
 
-    socket_address = build_socket_address()
-    delete_existing_sockets(socket_address)
-
-    {:ok, socket} = listen(socket_address, ssl?)
+    {:ok, socket} = listen(transport, address)
 
     spawn_link(fn ->
-      {:ok, client} = accept(socket, ssl?)
-
-      serve(client, ssl?)
+      {:ok, client} = accept(transport, socket)
+      serve(transport, client, handler)
     end)
 
-    {:ok, socket_address}
+    {:ok, socket}
   end
 
-  defp build_socket_address do
-    name = "finch_mock_socket_server.sock"
-    socket_path = System.tmp_dir!() |> Path.join(name)
-
-    {:local, socket_path}
+  defp listen(transport, nil) do
+    transport.listen(0, socket_opts(transport))
   end
 
-  defp delete_existing_sockets({:local, socket_path}) do
-    File.rm(socket_path)
+  defp listen(transport, {:local, path}) do
+    socket_opts = [ifaddr: {:local, path}] ++ socket_opts(transport)
+    transport.listen(0, socket_opts)
   end
 
-  defp listen(socket_address, false = _ssl?) do
-    opts = [{:ifaddr, socket_address} | @socket_opts]
+  defp socket_opts(:gen_tcp), do: @socket_opts
+  defp socket_opts(:ssl), do: @socket_opts ++ @ssl_opts
 
-    :gen_tcp.listen(0, opts)
-  end
-
-  defp listen(socket_address, true = _ssl?) do
-    base_opts = @socket_opts ++ @ssl_opts
-    opts = [{:ifaddr, socket_address} | base_opts]
-
-    :ssl.listen(0, opts)
-  end
-
-  defp accept(socket, false = _ssl?) do
+  defp accept(:gen_tcp, socket) do
     {:ok, _client} = :gen_tcp.accept(socket)
   end
 
-  defp accept(socket, true = _ssl?) do
+  defp accept(:ssl, socket) do
     {:ok, client} = :ssl.transport_accept(socket)
 
     if function_exported?(:ssl, :handshake, 1) do
@@ -75,25 +59,18 @@ defmodule Finch.MockSocketServer do
     {:ok, client}
   end
 
-  defp serve(client, false = ssl?) do
-    case :gen_tcp.recv(client, 0) do
+  defp serve(transport, client, handler) do
+    case transport.recv(client, 0) do
       {:ok, _data} ->
-        :gen_tcp.send(client, @http_response)
-        :gen_tcp.close(client)
+        handler.(transport, client)
+        transport.close(client)
 
       _ ->
-        serve(client, ssl?)
+        serve(transport, client, handler)
     end
   end
 
-  defp serve(client, true = ssl?) do
-    case :ssl.recv(client, 0) do
-      {:ok, _data} ->
-        :ssl.send(client, @http_response)
-        :ssl.close(client)
-
-      _ ->
-        serve(client, ssl?)
-    end
+  defp default_handler(transport, socket) do
+    :ok = transport.send(socket, "HTTP/1.1 200 OK\r\n\r\n")
   end
 end

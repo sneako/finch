@@ -433,8 +433,11 @@ defmodule FinchTest do
       assert {:ok, %{status: 200}} = Finch.build(:get, uri) |> Finch.request(finch_name)
     end
 
-    test "successful get request to a unix socket", %{finch_name: finch_name} do
-      {:ok, {:local, socket_path}} = MockSocketServer.start()
+    @tag :tmp_dir
+    test "successful get request to a unix socket", %{finch_name: finch_name, tmp_dir: tmp_dir} do
+      # erlang doesn't like long socket paths, we can trick it by using a shorter relative path.
+      socket_path = Path.relative_to_cwd("#{tmp_dir}/finch.sock")
+      {:ok, _} = MockSocketServer.start(address: {:local, socket_path})
 
       start_supervised!({Finch, name: finch_name})
 
@@ -443,15 +446,23 @@ defmodule FinchTest do
                |> Finch.request(finch_name)
     end
 
+    @tag :tmp_dir
     @tag :capture_log
-    test "successful get request to a unix socket with tls", %{finch_name: finch_name} do
-      {:ok, socket_address = {:local, socket_path}} = MockSocketServer.start(ssl?: true)
+    test "successful get request to a unix socket with tls", %{
+      finch_name: finch_name,
+      tmp_dir: tmp_dir
+    } do
+      # erlang doesn't like long socket paths, we can trick it by using a shorter relative path.
+      socket_path = Path.relative_to_cwd("#{tmp_dir}/finch.sock")
+      {:ok, _} = MockSocketServer.start(address: {:local, socket_path}, transport: :ssl)
 
       start_supervised!(
         {Finch,
          name: finch_name,
          pools: %{
-           {:https, socket_address} => [conn_opts: [transport_opts: [verify: :verify_none]]]
+           {:https, {:local, socket_path}} => [
+             conn_opts: [transport_opts: [verify: :verify_none]]
+           ]
          }}
       )
 

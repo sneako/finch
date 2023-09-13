@@ -100,13 +100,22 @@ defmodule Finch do
   The stream function given to `stream/5`.
   """
   @type stream(acc) ::
-          ({:status, integer} | {:headers, Mint.Types.headers()} | {:data, binary}, acc -> acc)
+          ({:status, integer}
+           | {:headers, Mint.Types.headers()}
+           | {:data, binary}
+           | {:trailers, Mint.Types.headers()},
+           acc ->
+             acc)
 
   @typedoc """
   The stream function given to `stream_while/5`.
   """
   @type stream_while(acc) ::
-          ({:status, integer} | {:headers, Mint.Types.headers()} | {:data, binary}, acc ->
+          ({:status, integer}
+           | {:headers, Mint.Types.headers()}
+           | {:data, binary}
+           | {:trailers, Mint.Types.headers()},
+           acc ->
              {:cont, acc} | {:halt, acc})
 
   @doc """
@@ -279,9 +288,10 @@ defmodule Finch do
 
   ## Stream commands
 
-    * `{:status, status}` - the status of the http response
-    * `{:headers, headers}` - the headers of the http response
-    * `{:data, data}` - a streaming section of the http body
+    * `{:status, status}` - the http response status
+    * `{:headers, headers}` - the http response headers
+    * `{:data, data}` - a streaming section of the http response body
+    * `{:trailers, trailers}` - the http response trailers
 
   ## Options
 
@@ -289,9 +299,9 @@ defmodule Finch do
 
   ## Examples
 
-      path = "/tmp/big-file.zip"
+      path = "/tmp/archive.zip"
       file = File.open!(path, [:write, :exclusive])
-      url = "https://domain.com/url/big-file.zip"
+      url = "https://example.com/archive.zip"
       request = Finch.build(:get, url)
 
       Finch.stream(request, MyFinch, nil, fn
@@ -335,9 +345,10 @@ defmodule Finch do
 
   ## Stream commands
 
-    * `{:status, status}` - the status of the http response
-    * `{:headers, headers}` - the headers of the http response
-    * `{:data, data}` - a streaming section of the http body
+    * `{:status, status}` - the http response status
+    * `{:headers, headers}` - the http response headers
+    * `{:data, data}` - a streaming section of the http response body
+    * `{:trailers, trailers}` - the http response trailers
 
   ## Options
 
@@ -345,9 +356,9 @@ defmodule Finch do
 
   ## Examples
 
-      path = "/tmp/big-file.zip"
+      path = "/tmp/archive.zip"
       file = File.open!(path, [:write, :exclusive])
-      url = "https://domain.com/url/big-file.zip"
+      url = "https://example.com/archive.zip"
       request = Finch.build(:get, url)
 
       Finch.stream_while(request, MyFinch, nil, fn
@@ -399,20 +410,29 @@ defmodule Finch do
 
   def request(%Request{} = req, name, opts) do
     request_span req, name do
-      acc = {nil, [], []}
+      acc = {nil, [], [], []}
 
       fun = fn
-        {:status, value}, {_, headers, body} -> {:cont, {value, headers, body}}
-        {:headers, value}, {status, headers, body} -> {:cont, {status, headers ++ value, body}}
-        {:data, value}, {status, headers, body} -> {:cont, {status, headers, [value | body]}}
+        {:status, value}, {_, headers, body, trailers} ->
+          {:cont, {value, headers, body, trailers}}
+
+        {:headers, value}, {status, headers, body, trailers} ->
+          {:cont, {status, headers ++ value, body, trailers}}
+
+        {:data, value}, {status, headers, body, trailers} ->
+          {:cont, {status, headers, [value | body], trailers}}
+
+        {:trailers, value}, {status, headers, body, trailers} ->
+          {:cont, {status, headers, body, trailers ++ value}}
       end
 
-      with {:ok, {status, headers, body}} <- __stream__(req, name, acc, fun, opts) do
+      with {:ok, {status, headers, body, trailers}} <- __stream__(req, name, acc, fun, opts) do
         {:ok,
          %Response{
            status: status,
            headers: headers,
-           body: body |> Enum.reverse() |> IO.iodata_to_binary()
+           body: body |> Enum.reverse() |> IO.iodata_to_binary(),
+           trailers: trailers
          }}
       end
     end

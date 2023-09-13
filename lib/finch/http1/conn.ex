@@ -117,7 +117,20 @@ defmodule Finch.Conn do
             {:ok, mint} ->
               Telemetry.stop(:send, start_time, metadata, extra_measurements)
               start_time = Telemetry.start(:recv, metadata, extra_measurements)
-              response = receive_response([], acc, fun, mint, ref, receive_timeout)
+              resp_metadata = %{status: nil, headers: [], trailers: []}
+
+              response =
+                receive_response(
+                  [],
+                  acc,
+                  fun,
+                  mint,
+                  ref,
+                  receive_timeout,
+                  :headers,
+                  resp_metadata
+                )
+
               handle_response(response, conn, metadata, start_time, extra_measurements)
 
             {:error, mint, error} ->
@@ -175,43 +188,90 @@ defmodule Finch.Conn do
 
   defp handle_response(response, conn, metadata, start_time, extra_measurements) do
     case response do
-      {:ok, mint, acc, {status, headers}} ->
-        metadata = Map.merge(metadata, %{status: status, headers: headers})
+      {:ok, mint, acc, resp_metadata} ->
+        metadata = Map.merge(metadata, resp_metadata)
         Telemetry.stop(:recv, start_time, metadata, extra_measurements)
         {:ok, %{conn | mint: mint}, acc}
 
-      {:error, mint, error, {status, headers}} ->
-        metadata = Map.merge(metadata, %{error: error, status: status, headers: headers})
+      {:error, mint, error, resp_metadata} ->
+        metadata = Map.merge(metadata, Map.put(resp_metadata, :error, error))
         Telemetry.stop(:recv, start_time, metadata, extra_measurements)
         {:error, %{conn | mint: mint}, error}
     end
   end
 
-  defp receive_response(entries, acc, fun, mint, ref, timeout, status \\ nil, headers \\ [])
+  defp receive_response(
+         entries,
+         acc,
+         fun,
+         mint,
+         ref,
+         timeout,
+         fields,
+         resp_metadata
+       )
 
-  defp receive_response([{:done, ref} | _], acc, _fun, mint, ref, _timeout, status, headers) do
-    {:ok, mint, acc, {status, headers}}
+  defp receive_response(
+         [{:done, ref} | _],
+         acc,
+         _fun,
+         mint,
+         ref,
+         _timeout,
+         _fields,
+         resp_metadata
+       ) do
+    {:ok, mint, acc, resp_metadata}
   end
 
-  defp receive_response(_, _acc, _fun, mint, _ref, timeout, status, headers) when timeout < 0 do
-    {:error, mint, %Mint.TransportError{reason: :timeout}, {status, headers}}
+  defp receive_response(
+         _,
+         _acc,
+         _fun,
+         mint,
+         _ref,
+         timeout,
+         _fields,
+         resp_metadata
+       )
+       when timeout < 0 do
+    {:error, mint, %Mint.TransportError{reason: :timeout}, resp_metadata}
   end
 
-  defp receive_response([], acc, fun, mint, ref, timeout, status, headers) do
+  defp receive_response([], acc, fun, mint, ref, timeout, fields, resp_metadata) do
     start_time = System.monotonic_time(:millisecond)
 
     case MintHTTP1.recv(mint, 0, timeout) do
       {:ok, mint, entries} ->
         elapsed_time = System.monotonic_time(:millisecond) - start_time
         timeout = timeout - elapsed_time
-        receive_response(entries, acc, fun, mint, ref, timeout, status, headers)
+
+        receive_response(
+          entries,
+          acc,
+          fun,
+          mint,
+          ref,
+          timeout,
+          fields,
+          resp_metadata
+        )
 
       {:error, mint, error, _responses} ->
-        {:error, mint, error, {status, headers}}
+        {:error, mint, error, resp_metadata}
     end
   end
 
-  defp receive_response([entry | entries], acc, fun, mint, ref, timeout, status, headers) do
+  defp receive_response(
+         [entry | entries],
+         acc,
+         fun,
+         mint,
+         ref,
+         timeout,
+         fields,
+         resp_metadata
+       ) do
     case entry do
       {:status, ^ref, value} ->
         case fun.({:status, value}, acc) do
@@ -223,20 +283,22 @@ defmodule Finch.Conn do
               mint,
               ref,
               timeout,
-              value,
-              headers
+              fields,
+              %{resp_metadata | status: value}
             )
 
           {:halt, acc} ->
             {:ok, mint} = Mint.HTTP1.close(mint)
-            {:ok, mint, acc, {status, headers}}
+            {:ok, mint, acc, resp_metadata}
 
           other ->
             raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: #{inspect(other)}"
         end
 
       {:headers, ^ref, value} ->
-        case fun.({:headers, value}, acc) do
+        resp_metadata = update_in(resp_metadata, [fields], &(&1 ++ value))
+
+        case fun.({fields, value}, acc) do
           {:cont, acc} ->
             receive_response(
               entries,
@@ -245,13 +307,13 @@ defmodule Finch.Conn do
               mint,
               ref,
               timeout,
-              status,
-              headers ++ value
+              fields,
+              resp_metadata
             )
 
           {:halt, acc} ->
             {:ok, mint} = Mint.HTTP1.close(mint)
-            {:ok, mint, acc, {status, headers}}
+            {:ok, mint, acc, resp_metadata}
 
           other ->
             raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: #{inspect(other)}"
@@ -267,20 +329,20 @@ defmodule Finch.Conn do
               mint,
               ref,
               timeout,
-              status,
-              headers
+              :trailers,
+              resp_metadata
             )
 
           {:halt, acc} ->
             {:ok, mint} = Mint.HTTP1.close(mint)
-            {:ok, mint, acc, {status, headers}}
+            {:ok, mint, acc, resp_metadata}
 
           other ->
             raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: #{inspect(other)}"
         end
 
       {:error, ^ref, error} ->
-        {:error, mint, error, {status, headers}}
+        {:error, mint, error, resp_metadata}
     end
   end
 end
