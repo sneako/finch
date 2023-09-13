@@ -296,12 +296,7 @@ defmodule Finch.Conn do
         end
 
       {:headers, ^ref, value} ->
-        resp_metadata =
-          if fields == :headers do
-            update_in(resp_metadata.headers, &(&1 ++ value))
-          else
-            update_in(resp_metadata.trailers, &(&1 ++ value))
-          end
+        resp_metadata = update_in(resp_metadata, [fields], &(&1 ++ value))
 
         case fun.({fields, value}, acc) do
           {:cont, acc} ->
