@@ -111,7 +111,7 @@ defmodule Finch.HTTP2.Pool do
               request_ref,
               monitor_ref,
               fail_safe_timeout,
-              :trailers
+              fields
             )
 
           {:halt, acc} ->
@@ -132,7 +132,7 @@ defmodule Finch.HTTP2.Pool do
               request_ref,
               monitor_ref,
               fail_safe_timeout,
-              fields
+              :trailers
             )
 
           {:halt, acc} ->

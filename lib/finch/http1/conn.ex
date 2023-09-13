@@ -312,7 +312,7 @@ defmodule Finch.Conn do
               mint,
               ref,
               timeout,
-              :trailers,
+              fields,
               resp_metadata
             )
 
