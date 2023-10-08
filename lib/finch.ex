@@ -298,7 +298,7 @@ defmodule Finch do
   Shares options with `request/3`.
 
   ## Examples
-
+      1)
       path = "/tmp/archive.zip"
       file = File.open!(path, [:write, :exclusive])
       url = "https://example.com/archive.zip"
@@ -316,6 +316,50 @@ defmodule Finch do
       end)
 
       File.close(file)
+
+      2) An example where you download an URL in streams into a temp file.
+       It supports redirections.
+
+      {:ok, path} = Plug.upload.random_file("temp-stream")
+      {:ok, file} = File.open(path, [:binary, :write])
+
+      # below is a redirected URL:
+      url = "https://source.unsplash.com/QT-l619id6w"
+
+      request = Finch.build(:get, url)
+      Finch.stream(request, MyFinch, nil, fn
+        {:status, status}, _acc ->
+          status
+
+        {:headers, headers}, status ->
+          case status do
+            302 ->
+              Enum.filter(headers, &(elem(&1, 0) == "location")) |> List.first()
+
+            200 ->
+              headers
+
+            _ ->
+              {:halt, "bad redirection"}
+            end
+
+        {:data, data}, headers ->
+          case headers do
+            {"location", location} ->
+              Finch.build(:get, location) |> Api.stream_write(file)
+
+            {:halt, "bad redirection"} ->
+              {:error, "bad redirection"}
+
+            _headers ->
+              case IO.binwrite(file, data) do
+                :ok -> :ok
+                {:error, reason} -> {:error, reason}
+              end
+          end
+      end)
+      File.close!(file)
+
   """
   @spec stream(Request.t(), name(), acc, stream(acc), request_opts()) ::
           {:ok, acc} | {:error, Exception.t()}
