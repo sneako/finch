@@ -346,7 +346,7 @@ defmodule Finch do
         {:data, data}, headers ->
           case headers do
             {"location", location} ->
-              Finch.build(:get, location) |> Api.stream_write(file)
+              Finch.build(:get, location) |> stream_write(file)
 
             {:halt, "bad redirection"} ->
               {:error, "bad redirection"}
