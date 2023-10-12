@@ -326,38 +326,38 @@ defmodule Finch do
       # below is a redirected URL:
       url = "https://source.unsplash.com/QT-l619id6w"
 
+      defp handle_headers(headers, 302), do:
+        Enum.find(headers, &(elem(&1, 0) == "location"))
+
+      defp handle_headers(headers, 200), do: headers
+
+      defp handle_headers(_, _), do: {:halt, "bad redirection"}
+
+      defp handle_data(_, {"location", location}, file), do:
+        Finch.build(:get, location) |> stream_write(file)
+
+      defp handle_data(_, {:halt, "bad redirection"}, _), do:
+        {:error, "bad redirection"}
+
+      defp handle_data(data, _, file) do
+        case IO.binwrite(file, data) do
+          :ok -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+      end
+
       request = Finch.build(:get, url)
       Finch.stream(request, MyFinch, nil, fn
         {:status, status}, _acc ->
           status
 
         {:headers, headers}, status ->
-          case status do
-            302 ->
-              Enum.filter(headers, &(elem(&1, 0) == "location")) |> List.first()
-
-            200 ->
-              headers
-
-            _ ->
-              {:halt, "bad redirection"}
-            end
+          handle_headers(headers, status)
 
         {:data, data}, headers ->
-          case headers do
-            {"location", location} ->
-              Finch.build(:get, location) |> stream_write(file)
-
-            {:halt, "bad redirection"} ->
-              {:error, "bad redirection"}
-
-            _headers ->
-              case IO.binwrite(file, data) do
-                :ok -> :ok
-                {:error, reason} -> {:error, reason}
-              end
-          end
+          handle_data(data, headers, file)
       end)
+
       File.close!(file)
 
   """
