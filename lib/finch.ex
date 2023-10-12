@@ -320,7 +320,8 @@ defmodule Finch do
       2) An example where you download an URL in streams into a temp file.
        It supports redirections.
 
-      {:ok, file} = Plug.upload.random_file("temp-stream")
+      {:ok, path} = Plug.upload.random_file("temp-stream")
+      {:ok, file} = File.open!(path, [:binary, :write])
 
       # below is a redirected URL:
       url = "https://source.unsplash.com/QT-l619id6w"
