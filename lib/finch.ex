@@ -320,11 +320,26 @@ defmodule Finch do
       2) An example where you download an URL in streams into a temp file.
        It supports redirections.
 
-      {:ok, path} = Plug.upload.random_file("temp-stream")
-      {:ok, file} = File.open(path, [:binary, :write])
+      {:ok, file} = Plug.upload.random_file("temp-stream")
 
       # below is a redirected URL:
       url = "https://source.unsplash.com/QT-l619id6w"
+
+      stream_write(url, file)
+
+      def stream_write(url, file) do
+        request = Finch.build(:get, url)
+        Finch.stream(request, MyFinch, nil, fn
+          {:status, status}, _acc ->
+            status
+
+          {:headers, headers}, status ->
+            handle_headers(headers, status)
+
+          {:data, data}, headers ->
+            handle_data(data, headers, file)
+        end)
+      end
 
       defp handle_headers(headers, 302), do:
         Enum.find(headers, &(elem(&1, 0) == "location"))
@@ -337,28 +352,14 @@ defmodule Finch do
         Finch.build(:get, location) |> stream_write(file)
 
       defp handle_data(_, {:halt, "bad redirection"}, _), do:
-        {:error, "bad redirection"}
+        {:halt, "bad redirection"}
 
       defp handle_data(data, _, file) do
         case IO.binwrite(file, data) do
           :ok -> :ok
-          {:error, reason} -> {:error, reason}
+          {:error, reason} -> {:halt, reason}
         end
       end
-
-      request = Finch.build(:get, url)
-      Finch.stream(request, MyFinch, nil, fn
-        {:status, status}, _acc ->
-          status
-
-        {:headers, headers}, status ->
-          handle_headers(headers, status)
-
-        {:data, data}, headers ->
-          handle_data(data, headers, file)
-      end)
-
-      File.close!(file)
 
   """
   @spec stream(Request.t(), name(), acc, stream(acc), request_opts()) ::
