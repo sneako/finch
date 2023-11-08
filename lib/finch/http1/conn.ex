@@ -93,9 +93,9 @@ defmodule Finch.Conn do
     end
   end
 
-  def request(%{mint: nil} = conn, _, _, _, _, _), do: {:error, conn, "Could not connect"}
+  def request(%{mint: nil} = conn, _, _, _, _, _, _), do: {:error, conn, "Could not connect"}
 
-  def request(conn, req, acc, fun, receive_timeout, idle_time) do
+  def request(conn, req, acc, fun, receive_timeout, request_timeout, idle_time) do
     full_path = Finch.Request.request_path(req)
 
     metadata = %{request: req}
@@ -113,11 +113,12 @@ defmodule Finch.Conn do
              stream_or_body(req.body)
            ) do
         {:ok, mint, ref} ->
-          case maybe_stream_request_body(mint, ref, req.body, receive_timeout) do
+          case maybe_stream_request_body(mint, ref, req.body) do
             {:ok, mint} ->
               Telemetry.stop(:send, start_time, metadata, extra_measurements)
               start_time = Telemetry.start(:recv, metadata, extra_measurements)
               resp_metadata = %{status: nil, headers: [], trailers: []}
+              timeouts = %{receive_timeout: receive_timeout, request_timeout: request_timeout}
 
               response =
                 receive_response(
@@ -126,7 +127,7 @@ defmodule Finch.Conn do
                   fun,
                   mint,
                   ref,
-                  receive_timeout,
+                  timeouts,
                   :headers,
                   resp_metadata
                 )
@@ -164,13 +165,13 @@ defmodule Finch.Conn do
     {:error, %{conn | mint: mint}, error}
   end
 
-  defp maybe_stream_request_body(mint, ref, {:stream, stream}, _timeout) do
+  defp maybe_stream_request_body(mint, ref, {:stream, stream}) do
     with {:ok, mint} <- stream_request_body(mint, ref, stream) do
       MintHTTP1.stream_request_body(mint, ref, :eof)
     end
   end
 
-  defp maybe_stream_request_body(mint, _, _, _), do: {:ok, mint}
+  defp maybe_stream_request_body(mint, _, _), do: {:ok, mint}
 
   defp stream_request_body(mint, ref, stream) do
     Enum.reduce_while(stream, {:ok, mint}, fn
@@ -206,7 +207,7 @@ defmodule Finch.Conn do
          fun,
          mint,
          ref,
-         timeout,
+         timeouts,
          fields,
          resp_metadata
        )
@@ -217,7 +218,7 @@ defmodule Finch.Conn do
          _fun,
          mint,
          ref,
-         _timeout,
+         _timeouts,
          _fields,
          resp_metadata
        ) do
@@ -230,21 +231,36 @@ defmodule Finch.Conn do
          _fun,
          mint,
          _ref,
-         timeout,
+         timeouts,
          _fields,
          resp_metadata
        )
-       when timeout < 0 do
+       when timeouts.request_timeout < 0 do
+    {:ok, mint} = Mint.HTTP1.close(mint)
     {:error, mint, %Mint.TransportError{reason: :timeout}, resp_metadata}
   end
 
-  defp receive_response([], acc, fun, mint, ref, timeout, fields, resp_metadata) do
+  defp receive_response(
+         [],
+         acc,
+         fun,
+         mint,
+         ref,
+         timeouts,
+         fields,
+         resp_metadata
+       ) do
     start_time = System.monotonic_time(:millisecond)
 
-    case MintHTTP1.recv(mint, 0, timeout) do
+    case MintHTTP1.recv(mint, 0, timeouts.receive_timeout) do
       {:ok, mint, entries} ->
-        elapsed_time = System.monotonic_time(:millisecond) - start_time
-        timeout = timeout - elapsed_time
+        timeouts =
+          if is_integer(timeouts.request_timeout) do
+            elapsed_time = System.monotonic_time(:millisecond) - start_time
+            update_in(timeouts.request_timeout, &(&1 - elapsed_time))
+          else
+            timeouts
+          end
 
         receive_response(
           entries,
@@ -252,7 +268,7 @@ defmodule Finch.Conn do
           fun,
           mint,
           ref,
-          timeout,
+          timeouts,
           fields,
           resp_metadata
         )
@@ -268,7 +284,7 @@ defmodule Finch.Conn do
          fun,
          mint,
          ref,
-         timeout,
+         timeouts,
          fields,
          resp_metadata
        ) do
@@ -282,7 +298,7 @@ defmodule Finch.Conn do
               fun,
               mint,
               ref,
-              timeout,
+              timeouts,
               fields,
               %{resp_metadata | status: value}
             )
@@ -306,7 +322,7 @@ defmodule Finch.Conn do
               fun,
               mint,
               ref,
-              timeout,
+              timeouts,
               fields,
               resp_metadata
             )
@@ -328,7 +344,7 @@ defmodule Finch.Conn do
               fun,
               mint,
               ref,
-              timeout,
+              timeouts,
               :trailers,
               resp_metadata
             )
