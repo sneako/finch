@@ -65,10 +65,7 @@ defmodule Finch do
       doc: """
       These options are passed to `Mint.HTTP.connect/4` whenever a new connection is established. \
       `:mode` is not configurable as Finch must control this setting. Typically these options are \
-      used to configure proxying, https settings, or connect timeouts. \
-
-      For HTTP1 pools, the pool will force HTTP1 connections by default but you can perform ALPN \
-      over HTTP1 pools by setting the `:protocols` option.
+      used to configure proxying, https settings, or connect timeouts.
       """,
       default: []
     ],
