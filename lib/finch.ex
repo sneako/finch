@@ -257,15 +257,10 @@ defmodule Finch do
           Finch.HTTP2.Pool
 
         nil ->
-          case valid[:protocols] do
-            [:http1] ->
-              Finch.HTTP1.Pool
-
-            [:http2] ->
-              Finch.HTTP2.Pool
-
-            [:http1, :http2] ->
-              Finch.HTTP1.Pool
+          if :http1 in valid[:protocols] do
+            Finch.HTTP1.Pool
+          else
+            Finch.HTTP2.Pool
           end
       end
 
