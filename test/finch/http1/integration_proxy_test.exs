@@ -24,7 +24,7 @@ defmodule Finch.HTTP1.IntegrationProxyTest do
        name: ProxyFinch,
        pools: %{
          default: [
-           protocol: :http1,
+           protocols: [:http1],
            conn_opts: [
              proxy: {:http, "localhost", proxy_port, []}
            ]

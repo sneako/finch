@@ -18,8 +18,19 @@ defmodule Finch do
   @pool_config_schema [
     protocol: [
       type: {:in, [:http2, :http1]},
-      doc: "The type of connection and pool to use.",
-      default: :http1
+      deprecated: "Use :protocols instead."
+    ],
+    protocols: [
+      type: {:list, {:in, [:http1, :http2]}},
+      doc: """
+      The type of connections to support.
+
+      If using `:http1` only, an HTTP1 pool without multiplexing is used. \
+      If using `:http2` only, an HTTP2 pool with multiplexing is used. \
+      If both are listed, then both HTTP1/HTTP2 connections are \
+      supported (via ALPN), but there is no multiplexing.
+      """,
+      default: [:http1]
     ],
     size: [
       type: :pos_integer,
@@ -55,10 +66,7 @@ defmodule Finch do
       doc: """
       These options are passed to `Mint.HTTP.connect/4` whenever a new connection is established. \
       `:mode` is not configurable as Finch must control this setting. Typically these options are \
-      used to configure proxying, https settings, or connect timeouts. \
-
-      For HTTP1 pools, the pool will force HTTP1 connections by default but you can perform ALPN \
-      over HTTP1 pools by setting the `:protocols` option.
+      used to configure proxying, https settings, or connect timeouts.
       """,
       default: []
     ],
@@ -238,12 +246,30 @@ defmodule Finch do
       conn_opts
       |> Keyword.put(:ssl_key_log_file_device, ssl_key_log_file_device)
       |> Keyword.put(:transport_opts, transport_opts)
+      |> Keyword.put(:protocols, valid[:protocols])
+
+    # TODO: Remove :protocol on v0.18
+    mod =
+      case valid[:protocol] do
+        :http1 ->
+          Finch.HTTP1.Pool
+
+        :http2 ->
+          Finch.HTTP2.Pool
+
+        nil ->
+          if :http1 in valid[:protocols] do
+            Finch.HTTP1.Pool
+          else
+            Finch.HTTP2.Pool
+          end
+      end
 
     %{
+      mod: mod,
       size: valid[:size],
       count: valid[:count],
       conn_opts: conn_opts,
-      protocol: valid[:protocol],
       conn_max_idle_time: to_native(valid[:max_idle_time] || valid[:conn_max_idle_time]),
       pool_max_idle_time: valid[:pool_max_idle_time]
     }

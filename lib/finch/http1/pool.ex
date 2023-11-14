@@ -3,7 +3,7 @@ defmodule Finch.HTTP1.Pool do
   @behaviour NimblePool
   @behaviour Finch.Pool
 
-  alias Finch.Conn
+  alias Finch.HTTP1.Conn
   alias Finch.Telemetry
 
   def child_spec(opts) do

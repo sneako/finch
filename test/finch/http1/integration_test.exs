@@ -22,7 +22,7 @@ defmodule Finch.HTTP1.IntegrationTest do
        name: H2Finch,
        pools: %{
          default: [
-           protocol: :http2,
+           protocols: [:http2],
            conn_opts: [
              transport_opts: [
                verify: :verify_none
@@ -114,7 +114,7 @@ defmodule Finch.HTTP1.IntegrationTest do
        name: H1Finch,
        pools: %{
          default: [
-           protocol: :http1
+           protocols: [:http1]
          ]
        }}
     )
@@ -132,7 +132,7 @@ defmodule Finch.HTTP1.IntegrationTest do
        name: H1Finch,
        pools: %{
          default: [
-           protocol: :http1,
+           protocols: [:http1],
            conn_opts: [
              transport_opts: [
                reuse_sessions: false,

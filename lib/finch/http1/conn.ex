@@ -1,4 +1,4 @@
-defmodule Finch.Conn do
+defmodule Finch.HTTP1.Conn do
   @moduledoc false
 
   alias Finch.SSL
@@ -41,6 +41,7 @@ defmodule Finch.Conn do
     # custom protocols in case they don't know if a connection
     # is HTTP1/HTTP2, but they are fine as treating HTTP2
     # connections has HTTP2.
+
     conn_opts =
       conn.opts
       |> Keyword.put(:mode, :passive)
