@@ -249,6 +249,7 @@ defmodule Finch do
       |> Keyword.put(:protocols, valid[:protocols])
 
     mod =
+      # TODO: Remove :protocol on v0.18
       case valid[:protocol] do
         :http1 ->
           Finch.HTTP1.Pool
