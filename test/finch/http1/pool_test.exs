@@ -32,7 +32,7 @@ defmodule Finch.HTTP1.PoolTest do
        name: IdleFinch,
        pools: %{
          default: [
-           protocol: :http1,
+           protocols: [:http1],
            pool_max_idle_time: 5
          ]
        }}
@@ -63,7 +63,7 @@ defmodule Finch.HTTP1.PoolTest do
     @describetag bypass: false
 
     setup %{finch_name: finch_name} do
-      start_supervised!({Finch, name: finch_name, pools: %{default: [protocol: :http1]}})
+      start_supervised!({Finch, name: finch_name, pools: %{default: [protocols: [:http1]]}})
       :ok
     end
 

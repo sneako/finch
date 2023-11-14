@@ -9,7 +9,7 @@ defmodule Finch.HTTP2.TelemetryTest do
     end)
 
     start_supervised!(
-      {Finch, name: finch_name, pools: %{default: [protocol: :http2, conn_max_idle_time: 10]}}
+      {Finch, name: finch_name, pools: %{default: [protocols: [:http2], conn_max_idle_time: 10]}}
     )
 
     :ok

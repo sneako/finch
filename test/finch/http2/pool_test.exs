@@ -457,7 +457,7 @@ defmodule Finch.HTTP2.PoolTest do
          name: finch_name,
          pools: %{
            default: [
-             protocol: :http2,
+             protocols: [:http2],
              count: 5,
              conn_opts: [
                transport_opts: [

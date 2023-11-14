@@ -20,7 +20,7 @@ defmodule Finch.HTTP2.IntegrationTest do
        name: TestFinch,
        pools: %{
          default: [
-           protocol: :http2,
+           protocols: [:http2],
            count: 5,
            conn_opts: [
              transport_opts: [
@@ -41,7 +41,7 @@ defmodule Finch.HTTP2.IntegrationTest do
        name: TestFinch,
        pools: %{
          default: [
-           protocol: :http2,
+           protocols: [:http2],
            count: 5,
            conn_opts: [
              transport_opts: [
@@ -65,7 +65,7 @@ defmodule Finch.HTTP2.IntegrationTest do
        name: TestFinch,
        pools: %{
          default: [
-           protocol: :http2,
+           protocols: [:http2],
            count: 1,
            conn_opts: [
              transport_opts: [
@@ -109,7 +109,7 @@ defmodule Finch.HTTP2.IntegrationTest do
        name: TestFinch,
        pools: %{
          default: [
-           protocol: :http2,
+           protocols: [:http2],
            count: 5,
            conn_opts: [
              transport_opts: [
@@ -138,7 +138,7 @@ defmodule Finch.HTTP2.IntegrationTest do
        name: TestFinch,
        pools: %{
          default: [
-           protocol: :http2,
+           protocols: [:http2],
            conn_opts: [
              transport_opts: [
                verify: :verify_none
@@ -168,7 +168,7 @@ defmodule Finch.HTTP2.IntegrationTest do
        name: TestFinch,
        pools: %{
          default: [
-           protocol: :http2,
+           protocols: [:http2],
            conn_opts: [
              transport_opts: [
                verify: :verify_none

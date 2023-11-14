@@ -18,8 +18,18 @@ defmodule Finch do
   @pool_config_schema [
     protocol: [
       type: {:in, [:http2, :http1]},
+      deprecated: "Use :protocols instead."
+    ],
+    protocols: [
+      type:
+        {:in,
+         [
+           [:http1],
+           [:http2],
+           [:http1, :http2]
+         ]},
       doc: "The type of connection and pool to use.",
-      default: :http1
+      default: [:http1]
     ],
     size: [
       type: :pos_integer,
@@ -238,12 +248,34 @@ defmodule Finch do
       conn_opts
       |> Keyword.put(:ssl_key_log_file_device, ssl_key_log_file_device)
       |> Keyword.put(:transport_opts, transport_opts)
+      |> Keyword.put(:protocols, valid[:protocols])
+
+    mod =
+      case valid[:protocol] do
+        :http1 ->
+          Finch.HTTP1.Pool
+
+        :http2 ->
+          Finch.HTTP2.Pool
+
+        nil ->
+          case valid[:protocols] do
+            [:http1] ->
+              Finch.HTTP1.Pool
+
+            [:http2] ->
+              Finch.HTTP2.Pool
+
+            [:http1, :http2] ->
+              Finch.HTTP1.Pool
+          end
+      end
 
     %{
+      mod: mod,
       size: valid[:size],
       count: valid[:count],
       conn_opts: conn_opts,
-      protocol: valid[:protocol],
       conn_max_idle_time: to_native(valid[:max_idle_time] || valid[:conn_max_idle_time]),
       pool_max_idle_time: valid[:pool_max_idle_time]
     }

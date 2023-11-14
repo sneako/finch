@@ -72,15 +72,14 @@ defmodule Finch.PoolManager do
 
   defp do_start_pools(shp, config) do
     pool_config = pool_config(config, shp)
-
     pool_args = pool_args(shp, config, pool_config)
-
-    pool_mod = pool_mod(pool_config.protocol)
 
     Enum.map(1..pool_config.count, fn _ ->
       # Choose pool type here...
-      {:ok, pid} = DynamicSupervisor.start_child(config.supervisor_name, {pool_mod, pool_args})
-      {pid, pool_mod}
+      {:ok, pid} =
+        DynamicSupervisor.start_child(config.supervisor_name, {pool_config.mod, pool_args})
+
+      {pid, pool_config.mod}
     end)
     |> hd()
   end
@@ -118,12 +117,9 @@ defmodule Finch.PoolManager do
 
   defp maybe_add_hostname(config, _), do: config
 
-  defp pool_mod(:http1), do: Finch.HTTP1.Pool
-  defp pool_mod(:http2), do: Finch.HTTP2.Pool
-
-  defp pool_args(shp, config, %{protocol: :http1} = pool_config),
+  defp pool_args(shp, config, %{mod: Finch.HTTP1.Pool} = pool_config),
     do: {shp, config.registry_name, pool_config.size, pool_config, pool_config.pool_max_idle_time}
 
-  defp pool_args(shp, config, %{protocol: :http2} = pool_config),
+  defp pool_args(shp, config, %{mod: Finch.HTTP2.Pool} = pool_config),
     do: {shp, config.registry_name, pool_config.size, pool_config}
 end

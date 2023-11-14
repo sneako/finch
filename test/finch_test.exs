@@ -278,7 +278,7 @@ defmodule FinchTest do
          name: finch_name,
          pools: %{
            default: [
-             protocol: :http2,
+             protocols: [:http2],
              count: 1,
              conn_opts: [
                transport_opts: [
@@ -329,7 +329,7 @@ defmodule FinchTest do
          name: finch_name,
          pools: %{
            default: [
-             protocol: :http2,
+             protocols: [:http2],
              count: 1,
              conn_opts: [
                transport_opts: [
@@ -379,7 +379,7 @@ defmodule FinchTest do
          name: finch_name,
          pools: %{
            default: [
-             protocol: :http2,
+             protocols: [:http2],
              count: 1,
              conn_opts: [
                transport_opts: [
@@ -601,7 +601,7 @@ defmodule FinchTest do
     test "are passed through to the conn", %{bypass: bypass} do
       expect_any(bypass)
 
-      start_supervised!({Finch, name: H1Finch, pools: %{default: [protocol: :http1]}})
+      start_supervised!({Finch, name: H1Finch, pools: %{default: [protocols: [:http1]]}})
 
       assert {:ok, _} = Finch.build(:get, endpoint(bypass)) |> Finch.request(H1Finch)
 
@@ -660,7 +660,7 @@ defmodule FinchTest do
          name: finch_name,
          pools: %{
            default: [
-             protocol: :http2,
+             protocols: [:http2],
              count: 1,
              conn_opts: [
                transport_opts: [
@@ -839,7 +839,7 @@ defmodule FinchTest do
          name: finch_name,
          pools: %{
            default: [
-             protocol: :http2
+             protocols: [:http2]
            ]
          }}
       )
@@ -867,7 +867,7 @@ defmodule FinchTest do
          name: finch_name,
          pools: %{
            default: [
-             protocol: :http2
+             protocols: [:http2]
            ]
          }}
       )
@@ -915,7 +915,7 @@ defmodule FinchTest do
          name: finch_name,
          pools: %{
            default: [
-             protocol: :http2
+             protocols: [:http2]
            ]
          }}
       )
