@@ -21,14 +21,15 @@ defmodule Finch do
       deprecated: "Use :protocols instead."
     ],
     protocols: [
-      type:
-        {:in,
-         [
-           [:http1],
-           [:http2],
-           [:http1, :http2]
-         ]},
-      doc: "The type of connection and pool to use.",
+      type: {:list, {:in, [:http1, :http2]}},
+      doc: """
+      The type of connections to support.
+
+      If using `:http1` only, an HTTP1 pool without multiplexing is used. \
+      If using `:http2` only, an HTTP2 pool with multiplexing is used. \
+      If both are listed, then both HTTP1/HTTP2 connections are \
+      supported (via ALPN), but there is no multiplexing.
+      """,
       default: [:http1]
     ],
     size: [
