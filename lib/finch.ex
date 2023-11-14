@@ -28,6 +28,9 @@ defmodule Finch do
       since HTTP2 is able to multiplex requests through a single connection. In \
       other words, for HTTP2, the size is always 1 and the `:count` should be \
       configured in order to increase capacity.
+
+      For HTTP1 pools, the pool will force HTTP1 connections by default but you \
+      can perform ALPN over HTTP1 pools by setting the `:protocols` option.
       """,
       default: @default_pool_size
     ],
