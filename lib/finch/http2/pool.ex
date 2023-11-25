@@ -190,19 +190,21 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  def start_link({shp, finch_name, _pool_config, start_pool_metrics?, pool_idx} = opts) do
-    {:ok, pid} = :gen_statem.start_link(__MODULE__, opts, [])
-
-    {:ok, metric_ref} =
+  def start_link({shp, finch_name, pool_config, start_pool_metrics?, pool_idx}) do
+    {:ok, metrics_ref} =
       if start_pool_metrics?,
-        do: PoolMetrics.init(finch_name, shp, pool_idx),
+        do: PoolMetrics.init(pool_idx),
         else: {:ok, nil}
 
-    {:ok, pid, metric_ref}
+    new_opts = {shp, finch_name, pool_config, metrics_ref, pool_idx}
+
+    {:ok, pid} = :gen_statem.start_link(__MODULE__, new_opts, [])
+
+    {:ok, pid, metrics_ref}
   end
 
   @impl true
-  def init({{scheme, host, port} = shp, registry, pool_opts, start_pool_metrics?, pool_idx}) do
+  def init({{scheme, host, port} = shp, registry, pool_opts, metrics_ref, pool_idx}) do
     {:ok, _} = Registry.register(registry, shp, __MODULE__)
 
     data = %{
@@ -218,7 +220,7 @@ defmodule Finch.HTTP2.Pool do
       backoff_base: 500,
       backoff_max: 10_000,
       connect_opts: pool_opts[:conn_opts] || [],
-      start_pool_metrics?: start_pool_metrics?
+      metrics_ref: metrics_ref
     }
 
     {:ok, :disconnected, data, {:next_event, :internal, {:connect, 0}}}
@@ -781,7 +783,7 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp put_request(data, ref, request) do
-    PoolMetrics.maybe_add(data, in_flight_requests: 1)
+    PoolMetrics.maybe_add(data.metrics_ref, in_flight_requests: 1)
 
     data
     |> put_in([:requests, ref], request)
@@ -790,7 +792,7 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp pop_request(data, ref) do
-    PoolMetrics.maybe_add(data, in_flight_requests: -1)
+    PoolMetrics.maybe_add(data.metrics_ref, in_flight_requests: -1)
 
     case pop_in(data.requests[ref]) do
       {nil, data} ->

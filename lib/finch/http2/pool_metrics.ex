@@ -12,40 +12,19 @@ defmodule Finch.HTTP2.PoolMetrics do
     in_flight_requests: 2
   ]
 
-  def init(finch_name, shp, pool_idx) do
+  def init(pool_idx) do
     ref = :atomics.new(length(@atomic_idx), [])
-    :persistent_term.put({__MODULE__, finch_name, shp, pool_idx}, ref)
-
     :atomics.put(ref, @atomic_idx[:pool_idx], pool_idx)
 
     {:ok, ref}
   end
 
-  def maybe_add(%{start_pool_metrics?: false}, _metrics_list), do: :ok
+  def maybe_add(nil, _metrics_list), do: :ok
 
-  def maybe_add(
-        %{
-          start_pool_metrics?: true,
-          finch_name: finch_name,
-          scheme: s,
-          host: h,
-          port: p,
-          pool_idx: pool_idx
-        },
-        metrics_list
-      ) do
-    ref = :persistent_term.get({__MODULE__, finch_name, {s, h, p}, pool_idx})
-
+  def maybe_add(ref, metrics_list) when is_reference(ref) do
     Enum.each(metrics_list, fn {metric_name, val} ->
       :atomics.add(ref, @atomic_idx[metric_name], val)
     end)
-  end
-
-  def get_pool_status(finch_name, shp) do
-    case :persistent_term.get({__MODULE__, finch_name, shp}, nil) do
-      nil -> {:error, :not_found}
-      ref -> get_pool_status(ref)
-    end
   end
 
   def get_pool_status(ref) when is_reference(ref) do

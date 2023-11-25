@@ -5,7 +5,10 @@ defmodule Finch.HTTP2.PoolMetricsTest do
   alias Finch.HTTP2.PoolMetrics
 
   setup_all do
-    port = 4010
+    {:ok, listen_socket} = :ssl.listen(0, mode: :binary)
+    {:ok, {_address, port}} = :ssl.sockname(listen_socket)
+    :ssl.close(listen_socket)
+
     HTTP2Server.start(port)
     {:ok, url: "https://localhost:#{port}"}
   end
@@ -64,7 +67,7 @@ defmodule Finch.HTTP2.PoolMetricsTest do
         ref
       end)
 
-    Process.sleep(200)
+    Process.sleep(300)
 
     assert {:ok,
             [
@@ -112,7 +115,7 @@ defmodule Finch.HTTP2.PoolMetricsTest do
         end)
       end)
 
-    Process.sleep(200)
+    Process.sleep(300)
 
     assert {:ok,
             [
@@ -166,7 +169,7 @@ defmodule Finch.HTTP2.PoolMetricsTest do
         ref
       end)
 
-    Process.sleep(200)
+    Process.sleep(300)
 
     assert {:ok,
             [
