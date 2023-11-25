@@ -21,7 +21,7 @@ defmodule Finch.Pool do
   @callback get_pool_status(
               finch_name :: atom(),
               {schema :: atom(), host :: String.t(), port :: integer()}
-            ) :: :ok
+            ) :: {:ok, list(map)} | {:error, :not_found}
 
   defguard is_request_ref(ref) when tuple_size(ref) == 2 and is_atom(elem(ref, 0))
 end
