@@ -146,7 +146,6 @@ defmodule Finch.PoolManager do
     do: {
       shp,
       config.registry_name,
-      pool_config.size,
       pool_config,
       pool_config.start_pool_metrics?,
       pool_idx

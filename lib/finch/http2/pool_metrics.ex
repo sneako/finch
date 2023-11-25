@@ -21,11 +21,20 @@ defmodule Finch.HTTP2.PoolMetrics do
     {:ok, ref}
   end
 
-  def maybe_add({_finch_name, _shp, _pool_idx, %{start_pool_metrics?: false}}, _metrics_list),
-    do: :ok
+  def maybe_add(%{start_pool_metrics?: false}, _metrics_list), do: :ok
 
-  def maybe_add({finch_name, shp, pool_idx, %{start_pool_metrics?: true}}, metrics_list) do
-    ref = :persistent_term.get({__MODULE__, finch_name, shp, pool_idx})
+  def maybe_add(
+        %{
+          start_pool_metrics?: true,
+          finch_name: finch_name,
+          scheme: s,
+          host: h,
+          port: p,
+          pool_idx: pool_idx
+        },
+        metrics_list
+      ) do
+    ref = :persistent_term.get({__MODULE__, finch_name, {s, h, p}, pool_idx})
 
     Enum.each(metrics_list, fn {metric_name, val} ->
       :atomics.add(ref, @atomic_idx[metric_name], val)

@@ -4,7 +4,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
   alias Finch.HTTP1.PoolMetrics
   alias Finch.PoolManager
 
-  test "should not start atomics if opt is false", %{bypass: bypass, finch_name: finch_name} do
+  test "should not start if opt is false", %{bypass: bypass, finch_name: finch_name} do
     start_supervised!(
       {Finch,
        name: finch_name, pools: %{default: [protocols: [:http1], start_pool_metrics?: false]}}
@@ -90,7 +90,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
             ]} = Finch.get_pool_status(finch_name, shp)
   end
 
-  test "get pool status when count is greater than 1", %{bypass: bypass, finch_name: finch_name} do
+  test "get multi pool status", %{bypass: bypass, finch_name: finch_name} do
     start_supervised!(
       {Finch,
        name: finch_name,

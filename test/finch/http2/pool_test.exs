@@ -35,7 +35,6 @@ defmodule Finch.HTTP2.PoolTest do
       Pool.start_link({
         {:https, "localhost", port},
         :test,
-        0,
         [conn_opts: [transport_opts: [verify: :verify_none]]],
         false,
         1
@@ -484,6 +483,39 @@ defmodule Finch.HTTP2.PoolTest do
       start_supervised!({HTTP2Server, port: port})
 
       {:ok, url}
+    end
+  end
+
+  describe "pool metrics" do
+    test "request/response", %{request: req} do
+      parent = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          send(parent, {:shp, {:https, "localhost", port}})
+          start_pool(port)
+        end)
+
+      finch_name = :test
+      assert_receive({:shp, shp})
+
+      spawn(fn ->
+        {:ok, resp} = request(pool, req, [])
+        send(parent, {:resp, {:ok, resp}})
+      end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      Pool.get_pool_status(finch_name, shp)
+
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
+        data(stream_id: stream_id, data: "hello to you", flags: set_flags(:data, [:end_stream]))
+      ])
+
+      assert_receive {:resp, {:ok, {200, [], "hello to you"}}}
     end
   end
 
