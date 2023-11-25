@@ -87,6 +87,11 @@ defmodule Finch do
       before being closed during a checkout attempt.
       """,
       default: :infinity
+    ],
+    start_pool_metrics?: [
+      type: :boolean,
+      doc: "When true, pool metrics will be collected and avaiable through Finch.pool_status/2",
+      default: false
     ]
   ]
 
@@ -271,7 +276,8 @@ defmodule Finch do
       count: valid[:count],
       conn_opts: conn_opts,
       conn_max_idle_time: to_native(valid[:max_idle_time] || valid[:conn_max_idle_time]),
-      pool_max_idle_time: valid[:pool_max_idle_time]
+      pool_max_idle_time: valid[:pool_max_idle_time],
+      start_pool_metrics?: valid[:start_pool_metrics?]
     }
   end
 
@@ -569,5 +575,15 @@ defmodule Finch do
 
   defp get_pool(%Request{scheme: scheme, host: host, port: port}, name) do
     PoolManager.get_pool(name, {scheme, host, port})
+  end
+
+  def get_pool_status(finch_name, url) when is_binary(url) do
+    {s, h, p, _, _} = Request.parse_url(url)
+    get_pool_status(finch_name, {s, h, p})
+  end
+
+  def get_pool_status(finch_name, shp) when is_tuple(shp) do
+    {_pool, pool_mod} = PoolManager.get_pool(finch_name, shp)
+    pool_mod.get_pool_status(finch_name, shp)
   end
 end

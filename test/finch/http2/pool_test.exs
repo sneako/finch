@@ -31,9 +31,17 @@ defmodule Finch.HTTP2.PoolTest do
   end
 
   def start_pool(port) do
-    Pool.start_link(
-      {{:https, "localhost", port}, :test, 0, conn_opts: [transport_opts: [verify: :verify_none]]}
-    )
+    {:ok, pid, _info} =
+      Pool.start_link({
+        {:https, "localhost", port},
+        :test,
+        0,
+        [conn_opts: [transport_opts: [verify: :verify_none]]],
+        false,
+        1
+      })
+
+    {:ok, pid}
   end
 
   describe "requests" do

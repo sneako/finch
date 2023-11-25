@@ -34,7 +34,7 @@ defmodule Finch.HTTP1.IntegrationTest do
 
     assert capture_log(fn ->
              {:error, _} = Finch.build(:get, url) |> Finch.request(H2Finch)
-           end) =~ "ALPN protocol not negotiated"
+           end) =~ "No application protocol"
   end
 
   @tag :capture_log
