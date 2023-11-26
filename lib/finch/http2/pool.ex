@@ -206,6 +206,7 @@ defmodule Finch.HTTP2.Pool do
   @impl true
   def init({{scheme, host, port} = shp, registry, pool_opts, metrics_ref, pool_idx}) do
     {:ok, _} = Registry.register(registry, shp, __MODULE__)
+
     data = %{
       conn: nil,
       finch_name: registry,
