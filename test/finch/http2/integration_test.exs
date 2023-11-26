@@ -7,7 +7,9 @@ defmodule Finch.HTTP2.IntegrationTest do
   @moduletag :capture_log
 
   setup_all do
-    port = 4002
+    {:ok, listen_socket} = :ssl.listen(0, mode: :binary)
+    {:ok, {_address, port}} = :ssl.sockname(listen_socket)
+    :ssl.close(listen_socket)
 
     {:ok, _} = HTTP2Server.start(port)
 
