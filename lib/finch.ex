@@ -100,6 +100,10 @@ defmodule Finch do
   """
   @type name() :: atom()
 
+  @type scheme() :: :http | :https
+
+  @type shp() :: {scheme(), host :: String.t(), port :: pos_integer()}
+
   @type request_opt() :: {:pool_timeout, pos_integer()} | {:receive_timeout, pos_integer()}
 
   @typedoc """
@@ -577,13 +581,55 @@ defmodule Finch do
     PoolManager.get_pool(name, {scheme, host, port})
   end
 
+  @doc """
+  Get pool metrics list.
+
+  The number of items present on the metrics list depends on the `:count` option
+  each metric will have a `pool_index` going from 1 to `:count`.
+
+  The metrics struct depends on the pool scheme defined on the `:protocols` option
+  `Finch.HTTP1.PoolMetrics` for `:http1` and `Finch.HTTP2.PoolMetrics` for `:http2`.
+
+  See the `Finch.HTTP1.PoolMetrics` and `Finch.HTTP2.PoolMetrics` for more details.
+
+  `{:error, :not_found}` may return on 2 scenarios. There is no pool on the 
+  given finch instance regarding the given url or the pool is configured with
+  `start_pool_metrics?` option false (the default). 
+
+  ## Example
+
+      iex> Finch.get_pool_status(MyFinch, "https://httpbin.org")
+      {:ok, [
+        %Finch.HTTP1.PoolMetrics{
+          pool_index: 1,
+          pool_size: 50,
+          available_connections: 43,
+          in_use_connections: 7
+        },
+        %Finch.HTTP1.PoolMetrics{
+          pool_index: 2,
+          pool_size: 50,
+          available_connections: 37,
+          in_use_connections: 13
+        }]
+      }
+  """
+  @spec get_pool_status(name(), url :: String.t() | shp()) ::
+          {:ok, list(Finch.HTTP1.PoolMetrics.t())}
+          | {:ok, list(Finch.HTTP2.PoolMetrics.t())}
+          | {:error, :not_found}
   def get_pool_status(finch_name, url) when is_binary(url) do
     {s, h, p, _, _} = Request.parse_url(url)
     get_pool_status(finch_name, {s, h, p})
   end
 
   def get_pool_status(finch_name, shp) when is_tuple(shp) do
-    {_pool, pool_mod} = PoolManager.get_pool(finch_name, shp)
-    pool_mod.get_pool_status(finch_name, shp)
+    case PoolManager.get_pool(finch_name, shp, auto_start?: false) do
+      {_pool, pool_mod} ->
+        pool_mod.get_pool_status(finch_name, shp)
+
+      :not_found ->
+        {:error, :not_found}
+    end
   end
 end

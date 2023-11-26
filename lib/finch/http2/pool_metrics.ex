@@ -1,7 +1,20 @@
 defmodule Finch.HTTP2.PoolMetrics do
   @moduledoc """
-  HTTP2 Pool metrics. TODO: Add more description
+  HTTP2 Pool metrics.
+
+  Available metrics:
+
+    * `:pool_index` - Index of the pool
+    * `:in_flight_requests` - Number of requests currently on the connection
+
+  Caveats:
+
+    * HTTP2 pools have only one connection and leverage the multiplex nature
+    of the protocol. That's why we only keep the in flight requests, representing
+    the number of streams currently running on the connection.
   """
+  @type t :: %__MODULE__{}
+
   defstruct [
     :pool_index,
     :in_flight_requests
