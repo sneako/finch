@@ -592,9 +592,9 @@ defmodule Finch do
 
   See the `Finch.HTTP1.PoolMetrics` and `Finch.HTTP2.PoolMetrics` for more details.
 
-  `{:error, :not_found}` may return on 2 scenarios. There is no pool on the 
-  given finch instance regarding the given url or the pool is configured with
-  `start_pool_metrics?` option false (the default). 
+  `{:error, :not_found}` may return on 2 scenarios:
+    - There is no pool registered for the given pair finch instance and url
+    - The pool is configured with `start_pool_metrics?` option false (default)
 
   ## Example
 

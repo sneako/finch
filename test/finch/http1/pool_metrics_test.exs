@@ -33,7 +33,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
     end)
 
     wait_connection_checkin()
-    assert nil == PoolManager.get_metrics_refs(finch_name, shp)
+    assert nil == PoolManager.get_pool_count(finch_name, shp)
     assert {:error, :not_found} = Finch.get_pool_status(finch_name, shp)
   end
 

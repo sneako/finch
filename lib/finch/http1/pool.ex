@@ -30,20 +30,13 @@ defmodule Finch.HTTP1.Pool do
         {shp, registry_name, pool_size, conn_opts, pool_max_idle_time, start_pool_metrics?,
          pool_idx}
       ) do
-    {:ok, metric_ref} =
-      if start_pool_metrics?,
-        do: PoolMetrics.init(pool_idx, pool_size),
-        else: {:ok, nil}
-
-    {:ok, pid} =
-      NimblePool.start_link(
-        worker: {__MODULE__, {registry_name, shp, pool_idx, metric_ref, conn_opts}},
-        pool_size: pool_size,
-        lazy: true,
-        worker_idle_timeout: pool_idle_timeout(pool_max_idle_time)
-      )
-
-    {:ok, pid, metric_ref}
+    NimblePool.start_link(
+      worker:
+        {__MODULE__, {registry_name, shp, pool_idx, pool_size, start_pool_metrics?, conn_opts}},
+      pool_size: pool_size,
+      lazy: true,
+      worker_idle_timeout: pool_idle_timeout(pool_max_idle_time)
+    )
   end
 
   @impl Finch.Pool
@@ -146,22 +139,26 @@ defmodule Finch.HTTP1.Pool do
 
   @impl Finch.Pool
   def get_pool_status(finch_name, shp) do
-    case Finch.PoolManager.get_metrics_refs(finch_name, shp) do
+    case Finch.PoolManager.get_pool_count(finch_name, shp) do
       nil ->
         {:error, :not_found}
 
-      refs ->
-        resp =
-          refs
-          |> Enum.map(&PoolMetrics.get_pool_status/1)
-          |> Enum.map(fn {:ok, metrics} -> metrics end)
+      count ->
+        result = Enum.map(1..count, &PoolMetrics.get_pool_status(finch_name, shp, &1))
 
-        {:ok, resp}
+        if Enum.all?(result, &match?({:ok, _}, &1)),
+          do: {:ok, Enum.map(result, &elem(&1, 1))},
+          else: {:error, :not_found}
     end
   end
 
   @impl NimblePool
-  def init_pool({registry, shp, pool_idx, metric_ref, opts}) do
+  def init_pool({registry, shp, pool_idx, pool_size, start_pool_metrics?, opts}) do
+    {:ok, metric_ref} =
+      if start_pool_metrics?,
+        do: PoolMetrics.init(registry, shp, pool_idx, pool_size),
+        else: {:ok, nil}
+
     # Register our pool with our module name as the key. This allows the caller
     # to determine the correct pool module to use to make the request
     {:ok, _} = Registry.register(registry, shp, __MODULE__)

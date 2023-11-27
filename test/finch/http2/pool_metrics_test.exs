@@ -67,7 +67,7 @@ defmodule Finch.HTTP2.PoolMetricsTest do
         ref
       end)
 
-    Process.sleep(400)
+    Process.sleep(50)
 
     assert {:ok,
             [
@@ -115,7 +115,7 @@ defmodule Finch.HTTP2.PoolMetricsTest do
         end)
       end)
 
-    Process.sleep(400)
+    Process.sleep(50)
 
     assert {:ok,
             [
@@ -169,7 +169,7 @@ defmodule Finch.HTTP2.PoolMetricsTest do
         ref
       end)
 
-    Process.sleep(400)
+    Process.sleep(50)
 
     assert {:ok,
             [

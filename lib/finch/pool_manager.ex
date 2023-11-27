@@ -75,30 +75,26 @@ defmodule Finch.PoolManager do
   defp do_start_pools(shp, config) do
     pool_config = pool_config(config, shp)
 
-    init_results =
-      Enum.map(1..pool_config.count, fn pool_idx ->
-        pool_args = pool_args(shp, config, pool_config, pool_idx)
-        # Choose pool type here...
-        {:ok, pid, metric_ref} =
-          DynamicSupervisor.start_child(config.supervisor_name, {pool_config.mod, pool_args})
-
-        {pid, pool_config.mod, metric_ref}
-      end)
-
     if pool_config.start_pool_metrics? do
-      put_metrics_refs(config, shp, Enum.map(init_results, &elem(&1, 2)))
+      put_pool_count(config, shp, pool_config.count)
     end
 
-    {pid, pool_mod, _} = List.first(init_results)
+    Enum.map(1..pool_config.count, fn pool_idx ->
+      pool_args = pool_args(shp, config, pool_config, pool_idx)
+      # Choose pool type here...
+      {:ok, pid} =
+        DynamicSupervisor.start_child(config.supervisor_name, {pool_config.mod, pool_args})
 
-    {pid, pool_mod}
+      {pid, pool_config.mod}
+    end)
+    |> hd()
   end
 
-  defp put_metrics_refs(%{registry_name: name}, shp, refs),
-    do: :persistent_term.put({__MODULE__, :metrics_refs, name, shp}, refs)
+  defp put_pool_count(%{registry_name: name}, shp, val),
+    do: :persistent_term.put({__MODULE__, :pool_count, name, shp}, val)
 
-  def get_metrics_refs(finch_name, shp),
-    do: :persistent_term.get({__MODULE__, :metrics_refs, finch_name, shp}, nil)
+  def get_pool_count(finch_name, shp),
+    do: :persistent_term.get({__MODULE__, :pool_count, finch_name, shp}, nil)
 
   defp pool_config(%{pools: config, default_pool_config: default}, shp) do
     config

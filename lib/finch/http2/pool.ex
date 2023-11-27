@@ -77,17 +77,16 @@ defmodule Finch.HTTP2.Pool do
 
   @impl Finch.Pool
   def get_pool_status(finch_name, shp) do
-    case Finch.PoolManager.get_metrics_refs(finch_name, shp) do
+    case Finch.PoolManager.get_pool_count(finch_name, shp) do
       nil ->
         {:error, :not_found}
 
-      refs ->
-        resp =
-          refs
-          |> Enum.map(&PoolMetrics.get_pool_status/1)
-          |> Enum.map(fn {:ok, metrics} -> metrics end)
+      count ->
+        result = Enum.map(1..count, &PoolMetrics.get_pool_status(finch_name, shp, &1))
 
-        {:ok, resp}
+        if Enum.all?(result, &match?({:ok, _}, &1)),
+          do: {:ok, Enum.map(result, &elem(&1, 1))},
+          else: {:error, :not_found}
     end
   end
 
@@ -190,21 +189,17 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  def start_link({shp, finch_name, pool_config, start_pool_metrics?, pool_idx}) do
-    {:ok, metrics_ref} =
-      if start_pool_metrics?,
-        do: PoolMetrics.init(pool_idx),
-        else: {:ok, nil}
-
-    new_opts = {shp, finch_name, pool_config, metrics_ref, pool_idx}
-
-    {:ok, pid} = :gen_statem.start_link(__MODULE__, new_opts, [])
-
-    {:ok, pid, metrics_ref}
+  def start_link({_shp, _finch_name, _pool_config, _start_pool_metrics?, _pool_idx} = opts) do
+    :gen_statem.start_link(__MODULE__, opts, [])
   end
 
   @impl true
-  def init({{scheme, host, port} = shp, registry, pool_opts, metrics_ref, pool_idx}) do
+  def init({{scheme, host, port} = shp, registry, pool_opts, start_pool_metrics?, pool_idx}) do
+    {:ok, metrics_ref} =
+      if start_pool_metrics?,
+        do: PoolMetrics.init(registry, shp, pool_idx),
+        else: {:ok, nil}
+
     {:ok, _} = Registry.register(registry, shp, __MODULE__)
 
     data = %{
