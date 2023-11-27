@@ -8,7 +8,9 @@ defmodule Finch.HTTP1.IntegrationTest do
   alias Finch.TestHelper
 
   setup_all do
-    port = 4001
+    {:ok, listen_socket} = :ssl.listen(0, mode: :binary)
+    {:ok, {_address, port}} = :ssl.sockname(listen_socket)
+    :ssl.close(listen_socket)
 
     {:ok, _} = HTTPS1Server.start(port)
 
