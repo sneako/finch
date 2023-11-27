@@ -4,7 +4,6 @@ defmodule Finch.HTTP2.PoolTest do
   import Mint.HTTP2.Frame
 
   alias Finch.HTTP2.Pool
-  alias Finch.HTTP2Server
   alias Finch.MockHTTP2Server
 
   defmacrop assert_recv_frames(frames) when is_list(frames) do
@@ -474,12 +473,7 @@ defmodule Finch.HTTP2.PoolTest do
     end
 
     defp start_server! do
-      port = 4006
-      url = "https://localhost:#{port}"
-
-      start_supervised!({HTTP2Server, port: port})
-
-      {:ok, url}
+      {:ok, Application.get_env(:finch, :test_https_h2_url)}
     end
   end
 

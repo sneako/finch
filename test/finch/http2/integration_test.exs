@@ -1,19 +1,12 @@
 defmodule Finch.HTTP2.IntegrationTest do
   use ExUnit.Case, async: false
 
-  alias Finch.HTTP2Server
   alias Finch.TestHelper
 
   @moduletag :capture_log
 
   setup_all do
-    {:ok, listen_socket} = :ssl.listen(0, mode: :binary)
-    {:ok, {_address, port}} = :ssl.sockname(listen_socket)
-    :ssl.close(listen_socket)
-
-    {:ok, _} = HTTP2Server.start(port)
-
-    {:ok, url: "https://localhost:#{port}"}
+    {:ok, url: Application.get_env(:finch, :test_https_h2_url)}
   end
 
   test "sends http2 requests", %{url: url} do
