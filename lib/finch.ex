@@ -102,7 +102,7 @@ defmodule Finch do
 
   @type scheme() :: :http | :https
 
-  @type shp() :: {scheme(), host :: String.t(), port :: pos_integer()}
+  @type scheme_host_port() :: {scheme(), host :: String.t(), port :: :inet.port_number()}
 
   @type request_opt() :: {:pool_timeout, pos_integer()} | {:receive_timeout, pos_integer()}
 
@@ -614,7 +614,7 @@ defmodule Finch do
         }]
       }
   """
-  @spec get_pool_status(name(), url :: String.t() | shp()) ::
+  @spec get_pool_status(name(), url :: String.t() | scheme_host_port()) ::
           {:ok, list(Finch.HTTP1.PoolMetrics.t())}
           | {:ok, list(Finch.HTTP2.PoolMetrics.t())}
           | {:error, :not_found}

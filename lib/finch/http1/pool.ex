@@ -144,11 +144,14 @@ defmodule Finch.HTTP1.Pool do
         {:error, :not_found}
 
       count ->
-        result = Enum.map(1..count, &PoolMetrics.get_pool_status(finch_name, shp, &1))
-
-        if Enum.all?(result, &match?({:ok, _}, &1)),
-          do: {:ok, Enum.map(result, &elem(&1, 1))},
-          else: {:error, :not_found}
+        1..count
+        |> Enum.map(&PoolMetrics.get_pool_status(finch_name, shp, &1))
+        |> Enum.filter(&match?({:ok, _}, &1))
+        |> Enum.map(&elem(&1, 1))
+        |> case do
+          [] -> {:error, :not_found}
+          result -> {:ok, result}
+        end
     end
   end
 
