@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.17.0 (2024-01-07)
+
+### Enhancements
+
+- Add support for async requests #228, #231
+- Add stream example to docs #230
+- Fix calls to deprecated Logger.warn/2 #232
+- Fix typos #233
+- Docs: do not use streams with async_request #238
+- Add Finch.stream_while/5 #239
+- Set MIX_ENV=test on CI #241
+- Update HTTP/2 pool log level to warning for retried action #240
+- Split trailers from headers #242
+- Introduce :request_timeout option #244
+- Support ALPN over HTTP1 pools #250
+- Deprecate :protocol in favour of :protocols #251
+- Implement pool telemetry #248
+
 ## v0.16.0 (2023-04-13)
 
 ### Enhancements

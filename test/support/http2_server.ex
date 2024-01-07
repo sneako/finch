@@ -4,7 +4,7 @@ defmodule Finch.HTTP2Server do
   @fixtures_dir Path.expand("../fixtures", __DIR__)
 
   def child_spec(opts) do
-    Plug.Adapters.Cowboy.child_spec(
+    Plug.Cowboy.child_spec(
       scheme: :https,
       plug: Finch.HTTP2Server.PlugRouter,
       options: [

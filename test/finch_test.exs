@@ -498,8 +498,15 @@ defmodule FinchTest do
       timeout = 100
 
       Bypass.expect(bypass, fn conn ->
+        Process.flag(:trap_exit, true)
         Process.sleep(timeout + 50)
-        Plug.Conn.send_resp(conn, 200, "delayed")
+
+        receive do
+          {:EXIT, _, _} -> {:halt, conn}
+        after
+          0 ->
+            Plug.Conn.send_resp(conn, 200, "delayed")
+        end
       end)
 
       assert {:error, %{reason: :timeout}} =
