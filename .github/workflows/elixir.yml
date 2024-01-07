@@ -17,8 +17,8 @@ jobs:
               elixir: "1.11.4"
               otp: "22.x"
           - pair:
-              elixir: "1.15.1"
-              otp: "25.x"
+              elixir: "1.16.0"
+              otp: "26.x"
             lint: lint
     steps:
       - uses: actions/checkout@v3

@@ -2,7 +2,7 @@ defmodule Finch.HTTP1Server do
   @moduledoc false
 
   def child_spec(opts) do
-    Plug.Adapters.Cowboy.child_spec(
+    Plug.Cowboy.child_spec(
       scheme: :http,
       plug: Finch.HTTP1Server.PlugRouter,
       options: [

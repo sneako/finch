@@ -5,7 +5,7 @@ defmodule Finch.HTTPS1Server do
 
   def start(port) do
     children = [
-      Plug.Adapters.Cowboy.child_spec(
+      Plug.Cowboy.child_spec(
         scheme: :https,
         plug: Finch.HTTP1Server.PlugRouter,
         options: [
