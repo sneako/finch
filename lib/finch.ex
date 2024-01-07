@@ -87,6 +87,11 @@ defmodule Finch do
       before being closed during a checkout attempt.
       """,
       default: :infinity
+    ],
+    start_pool_metrics?: [
+      type: :boolean,
+      doc: "When true, pool metrics will be collected and avaiable through Finch.pool_status/2",
+      default: false
     ]
   ]
 
@@ -94,6 +99,10 @@ defmodule Finch do
   The `:name` provided to Finch in `start_link/1`.
   """
   @type name() :: atom()
+
+  @type scheme() :: :http | :https
+
+  @type scheme_host_port() :: {scheme(), host :: String.t(), port :: :inet.port_number()}
 
   @type request_opt() :: {:pool_timeout, pos_integer()} | {:receive_timeout, pos_integer()}
 
@@ -271,7 +280,8 @@ defmodule Finch do
       count: valid[:count],
       conn_opts: conn_opts,
       conn_max_idle_time: to_native(valid[:max_idle_time] || valid[:conn_max_idle_time]),
-      pool_max_idle_time: valid[:pool_max_idle_time]
+      pool_max_idle_time: valid[:pool_max_idle_time],
+      start_pool_metrics?: valid[:start_pool_metrics?]
     }
   end
 
@@ -569,5 +579,57 @@ defmodule Finch do
 
   defp get_pool(%Request{scheme: scheme, host: host, port: port}, name) do
     PoolManager.get_pool(name, {scheme, host, port})
+  end
+
+  @doc """
+  Get pool metrics list.
+
+  The number of items present on the metrics list depends on the `:count` option
+  each metric will have a `pool_index` going from 1 to `:count`.
+
+  The metrics struct depends on the pool scheme defined on the `:protocols` option
+  `Finch.HTTP1.PoolMetrics` for `:http1` and `Finch.HTTP2.PoolMetrics` for `:http2`.
+
+  See the `Finch.HTTP1.PoolMetrics` and `Finch.HTTP2.PoolMetrics` for more details.
+
+  `{:error, :not_found}` may return on 2 scenarios:
+    - There is no pool registered for the given pair finch instance and url
+    - The pool is configured with `start_pool_metrics?` option false (default)
+
+  ## Example
+
+      iex> Finch.get_pool_status(MyFinch, "https://httpbin.org")
+      {:ok, [
+        %Finch.HTTP1.PoolMetrics{
+          pool_index: 1,
+          pool_size: 50,
+          available_connections: 43,
+          in_use_connections: 7
+        },
+        %Finch.HTTP1.PoolMetrics{
+          pool_index: 2,
+          pool_size: 50,
+          available_connections: 37,
+          in_use_connections: 13
+        }]
+      }
+  """
+  @spec get_pool_status(name(), url :: String.t() | scheme_host_port()) ::
+          {:ok, list(Finch.HTTP1.PoolMetrics.t())}
+          | {:ok, list(Finch.HTTP2.PoolMetrics.t())}
+          | {:error, :not_found}
+  def get_pool_status(finch_name, url) when is_binary(url) do
+    {s, h, p, _, _} = Request.parse_url(url)
+    get_pool_status(finch_name, {s, h, p})
+  end
+
+  def get_pool_status(finch_name, shp) when is_tuple(shp) do
+    case PoolManager.get_pool(finch_name, shp, auto_start?: false) do
+      {_pool, pool_mod} ->
+        pool_mod.get_pool_status(finch_name, shp)
+
+      :not_found ->
+        {:error, :not_found}
+    end
   end
 end

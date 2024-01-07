@@ -11,6 +11,8 @@ defmodule Finch.HTTP2.Pool do
   alias Finch.SSL
   alias Finch.HTTP2.RequestStream
 
+  alias Finch.HTTP2.PoolMetrics
+
   require Logger
 
   @default_receive_timeout 15_000
@@ -71,6 +73,24 @@ defmodule Finch.HTTP2.Pool do
   def cancel_async_request({_, {pool, _}} = request_ref) do
     :ok = :gen_statem.call(pool, {:cancel, request_ref})
     clean_responses(request_ref)
+  end
+
+  @impl Finch.Pool
+  def get_pool_status(finch_name, shp) do
+    case Finch.PoolManager.get_pool_count(finch_name, shp) do
+      nil ->
+        {:error, :not_found}
+
+      count ->
+        1..count
+        |> Enum.map(&PoolMetrics.get_pool_status(finch_name, shp, &1))
+        |> Enum.filter(&match?({:ok, _}, &1))
+        |> Enum.map(&elem(&1, 1))
+        |> case do
+          [] -> {:error, :not_found}
+          result -> {:ok, result}
+        end
+    end
   end
 
   defp make_request_ref(pool) do
@@ -172,25 +192,33 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  def start_link(opts) do
+  def start_link({_shp, _finch_name, _pool_config, _start_pool_metrics?, _pool_idx} = opts) do
     :gen_statem.start_link(__MODULE__, opts, [])
   end
 
   @impl true
-  def init({{scheme, host, port} = shp, registry, _pool_size, pool_opts}) do
+  def init({{scheme, host, port} = shp, registry, pool_opts, start_pool_metrics?, pool_idx}) do
+    {:ok, metrics_ref} =
+      if start_pool_metrics?,
+        do: PoolMetrics.init(registry, shp, pool_idx),
+        else: {:ok, nil}
+
     {:ok, _} = Registry.register(registry, shp, __MODULE__)
 
     data = %{
       conn: nil,
+      finch_name: registry,
       scheme: scheme,
       host: host,
       port: port,
+      pool_idx: pool_idx,
       requests: %{},
       refs: %{},
       requests_by_pid: %{},
       backoff_base: 500,
       backoff_max: 10_000,
-      connect_opts: pool_opts[:conn_opts] || []
+      connect_opts: pool_opts[:conn_opts] || [],
+      metrics_ref: metrics_ref
     }
 
     {:ok, :disconnected, data, {:next_event, :internal, {:connect, 0}}}
@@ -523,8 +551,11 @@ defmodule Finch.HTTP2.Pool do
 
   defp start_request(data, method, path, headers, body) do
     case HTTP2.request(data.conn, method, path, headers, body) do
-      {:ok, conn, ref} -> {:ok, put_in(data.conn, conn), ref}
-      {:error, conn, reason} -> {:error, put_in(data.conn, conn), reason}
+      {:ok, conn, ref} ->
+        {:ok, put_in(data.conn, conn), ref}
+
+      {:error, conn, reason} ->
+        {:error, put_in(data.conn, conn), reason}
     end
   end
 
@@ -750,6 +781,8 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp put_request(data, ref, request) do
+    PoolMetrics.maybe_add(data.metrics_ref, in_flight_requests: 1)
+
     data
     |> put_in([:requests, ref], request)
     |> put_in([:refs, request.request_ref], ref)
@@ -757,6 +790,8 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp pop_request(data, ref) do
+    PoolMetrics.maybe_add(data.metrics_ref, in_flight_requests: -1)
+
     case pop_in(data.requests[ref]) do
       {nil, data} ->
         {nil, data}

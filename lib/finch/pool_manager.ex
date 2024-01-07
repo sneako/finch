@@ -30,13 +30,15 @@ defmodule Finch.PoolManager do
     {:ok, config}
   end
 
-  def get_pool(registry_name, {_scheme, _host, _port} = key) do
+  def get_pool(registry_name, {_scheme, _host, _port} = key, opts \\ []) do
     case lookup_pool(registry_name, key) do
       {pid, _} = pool when is_pid(pid) ->
         pool
 
       :none ->
-        start_pools(registry_name, key)
+        if Keyword.get(opts, :auto_start?, true),
+          do: start_pools(registry_name, key),
+          else: :not_found
     end
   end
 
@@ -72,9 +74,13 @@ defmodule Finch.PoolManager do
 
   defp do_start_pools(shp, config) do
     pool_config = pool_config(config, shp)
-    pool_args = pool_args(shp, config, pool_config)
 
-    Enum.map(1..pool_config.count, fn _ ->
+    if pool_config.start_pool_metrics? do
+      put_pool_count(config, shp, pool_config.count)
+    end
+
+    Enum.map(1..pool_config.count, fn pool_idx ->
+      pool_args = pool_args(shp, config, pool_config, pool_idx)
       # Choose pool type here...
       {:ok, pid} =
         DynamicSupervisor.start_child(config.supervisor_name, {pool_config.mod, pool_args})
@@ -83,6 +89,12 @@ defmodule Finch.PoolManager do
     end)
     |> hd()
   end
+
+  defp put_pool_count(%{registry_name: name}, shp, val),
+    do: :persistent_term.put({__MODULE__, :pool_count, name, shp}, val)
+
+  def get_pool_count(finch_name, shp),
+    do: :persistent_term.get({__MODULE__, :pool_count, finch_name, shp}, nil)
 
   defp pool_config(%{pools: config, default_pool_config: default}, shp) do
     config
@@ -117,9 +129,23 @@ defmodule Finch.PoolManager do
 
   defp maybe_add_hostname(config, _), do: config
 
-  defp pool_args(shp, config, %{mod: Finch.HTTP1.Pool} = pool_config),
-    do: {shp, config.registry_name, pool_config.size, pool_config, pool_config.pool_max_idle_time}
+  defp pool_args(shp, config, %{mod: Finch.HTTP1.Pool} = pool_config, pool_idx),
+    do: {
+      shp,
+      config.registry_name,
+      pool_config.size,
+      pool_config,
+      pool_config.pool_max_idle_time,
+      pool_config.start_pool_metrics?,
+      pool_idx
+    }
 
-  defp pool_args(shp, config, %{mod: Finch.HTTP2.Pool} = pool_config),
-    do: {shp, config.registry_name, pool_config.size, pool_config}
+  defp pool_args(shp, config, %{mod: Finch.HTTP2.Pool} = pool_config, pool_idx),
+    do: {
+      shp,
+      config.registry_name,
+      pool_config,
+      pool_config.start_pool_metrics?,
+      pool_idx
+    }
 end

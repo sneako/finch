@@ -14,7 +14,7 @@ defmodule Finch.HTTPS1Server do
           cipher_suite: :strong,
           certfile: Path.join([@fixtures_dir, "selfsigned.pem"]),
           keyfile: Path.join([@fixtures_dir, "selfsigned_key.pem"]),
-          alpn_preferred_protocols: :undefined,
+          alpn_preferred_protocols: ["undefined"],
           protocol_options: [
             idle_timeout: 3_000,
             request_timeout: 10_000

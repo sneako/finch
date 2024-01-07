@@ -4,7 +4,9 @@ defmodule Finch.HTTP1.IntegrationProxyTest do
   alias Finch.HTTP1Server
 
   setup_all do
-    port = 4004
+    {:ok, listen_socket} = :ssl.listen(0, mode: :binary)
+    {:ok, {_address, port}} = :ssl.sockname(listen_socket)
+    :ssl.close(listen_socket)
 
     # Not quite a proper forward proxy server, but good enough
     {:ok, _} = HTTP1Server.start(port)

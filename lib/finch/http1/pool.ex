@@ -5,9 +5,19 @@ defmodule Finch.HTTP1.Pool do
 
   alias Finch.HTTP1.Conn
   alias Finch.Telemetry
+  alias Finch.HTTP1.PoolMetrics
 
   def child_spec(opts) do
-    {_shp, _registry_name, _pool_size, _conn_opts, pool_max_idle_time} = opts
+    {
+      _shp,
+      _registry_name,
+      _pool_size,
+      _conn_opts,
+      pool_max_idle_time,
+      _start_pool_metrics?,
+      _pool_idx
+    } =
+      opts
 
     %{
       id: __MODULE__,
@@ -16,9 +26,13 @@ defmodule Finch.HTTP1.Pool do
     }
   end
 
-  def start_link({shp, registry_name, pool_size, conn_opts, pool_max_idle_time}) do
+  def start_link(
+        {shp, registry_name, pool_size, conn_opts, pool_max_idle_time, start_pool_metrics?,
+         pool_idx}
+      ) do
     NimblePool.start_link(
-      worker: {__MODULE__, {registry_name, shp, conn_opts}},
+      worker:
+        {__MODULE__, {registry_name, shp, pool_idx, pool_size, start_pool_metrics?, conn_opts}},
       pool_size: pool_size,
       lazy: true,
       worker_idle_timeout: pool_idle_timeout(pool_max_idle_time)
@@ -32,7 +46,6 @@ defmodule Finch.HTTP1.Pool do
     request_timeout = Keyword.get(opts, :request_timeout, :infinity)
 
     metadata = %{request: req, pool: pool}
-
     start_time = Telemetry.start(:queue, metadata)
 
     try do
@@ -85,7 +98,13 @@ defmodule Finch.HTTP1.Pool do
         monitor = Process.monitor(owner)
         request_ref = {__MODULE__, self()}
 
-        case request(pool, req, {owner, monitor, request_ref}, &send_async_response/2, opts) do
+        case request(
+               pool,
+               req,
+               {owner, monitor, request_ref},
+               &send_async_response/2,
+               opts
+             ) do
           {:ok, _} -> send(owner, {request_ref, :done})
           {:error, error} -> send(owner, {request_ref, {:error, error}})
         end
@@ -118,35 +137,60 @@ defmodule Finch.HTTP1.Pool do
     :ok
   end
 
-  @impl NimblePool
-  def init_pool({registry, shp, opts}) do
-    # Register our pool with our module name as the key. This allows the caller
-    # to determine the correct pool module to use to make the request
-    {:ok, _} = Registry.register(registry, shp, __MODULE__)
-    {:ok, {shp, opts}}
+  @impl Finch.Pool
+  def get_pool_status(finch_name, shp) do
+    case Finch.PoolManager.get_pool_count(finch_name, shp) do
+      nil ->
+        {:error, :not_found}
+
+      count ->
+        1..count
+        |> Enum.map(&PoolMetrics.get_pool_status(finch_name, shp, &1))
+        |> Enum.filter(&match?({:ok, _}, &1))
+        |> Enum.map(&elem(&1, 1))
+        |> case do
+          [] -> {:error, :not_found}
+          result -> {:ok, result}
+        end
+    end
   end
 
   @impl NimblePool
-  def init_worker({{scheme, host, port}, opts} = pool_state) do
+  def init_pool({registry, shp, pool_idx, pool_size, start_pool_metrics?, opts}) do
+    {:ok, metric_ref} =
+      if start_pool_metrics?,
+        do: PoolMetrics.init(registry, shp, pool_idx, pool_size),
+        else: {:ok, nil}
+
+    # Register our pool with our module name as the key. This allows the caller
+    # to determine the correct pool module to use to make the request
+    {:ok, _} = Registry.register(registry, shp, __MODULE__)
+    {:ok, {registry, shp, pool_idx, metric_ref, opts}}
+  end
+
+  @impl NimblePool
+  def init_worker({_name, {scheme, host, port}, _pool_idx, _metric_ref, opts} = pool_state) do
     {:ok, Conn.new(scheme, host, port, opts, self()), pool_state}
   end
 
   @impl NimblePool
   def handle_checkout(:checkout, _, %{mint: nil} = conn, pool_state) do
+    {_name, _shp, _pool_idx, metric_ref, _opts} = pool_state
     idle_time = System.monotonic_time() - conn.last_checkin
+    PoolMetrics.maybe_add(metric_ref, in_use_connections: 1)
     {:ok, {:fresh, conn, idle_time}, conn, pool_state}
   end
 
   def handle_checkout(:checkout, _from, conn, pool_state) do
     idle_time = System.monotonic_time() - conn.last_checkin
+    {_name, {scheme, host, port}, _pool_idx, metric_ref, _opts} = pool_state
 
     with true <- Conn.reusable?(conn, idle_time),
          {:ok, conn} <- Conn.set_mode(conn, :passive) do
+      PoolMetrics.maybe_add(metric_ref, in_use_connections: 1)
       {:ok, {:reuse, conn, idle_time}, conn, pool_state}
     else
       false ->
-        {{scheme, host, port}, _opts} = pool_state
-
         meta = %{
           scheme: scheme,
           host: host,
@@ -167,6 +211,9 @@ defmodule Finch.HTTP1.Pool do
 
   @impl NimblePool
   def handle_checkin(checkin, _from, _old_conn, pool_state) do
+    {_name, _shp, _pool_idx, metric_ref, _opts} = pool_state
+    PoolMetrics.maybe_add(metric_ref, in_use_connections: -1)
+
     with {:ok, conn} <- checkin,
          {:ok, conn} <- Conn.set_mode(conn, :active) do
       {:ok, %{conn | last_checkin: System.monotonic_time()}, pool_state}
@@ -192,7 +239,7 @@ defmodule Finch.HTTP1.Pool do
 
   @impl NimblePool
   def handle_ping(_conn, pool_state) do
-    {{scheme, host, port}, _opts} = pool_state
+    {_name, {scheme, host, port}, _pool_idx, _metric_ref, _opts} = pool_state
 
     meta = %{
       scheme: scheme,
