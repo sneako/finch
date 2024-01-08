@@ -109,7 +109,7 @@ defmodule Finch.Telemetry do
 
   #### Metadata
 
-    * `:name` - The name of the Finch instance (populated for HTTP/1 only).
+    * `:name` - The name of the Finch instance.
     * `:scheme` - The scheme used in the connection. either `http` or `https`.
     * `:host` - The host address.
     * `:port` - The port to connect on.
@@ -124,7 +124,7 @@ defmodule Finch.Telemetry do
 
   #### Metadata
 
-    * `:name` - The name of the Finch instance (populated for HTTP/1 only).
+    * `:name` - The name of the Finch instance.
     * `:scheme` - The scheme used in the connection. either `http` or `https`.
     * `:host` - The host address.
     * `:port` - The port to connect on.
@@ -136,7 +136,7 @@ defmodule Finch.Telemetry do
 
   #### Measurements
 
-    * `:name` - The name of the Finch instance (populated for HTTP/1 only).
+    * `:name` - The name of the Finch instance.
     * `:system_time` - The system time.
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
@@ -150,7 +150,7 @@ defmodule Finch.Telemetry do
 
   #### Measurements
 
-    * `:name` - The name of the Finch instance (populated for HTTP/1 only).
+    * `:name` - The name of the Finch instance.
     * `:duration` - Time taken to make the request.
     * `:idle_time` - Elapsed time since the connection was last checked in or initialized.
 
@@ -170,7 +170,7 @@ defmodule Finch.Telemetry do
 
   #### Metadata
 
-    * `:name` - The name of the Finch instance (populated for HTTP/1 only).
+    * `:name` - The name of the Finch instance.
     * `:request` - The request (`Finch.Request`).
 
   ### Receive Stop
@@ -184,7 +184,7 @@ defmodule Finch.Telemetry do
 
   #### Metadata
 
-    * `:name` - The name of the Finch instance (populated for HTTP/1 only).
+    * `:name` - The name of the Finch instance.
     * `:request` - The request (`Finch.Request`).
     * `:status` - The response status (`Mint.Types.status()`).
     * `:headers` - The response headers (`Mint.Types.headers()`).
@@ -201,7 +201,7 @@ defmodule Finch.Telemetry do
 
   #### Metadata
 
-    * `:name` - The name of the Finch instance (populated for HTTP/1 only).
+    * `:name` - The name of the Finch instance.
     * `:request` - The request (`Finch.Request`).
     * `:kind` - The type of exception.
     * `:reason` - Error description or error data.

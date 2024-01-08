@@ -30,7 +30,7 @@ defmodule Finch.HTTP2.Pool do
   # Call the pool with the request. The pool will multiplex multiple requests
   # and stream the result set back to the calling process using `send`
   @impl Finch.Pool
-  def request(pool, request, acc, fun, _name, opts) do
+  def request(pool, request, acc, fun, name, opts) do
     opts = Keyword.put_new(opts, :receive_timeout, @default_receive_timeout)
     timeout = opts[:receive_timeout]
     request_ref = make_request_ref(pool)
@@ -48,7 +48,8 @@ defmodule Finch.HTTP2.Pool do
         response_waiting_loop(acc, fun, request_ref, monitor, fail_safe_timeout, :headers)
       catch
         kind, error ->
-          Telemetry.exception(:recv, recv_start, kind, error, __STACKTRACE__, %{request: request})
+          metadata = %{request: request, name: name}
+          Telemetry.exception(:recv, recv_start, kind, error, __STACKTRACE__, metadata)
 
           :ok = :gen_statem.call(pool, {:cancel, request_ref})
           clean_responses(request_ref)
@@ -264,7 +265,8 @@ defmodule Finch.HTTP2.Pool do
     metadata = %{
       scheme: data.scheme,
       host: data.host,
-      port: data.port
+      port: data.port,
+      name: data.finch_name
     }
 
     start = Telemetry.start(:connect, metadata)
@@ -529,7 +531,7 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp send_request(from, from_pid, request_ref, req, opts, data) do
-    telemetry_metadata = %{request: req}
+    telemetry_metadata = %{request: req, name: data.finch_name}
 
     request = %{
       stream: RequestStream.new(req.body),
