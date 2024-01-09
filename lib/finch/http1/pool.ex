@@ -16,8 +16,7 @@ defmodule Finch.HTTP1.Pool do
       pool_max_idle_time,
       _start_pool_metrics?,
       _pool_idx
-    } =
-      opts
+    } = opts
 
     %{
       id: __MODULE__,
@@ -58,7 +57,16 @@ defmodule Finch.HTTP1.Pool do
 
           with {:ok, conn} <- Conn.connect(conn, name),
                {:ok, conn, acc} <-
-                 Conn.request(conn, req, acc, fun, name, receive_timeout, request_timeout, idle_time) do
+                 Conn.request(
+                   conn,
+                   req,
+                   acc,
+                   fun,
+                   name,
+                   receive_timeout,
+                   request_timeout,
+                   idle_time
+                 ) do
             {{:ok, acc}, transfer_if_open(conn, state, from)}
           else
             {:error, conn, error} ->

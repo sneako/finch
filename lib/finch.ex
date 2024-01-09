@@ -360,10 +360,9 @@ defmodule Finch do
           {:ok, acc} | {:error, Exception.t()}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
-    fun =
-      fn entry, acc ->
-        {:cont, fun.(entry, acc)}
-      end
+    fun = fn entry, acc ->
+      {:cont, fun.(entry, acc)}
+    end
 
     stream_while(req, name, acc, fun, opts)
   end

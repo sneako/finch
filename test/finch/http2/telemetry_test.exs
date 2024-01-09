@@ -37,7 +37,9 @@ defmodule Finch.HTTP2.TelemetryTest do
     assert_receive {:telemetry_event, [:finch, :send, :start],
                     %{request: %{headers: [{"x-foo-request", "bar-request"}]}, name: ^finch_name}}
 
-    assert_receive {:telemetry_event, [:finch, :recv, :stop], %{headers: headers, name: ^finch_name}}
+    assert_receive {:telemetry_event, [:finch, :recv, :stop],
+                    %{headers: headers, name: ^finch_name}}
+
     assert {"x-foo-response", "bar-response"} in headers
 
     :telemetry.detach(to_string(finch_name))
