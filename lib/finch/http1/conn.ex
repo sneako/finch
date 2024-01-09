@@ -17,22 +17,24 @@ defmodule Finch.HTTP1.Conn do
     }
   end
 
-  def connect(%{mint: mint} = conn) when not is_nil(mint) do
+  def connect(%{mint: mint} = conn, name) when not is_nil(mint) do
     meta = %{
       scheme: conn.scheme,
       host: conn.host,
-      port: conn.port
+      port: conn.port,
+      name: name
     }
 
     Telemetry.event(:reused_connection, %{}, meta)
     {:ok, conn}
   end
 
-  def connect(%{mint: nil} = conn) do
+  def connect(%{mint: nil} = conn, name) do
     meta = %{
       scheme: conn.scheme,
       host: conn.host,
-      port: conn.port
+      port: conn.port,
+      name: name
     }
 
     start_time = Telemetry.start(:connect, meta)
@@ -98,12 +100,12 @@ defmodule Finch.HTTP1.Conn do
     end
   end
 
-  def request(%{mint: nil} = conn, _, _, _, _, _, _), do: {:error, conn, "Could not connect"}
+  def request(%{mint: nil} = conn, _, _, _, _, _, _, _), do: {:error, conn, "Could not connect"}
 
-  def request(conn, req, acc, fun, receive_timeout, request_timeout, idle_time) do
+  def request(conn, req, acc, fun, name, receive_timeout, request_timeout, idle_time) do
     full_path = Finch.Request.request_path(req)
 
-    metadata = %{request: req}
+    metadata = %{request: req, name: name}
 
     extra_measurements = %{idle_time: idle_time}
 

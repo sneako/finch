@@ -16,8 +16,7 @@ defmodule Finch.HTTP1.Pool do
       pool_max_idle_time,
       _start_pool_metrics?,
       _pool_idx
-    } =
-      opts
+    } = opts
 
     %{
       id: __MODULE__,
@@ -40,12 +39,13 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl Finch.Pool
-  def request(pool, req, acc, fun, opts) do
+  def request(pool, req, acc, fun, name, opts) do
     pool_timeout = Keyword.get(opts, :pool_timeout, 5_000)
     receive_timeout = Keyword.get(opts, :receive_timeout, 15_000)
     request_timeout = Keyword.get(opts, :request_timeout, :infinity)
 
-    metadata = %{request: req, pool: pool}
+    metadata = %{request: req, pool: pool, name: name}
+
     start_time = Telemetry.start(:queue, metadata)
 
     try do
@@ -55,9 +55,18 @@ defmodule Finch.HTTP1.Pool do
         fn from, {state, conn, idle_time} ->
           Telemetry.stop(:queue, start_time, metadata, %{idle_time: idle_time})
 
-          with {:ok, conn} <- Conn.connect(conn),
+          with {:ok, conn} <- Conn.connect(conn, name),
                {:ok, conn, acc} <-
-                 Conn.request(conn, req, acc, fun, receive_timeout, request_timeout, idle_time) do
+                 Conn.request(
+                   conn,
+                   req,
+                   acc,
+                   fun,
+                   name,
+                   receive_timeout,
+                   request_timeout,
+                   idle_time
+                 ) do
             {{:ok, acc}, transfer_if_open(conn, state, from)}
           else
             {:error, conn, error} ->
@@ -90,7 +99,7 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl Finch.Pool
-  def async_request(pool, req, opts) do
+  def async_request(pool, req, name, opts) do
     owner = self()
 
     pid =
@@ -103,6 +112,7 @@ defmodule Finch.HTTP1.Pool do
                req,
                {owner, monitor, request_ref},
                &send_async_response/2,
+               name,
                opts
              ) do
           {:ok, _} -> send(owner, {request_ref, :done})

@@ -35,9 +35,11 @@ defmodule Finch.HTTP2.TelemetryTest do
     assert {:ok, %{status: 200}} = Finch.request(request, finch_name)
 
     assert_receive {:telemetry_event, [:finch, :send, :start],
-                    %{request: %{headers: [{"x-foo-request", "bar-request"}]}}}
+                    %{request: %{headers: [{"x-foo-request", "bar-request"}]}, name: ^finch_name}}
 
-    assert_receive {:telemetry_event, [:finch, :recv, :stop], %{headers: headers}}
+    assert_receive {:telemetry_event, [:finch, :recv, :stop],
+                    %{headers: headers, name: ^finch_name}}
+
     assert {"x-foo-response", "bar-response"} in headers
 
     :telemetry.detach(to_string(finch_name))
@@ -58,7 +60,7 @@ defmodule Finch.HTTP2.TelemetryTest do
     request = Finch.build(:get, endpoint(bypass))
     assert {:ok, %{status: 201}} = Finch.request(request, finch_name)
 
-    assert_receive {:telemetry_event, [:finch, :recv, :stop], %{status: 201}}
+    assert_receive {:telemetry_event, [:finch, :recv, :stop], %{status: 201, name: ^finch_name}}
 
     :telemetry.detach(to_string(finch_name))
   end
@@ -133,6 +135,7 @@ defmodule Finch.HTTP2.TelemetryTest do
           assert is_atom(meta.scheme)
           assert is_integer(meta.port)
           assert is_binary(meta.host)
+          assert meta.name == finch_name
           send(parent, {ref, :start})
 
         [:finch, :connect, :stop] ->
@@ -140,6 +143,7 @@ defmodule Finch.HTTP2.TelemetryTest do
           assert is_atom(meta.scheme)
           assert is_integer(meta.port)
           assert is_binary(meta.host)
+          assert meta.name == finch_name
           send(parent, {ref, :stop})
 
         _ ->
@@ -175,11 +179,13 @@ defmodule Finch.HTTP2.TelemetryTest do
         [:finch, :send, :start] ->
           assert is_integer(measurements.system_time)
           assert %Finch.Request{} = meta.request
+          assert meta.name == finch_name
           send(parent, {ref, :start})
 
         [:finch, :send, :stop] ->
           assert is_integer(measurements.duration)
           assert %Finch.Request{} = meta.request
+          assert meta.name == finch_name
           send(parent, {ref, :stop})
 
         _ ->
@@ -228,6 +234,7 @@ defmodule Finch.HTTP2.TelemetryTest do
           assert %Finch.Request{} = meta.request
           assert is_integer(meta.status)
           assert is_list(meta.headers)
+          assert meta.name == finch_name
           send(parent, {ref, :stop})
 
         _ ->
@@ -275,6 +282,7 @@ defmodule Finch.HTTP2.TelemetryTest do
           assert meta.kind == :exit
           assert meta.reason == :cancel
           assert meta.stacktrace != nil
+          assert meta.name == finch_name
           send(parent, {ref, :exception})
 
         _ ->
