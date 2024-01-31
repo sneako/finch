@@ -212,9 +212,13 @@ defmodule Finch.HTTP1.Pool do
 
         Telemetry.event(:conn_max_idle_time_exceeded, %{idle_time: idle_time}, meta)
 
+        PoolMetrics.maybe_add(metric_ref, in_use_connections: -1)
+
         {:remove, :closed, pool_state}
 
       _ ->
+        PoolMetrics.maybe_add(metric_ref, in_use_connections: -1)
+
         {:remove, :closed, pool_state}
     end
   end
