@@ -90,7 +90,7 @@ defmodule Finch do
     ],
     start_pool_metrics?: [
       type: :boolean,
-      doc: "When true, pool metrics will be collected and avaiable through Finch.pool_status/2",
+      doc: "When true, pool metrics will be collected and available through Finch.pool_status/2",
       default: false
     ]
   ]
