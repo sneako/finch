@@ -62,3 +62,7 @@ jobs:
       - name: Run Tests
         run: mix test --warnings-as-errors
         if: ${{ matrix.lint }}
+
+      - name: Run Dialyzer
+        run: mix dialyzer
+        if: ${{ matrix.lint }}
