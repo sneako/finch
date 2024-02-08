@@ -41,6 +41,7 @@ jobs:
       # Cache key based on Elixir & Erlang version (also useful when running in matrix)
       - name: Cache Dialyzer's PLT
         uses: actions/cache@v3
+        if: ${{ matrix.lint }}
         id: cache-plt
         with:
           path: plts
@@ -51,7 +52,7 @@ jobs:
 
       # Create PLTs if no cache was found
       - name: Create PLTs
-        if: ${{ matrix.dialyzer && steps.cache-plt.outputs.cache-hit != 'true' }}
+        if: ${{ matrix.lint && steps.cache-plt.outputs.cache-hit != 'true' }}
         run: mix dialyzer --plt
 
       - name: Install Dependencies
