@@ -44,19 +44,17 @@ jobs:
         if: ${{ matrix.lint }}
         id: cache-plt
         with:
-          path: plts
+          path: _build/test
           key: |
-            ${{ runner.os }}-plt-otp${{ matrix.erlang }}-elixir${{ matrix.elixir }}-${{ hashFiles('**/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-plt-otp${{ matrix.erlang }}-elixir${{ matrix.elixir }}-
+            ${{ runner.os }}-plt-otp${{ matrix.erlang }}-elixir${{ matrix.elixir }}
+
+      - name: Install Dependencies
+        run: mix deps.get
 
       # Create PLTs if no cache was found
       - name: Create PLTs
         if: ${{ matrix.lint && steps.cache-plt.outputs.cache-hit != 'true' }}
         run: mix dialyzer --plt
-
-      - name: Install Dependencies
-        run: mix deps.get
 
       - run: mix format --check-formatted
         if: ${{ matrix.lint }}
