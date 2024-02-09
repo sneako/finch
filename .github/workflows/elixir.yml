@@ -37,8 +37,24 @@ jobs:
           otp-version: ${{matrix.pair.otp}}
           elixir-version: ${{matrix.pair.elixir}}
 
+      # Don't cache PLTs based on mix.lock hash, as Dialyzer can incrementally update even old ones
+      # Cache key based on Elixir & Erlang version (also useful when running in matrix)
+      - name: Cache Dialyzer's PLT
+        uses: actions/cache@v3
+        if: ${{ matrix.lint }}
+        id: cache-plt
+        with:
+          path: _build/test
+          key: |
+            ${{ runner.os }}-plt-otp${{ matrix.erlang }}-elixir${{ matrix.elixir }}
+
       - name: Install Dependencies
         run: mix deps.get
+
+      # Create PLTs if no cache was found
+      - name: Create PLTs
+        if: ${{ matrix.lint && steps.cache-plt.outputs.cache-hit != 'true' }}
+        run: mix dialyzer --plt
 
       - run: mix format --check-formatted
         if: ${{ matrix.lint }}
@@ -61,4 +77,8 @@ jobs:
 
       - name: Run Tests
         run: mix test --warnings-as-errors
+        if: ${{ matrix.lint }}
+
+      - name: Run Dialyzer
+        run: mix dialyzer
         if: ${{ matrix.lint }}

@@ -45,7 +45,7 @@ defmodule Finch.HTTP1.PoolMetrics do
 
   def maybe_add(nil, _metrics_list), do: :ok
 
-  def maybe_add(ref, metrics_list) when is_reference(ref) do
+  def maybe_add(ref, metrics_list) do
     Enum.each(metrics_list, fn {metric_name, val} ->
       :atomics.add(ref, @atomic_idx[metric_name], val)
     end)
@@ -57,7 +57,9 @@ defmodule Finch.HTTP1.PoolMetrics do
     |> get_pool_status()
   end
 
-  def get_pool_status(ref) when is_reference(ref) do
+  def get_pool_status(nil), do: {:error, :not_found}
+
+  def get_pool_status(ref) do
     %{
       pool_idx: pool_idx,
       pool_size: pool_size,
@@ -76,6 +78,4 @@ defmodule Finch.HTTP1.PoolMetrics do
 
     {:ok, result}
   end
-
-  def get_pool_status(nil), do: {:error, :not_found}
 end
