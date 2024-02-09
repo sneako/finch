@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.18.0 (2024-02-09)
+
+### Enhancements
+
+- Add Finch name to telemetry events #252
+
+### Bug Fixes
+
+- Fix several minor dialyzer errors and run dialyzer in CI #259, #261
+
 ## v0.17.0 (2024-01-07)
 
 ### Enhancements
