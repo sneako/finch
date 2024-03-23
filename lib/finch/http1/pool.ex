@@ -270,6 +270,15 @@ defmodule Finch.HTTP1.Pool do
     {:ok, pool_state}
   end
 
+  @impl NimblePool
+  def handle_cancelled(:checked_out, pool_state) do
+    {_name, _shp, _pool_idx, metric_ref, _opts} = pool_state
+    PoolMetrics.maybe_add(metric_ref, in_use_connections: -1)
+    :ok
+  end
+
+  def handle_cancelled(:queued, _pool_state), do: :ok
+
   defp transfer_if_open(conn, state, {pid, _} = from) do
     if Conn.open?(conn) do
       if state == :fresh do
