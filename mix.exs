@@ -35,8 +35,7 @@ defmodule Finch.MixProject do
     [
       {:mint, "~> 1.3"},
       {:castore, "~> 0.1 or ~> 1.0"},
-      # {:nimble_pool, "~> 0.2.6 or ~> 1.0"},
-      {:nimble_pool, git: "https://github.com/dashbitco/nimble_pool"},
+      {:nimble_pool, "~> 1.1"},
       {:nimble_options, "~> 0.4 or ~> 1.0"},
       {:telemetry, "~> 0.4 or ~> 1.0"},
       {:mime, "~> 1.0 or ~> 2.0"},
