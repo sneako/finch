@@ -35,7 +35,7 @@ defmodule Finch.MixProject do
     [
       {:mint, "~> 1.3"},
       {:castore, "~> 0.1 or ~> 1.0"},
-      {:nimble_pool, "~> 0.2.6 or ~> 1.0"},
+      {:nimble_pool, "~> 1.1"},
       {:nimble_options, "~> 0.4 or ~> 1.0"},
       {:telemetry, "~> 0.4 or ~> 1.0"},
       {:mime, "~> 1.0 or ~> 2.0"},
@@ -45,7 +45,8 @@ defmodule Finch.MixProject do
       {:bypass, "~> 2.0", only: :test},
       {:cowboy, "~> 2.7", only: [:dev, :test]},
       {:plug_cowboy, "~> 2.0", only: [:dev, :test]},
-      {:x509, "~> 0.8", only: [:dev, :test]}
+      {:x509, "~> 0.8", only: [:dev, :test]},
+      {:mimic, "~> 1.7", only: :test}
     ]
   end
 
