@@ -3,6 +3,7 @@ defmodule Finch.HTTP1.Conn do
 
   alias Finch.SSL
   alias Finch.Telemetry
+  alias Mint.HTTP1
 
   def new(scheme, host, port, opts, parent) do
     %{
@@ -49,7 +50,7 @@ defmodule Finch.HTTP1.Conn do
       |> Keyword.put(:mode, :passive)
       |> Keyword.put_new(:protocols, [:http1])
 
-    case Mint.HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts) do
+    case HTTP1.connect(conn.scheme, conn.host, conn.port, conn_opts) do
       {:ok, mint} ->
         Telemetry.stop(:connect, start_time, meta)
         SSL.maybe_log_secrets(conn.scheme, conn_opts, mint)
@@ -63,8 +64,8 @@ defmodule Finch.HTTP1.Conn do
   end
 
   def transfer(conn, pid) do
-    case Mint.HTTP.controlling_process(conn.mint, pid) do
-      # Mint.HTTP.controlling_process causes a side-effect, but it doesn't actually
+    case HTTP1.controlling_process(conn.mint, pid) do
+      # controlling_process/2 causes a side-effect, but it doesn't actually
       # change the conn, so we can ignore the value returned above.
       {:ok, _} -> {:ok, conn}
       {:error, error} -> {:error, conn, error}
@@ -72,7 +73,7 @@ defmodule Finch.HTTP1.Conn do
   end
 
   def open?(%{mint: nil}), do: false
-  def open?(%{mint: mint}), do: Mint.HTTP.open?(mint)
+  def open?(%{mint: mint}), do: HTTP1.open?(mint)
 
   def idle_time(conn, unit \\ :native) do
     idle_time = System.monotonic_time() - conn.last_checkin
@@ -84,7 +85,7 @@ defmodule Finch.HTTP1.Conn do
   def reusable?(%{max_idle_time: max_idle_time}, idle_time), do: idle_time <= max_idle_time
 
   def set_mode(conn, mode) when mode in [:active, :passive] do
-    case Mint.HTTP.set_mode(conn.mint, mode) do
+    case HTTP1.set_mode(conn.mint, mode) do
       {:ok, mint} -> {:ok, %{conn | mint: mint}}
       _ -> {:error, "Connection is dead"}
     end
@@ -93,7 +94,7 @@ defmodule Finch.HTTP1.Conn do
   def discard(%{mint: nil}, _), do: :unknown
 
   def discard(conn, message) do
-    case Mint.HTTP.stream(conn.mint, message) do
+    case HTTP1.stream(conn.mint, message) do
       {:ok, mint, _responses} -> {:ok, %{conn | mint: mint}}
       {:error, _, reason, _} -> {:error, reason}
       :unknown -> :unknown
@@ -112,7 +113,7 @@ defmodule Finch.HTTP1.Conn do
     start_time = Telemetry.start(:send, metadata, extra_measurements)
 
     try do
-      case Mint.HTTP.request(
+      case HTTP1.request(
              conn.mint,
              req.method,
              full_path,
@@ -174,7 +175,7 @@ defmodule Finch.HTTP1.Conn do
 
   defp maybe_stream_request_body(mint, ref, {:stream, stream}) do
     with {:ok, mint} <- stream_request_body(mint, ref, stream) do
-      Mint.HTTP.stream_request_body(mint, ref, :eof)
+      HTTP1.stream_request_body(mint, ref, :eof)
     end
   end
 
@@ -182,7 +183,7 @@ defmodule Finch.HTTP1.Conn do
 
   defp stream_request_body(mint, ref, stream) do
     Enum.reduce_while(stream, {:ok, mint}, fn
-      chunk, {:ok, mint} -> {:cont, Mint.HTTP.stream_request_body(mint, ref, chunk)}
+      chunk, {:ok, mint} -> {:cont, HTTP1.stream_request_body(mint, ref, chunk)}
       _chunk, error -> {:halt, error}
     end)
   end
@@ -190,7 +191,7 @@ defmodule Finch.HTTP1.Conn do
   def close(%{mint: nil} = conn), do: conn
 
   def close(conn) do
-    {:ok, mint} = Mint.HTTP.close(conn.mint)
+    {:ok, mint} = HTTP1.close(conn.mint)
     %{conn | mint: mint}
   end
 
@@ -243,7 +244,7 @@ defmodule Finch.HTTP1.Conn do
          resp_metadata
        )
        when timeouts.request_timeout < 0 do
-    {:ok, mint} = Mint.HTTP1.close(mint)
+    {:ok, mint} = HTTP1.close(mint)
     {:error, mint, %Mint.TransportError{reason: :timeout}, resp_metadata}
   end
 
@@ -259,7 +260,7 @@ defmodule Finch.HTTP1.Conn do
        ) do
     start_time = System.monotonic_time(:millisecond)
 
-    case Mint.HTTP.recv(mint, 0, timeouts.receive_timeout) do
+    case HTTP1.recv(mint, 0, timeouts.receive_timeout) do
       {:ok, mint, entries} ->
         timeouts =
           if is_integer(timeouts.request_timeout) do
@@ -311,7 +312,7 @@ defmodule Finch.HTTP1.Conn do
             )
 
           {:halt, acc} ->
-            {:ok, mint} = Mint.HTTP1.close(mint)
+            {:ok, mint} = HTTP1.close(mint)
             {:ok, mint, acc, resp_metadata}
 
           other ->
@@ -335,7 +336,7 @@ defmodule Finch.HTTP1.Conn do
             )
 
           {:halt, acc} ->
-            {:ok, mint} = Mint.HTTP1.close(mint)
+            {:ok, mint} = HTTP1.close(mint)
             {:ok, mint, acc, resp_metadata}
 
           other ->
@@ -357,7 +358,7 @@ defmodule Finch.HTTP1.Conn do
             )
 
           {:halt, acc} ->
-            {:ok, mint} = Mint.HTTP1.close(mint)
+            {:ok, mint} = HTTP1.close(mint)
             {:ok, mint, acc, resp_metadata}
 
           other ->

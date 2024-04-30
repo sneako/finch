@@ -6,6 +6,7 @@ Finch.HTTP2Server.start(port)
 Application.put_env(:finch, :test_https_h2_url, "https://localhost:#{port}")
 
 Mimic.copy(Mint.HTTP)
+Mimic.copy(Mint.HTTP1)
 
 ExUnit.start()
 Application.ensure_all_started(:bypass)

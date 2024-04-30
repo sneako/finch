@@ -256,7 +256,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
   end
 
   test "get pool status with raise before checkin", %{finch_name: finch_name} do
-    stub(Mint.HTTP, :request, fn _, _, _, _, _ ->
+    stub(Mint.HTTP1, :request, fn _, _, _, _, _ ->
       raise "unexpected error"
     end)
 
