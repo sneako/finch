@@ -104,7 +104,10 @@ defmodule Finch do
 
   @type scheme_host_port() :: {scheme(), host :: String.t(), port :: :inet.port_number()}
 
-  @type request_opt() :: {:pool_timeout, timeout()} | {:receive_timeout, timeout()}
+  @type request_opt() ::
+          {:pool_timeout, timeout()}
+          | {:receive_timeout, timeout()}
+          | {:request_timeout, timeout()}
 
   @typedoc """
   Options used by request functions.
