@@ -135,13 +135,6 @@ defmodule Finch.HTTP1.Conn do
                     {mint, error, resp_metadata} ->
                       conn = %{conn | mint: mint}
 
-                      state =
-                        if open?(conn) do
-                          {:ok, conn}
-                        else
-                          :closed
-                        end
-
                       if error do
                         metadata = Map.merge(metadata, Map.put(resp_metadata, :error, error))
                         Telemetry.stop(:recv, start_time, metadata, extra_measurements)
@@ -151,12 +144,13 @@ defmodule Finch.HTTP1.Conn do
                         Telemetry.stop(:recv, start_time, metadata, extra_measurements)
                       end
 
-                      send(handler, {ref, :stop, state})
+                      send(handler, {ref, :stop, conn})
 
                     {_entries, mint, _mint_ref, _timeout, _resp_metadata} ->
                       # In case some exception occured, we close the connection
-                      Mint.HTTP.close(mint)
-                      send(handler, {ref, :stop, :closed})
+                      {:ok, mint} = Mint.HTTP.close(mint)
+                      conn = %{conn | mint: mint}
+                      send(handler, {ref, :stop, conn})
                   end
                 )
 

@@ -58,10 +58,11 @@ defmodule Finch.HTTP1.Pool do
             :checkout,
             fn from, {state, conn, idle_time} ->
               Telemetry.stop(:queue, start_time, metadata, %{idle_time: idle_time})
-              send(owner, {ref, :ok, {conn, from, state, idle_time}})
+              send(owner, {ref, :ok, {conn, idle_time}})
 
               receive do
-                {^ref, :stop, state} -> {:ok, state}
+                {^ref, :stop, conn} ->
+                  transfer_if_open(conn, state, from)
               end
             end,
             pool_timeout
@@ -74,11 +75,11 @@ defmodule Finch.HTTP1.Pool do
       end)
 
     receive do
-      {^ref, :ok, conn_from} ->
-        {conn, from, state, idle_time} = conn_from
+      {^ref, :ok, conn_idle_time} ->
+        {conn, idle_time} = conn_idle_time
 
         with {:ok, conn} <- Conn.connect(conn, name),
-             {:ok, conn} <- transfer_if_open(conn, state, from),
+             {:ok, conn} <- Conn.transfer(conn, self()),
              {:ok, stream} <-
                Conn.stream(
                  conn,
@@ -92,20 +93,8 @@ defmodule Finch.HTTP1.Pool do
                ) do
           {:ok, stream}
         else
-          :closed ->
-            send(holder, {ref, :stop, state})
-            # FIXME
-            {:error, :closed}
-
           {:error, conn, error} ->
-            state =
-              if Conn.open?(conn) do
-                {:ok, conn}
-              else
-                :closed
-              end
-
-            send(holder, {ref, :stop, state})
+            send(holder, {ref, :stop, conn})
             {:error, error}
         end
 
@@ -391,17 +380,15 @@ defmodule Finch.HTTP1.Pool do
 
   defp transfer_if_open(conn, state, from, pid) do
     if Conn.open?(conn) do
-      case state do
-        :fresh ->
-          NimblePool.update(from, conn)
+      if state == :fresh do
+        NimblePool.update(from, conn)
 
-          case Conn.transfer(conn, pid) do
-            {:ok, conn} -> {:ok, conn}
-            {:error, _, _} -> :closed
-          end
-
-        _ ->
-          {:ok, conn}
+        case Conn.transfer(conn, pid) do
+          {:ok, conn} -> {:ok, conn}
+          {:error, _, _} -> :closed
+        end
+      else
+        {:ok, conn}
       end
     else
       :closed

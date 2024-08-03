@@ -660,6 +660,43 @@ defmodule FinchTest do
                {:data, "OK"}
              ] = Enum.to_list(stream)
     end
+
+    test "Streams response even when sent to another process", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build("GET", endpoint(bypass))
+
+      assert {:ok, stream} = Finch.actual_stream(request, finch_name)
+
+      owner = self()
+
+      spawn_link(fn ->
+        assert [
+                 {:status, 200},
+                 {:headers,
+                  [
+                    {"cache-control", "max-age=0, private, must-revalidate"},
+                    {"content-length", "2"},
+                    {"date", _},
+                    {"server", "Cowboy"}
+                  ]},
+                 {:data, "OK"}
+               ] = Enum.to_list(stream)
+
+        send(owner, :continue)
+      end)
+
+      receive do
+        :continue -> :ok
+      end
+    end
   end
 
   describe "stream/5" do
