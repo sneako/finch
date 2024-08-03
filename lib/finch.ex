@@ -307,6 +307,11 @@ defmodule Finch do
     end
   end
 
+  def actual_stream(request, name, opts \\ []) do
+    {pool, pool_mod} = get_pool(request, name)
+    pool_mod.stream(pool, request, name, opts)
+  end
+
   @doc """
   Builds an HTTP request to be sent with `request/3` or `stream/4`.
 

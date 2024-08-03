@@ -38,6 +38,119 @@ defmodule Finch.HTTP1.Pool do
     )
   end
 
+  def stream(pool, req, name, opts) do
+    pool_timeout = Keyword.get(opts, :pool_timeout, 5_000)
+    receive_timeout = Keyword.get(opts, :receive_timeout, 15_000)
+    request_timeout = Keyword.get(opts, :request_timeout, 30_000)
+
+    metadata = %{request: req, pool: pool, name: name}
+
+    start_time = Telemetry.start(:queue, metadata)
+    owner = self()
+    ref = make_ref()
+
+    holder =
+      spawn_link(fn ->
+        try do
+          NimblePool.checkout!(
+            pool,
+            :checkout,
+            fn from, {state, conn, idle_time} ->
+              Telemetry.stop(:queue, start_time, metadata, %{idle_time: idle_time})
+
+              case Conn.connect(conn, name) do
+                {:ok, conn} ->
+                  send(owner, {ref, :ok, {conn, from, idle_time}})
+                  {:ok, if_open(conn, state, from)}
+
+                {:error, _conn, reason} ->
+                  send(owner, {ref, :error, reason})
+                  {:ok, if_open(conn, state, from)}
+              end
+
+              receive do
+                {^ref, :stop, state} -> {:ok, state}
+              end
+            end,
+            pool_timeout
+          )
+        catch
+          :exit, data ->
+            Telemetry.exception(:queue, start_time, :exit, data, __STACKTRACE__, metadata)
+            send(owner, {ref, :exit, {data, __STACKTRACE__}})
+        end
+      end)
+
+    receive do
+      {^ref, :ok, conn_from} ->
+        {conn, _from, idle_time} = conn_from
+
+        case Conn.transfer(conn, self()) do
+          {:ok, conn} ->
+            case Conn.stream(
+                   conn,
+                   req,
+                   name,
+                   ref,
+                   holder,
+                   receive_timeout,
+                   request_timeout,
+                   idle_time
+                 ) do
+              {:ok, stream} ->
+                {:ok, stream}
+
+              {:error, conn, error} ->
+                state =
+                  if Conn.open?(conn) do
+                    {:ok, conn}
+                  else
+                    :closed
+                  end
+
+                send(holder, {ref, :stop, state})
+                {:error, error}
+            end
+
+          {:error, _, _} ->
+            send(holder, {ref, :stop, :closed})
+        end
+
+      {^ref, :error, reason} ->
+        {:error, reason}
+
+      {^ref, :exit, data_trace} ->
+        {data, trace} = data_trace
+
+        case data do
+          {:timeout, {NimblePool, :checkout, _affected_pids}} ->
+            # Provide helpful error messages for known errors
+            reraise(
+              """
+              Finch was unable to provide a connection within the timeout due to excess queuing \
+              for connections. Consider adjusting the pool size, count, timeout or reducing the \
+              rate of requests if it is possible that the downstream service is unable to keep up \
+              with the current rate.
+              """,
+              trace
+            )
+
+          _ ->
+            exit(data)
+        end
+    after
+      pool_timeout + request_timeout ->
+        # Cleanup late messages
+        receive do
+          {^ref, _, _} -> :ok
+        after
+          0 -> :ok
+        end
+
+        raise "Has not received message from pool yet"
+    end
+  end
+
   @impl Finch.Pool
   def request(pool, req, acc, fun, name, opts) do
     pool_timeout = Keyword.get(opts, :pool_timeout, 5_000)
@@ -279,17 +392,31 @@ defmodule Finch.HTTP1.Pool do
 
   def handle_cancelled(:queued, _pool_state), do: :ok
 
+  defp if_open(conn, state, from) do
+    if Conn.open?(conn) do
+      with :fresh <- state do
+        NimblePool.update(from, conn)
+      end
+
+      {:ok, conn}
+    else
+      :closed
+    end
+  end
+
   defp transfer_if_open(conn, state, {pid, _} = from) do
     if Conn.open?(conn) do
-      if state == :fresh do
-        NimblePool.update(from, conn)
+      case state do
+        :fresh ->
+          NimblePool.update(from, conn)
 
-        case Conn.transfer(conn, pid) do
-          {:ok, conn} -> {:ok, conn}
-          {:error, _, _} -> :closed
-        end
-      else
-        {:ok, conn}
+          case Conn.transfer(conn, pid) do
+            {:ok, conn} -> {:ok, conn}
+            {:error, _, _} -> :closed
+          end
+
+        _ ->
+          {:ok, conn}
       end
     else
       :closed

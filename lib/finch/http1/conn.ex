@@ -100,6 +100,90 @@ defmodule Finch.HTTP1.Conn do
     end
   end
 
+  def stream(%{mint: nil} = conn, _, _, _, _, _), do: {:error, conn, "Could not connect"}
+
+  def stream(conn, req, name, ref, handler, receive_timeout, request_timeout, idle_time) do
+    full_path = Finch.Request.request_path(req)
+
+    metadata = %{request: req, name: name}
+
+    extra_measurements = %{idle_time: idle_time}
+
+    start_time = Telemetry.start(:send, metadata, extra_measurements)
+
+    try do
+      case Mint.HTTP.request(
+             conn.mint,
+             req.method,
+             full_path,
+             req.headers,
+             stream_or_body(req.body)
+           ) do
+        {:ok, mint, mint_ref} ->
+          case maybe_stream_request_body(mint, mint_ref, req.body) do
+            {:ok, mint} ->
+              Telemetry.stop(:send, start_time, metadata, extra_measurements)
+              start_time = Telemetry.start(:recv, metadata, extra_measurements)
+              resp_metadata = %{status: nil, headers: [], trailers: []}
+              timeouts = %{receive_timeout: receive_timeout, request_timeout: request_timeout}
+
+              stream =
+                Stream.resource(
+                  fn -> {[], mint, mint_ref, timeouts, resp_metadata} end,
+                  &receive_stream_response/1,
+                  fn
+                    {mint, error, resp_metadata} ->
+                      conn = %{conn | mint: mint}
+
+                      state =
+                        if open?(conn) do
+                          {:ok, conn}
+                        else
+                          :closed
+                        end
+
+                      if error do
+                        metadata = Map.merge(metadata, Map.put(resp_metadata, :error, error))
+                        Telemetry.stop(:recv, start_time, metadata, extra_measurements)
+                        raise error
+                      else
+                        metadata = Map.merge(metadata, resp_metadata)
+                        Telemetry.stop(:recv, start_time, metadata, extra_measurements)
+                      end
+
+                      send(handler, {ref, :stop, state})
+
+                    {_entries, mint, _mint_ref, _timeout, _resp_metadata} ->
+                      # In case some exception occured, we close the connection
+                      Mint.HTTP.close(mint)
+                      send(handler, {ref, :stop, :closed})
+                  end
+                )
+
+              {:ok, stream}
+
+            {:error, mint, error} ->
+              handle_request_error(
+                conn,
+                mint,
+                error,
+                metadata,
+                start_time,
+                extra_measurements
+              )
+          end
+
+        {:error, mint, error} ->
+          handle_request_error(conn, mint, error, metadata, start_time, extra_measurements)
+      end
+    catch
+      kind, error ->
+        close(conn)
+        Telemetry.exception(:recv, start_time, kind, error, __STACKTRACE__, metadata)
+        :erlang.raise(kind, error, __STACKTRACE__)
+    end
+  end
+
   def request(%{mint: nil} = conn, _, _, _, _, _, _, _), do: {:error, conn, "Could not connect"}
 
   def request(conn, req, acc, fun, name, receive_timeout, request_timeout, idle_time) do
@@ -367,5 +451,92 @@ defmodule Finch.HTTP1.Conn do
       {:error, ^ref, error} ->
         {:error, mint, error, resp_metadata}
     end
+  end
+
+  defp receive_stream_response({
+         [{:done, _minf_ref} | _],
+         mint,
+         _mint_ref,
+         _timeouts,
+         resp_metadata
+       }) do
+    {:halt, {mint, nil, resp_metadata}}
+    |> IO.inspect(label: :x1)
+  end
+
+  defp receive_stream_response({
+         _,
+         mint,
+         _mint_ref,
+         timeouts,
+         resp_metadata
+       })
+       when timeouts.request_timeout < 0 do
+    {:ok, mint} = Mint.HTTP1.close(mint)
+
+    {:halt, {mint, %Mint.TransportError{reason: :timeout}, resp_metadata}}
+    |> IO.inspect(label: :x2)
+  end
+
+  defp receive_stream_response({
+         [],
+         mint,
+         mint_ref,
+         timeouts,
+         resp_metadata
+       }) do
+    start_time = System.monotonic_time(:millisecond)
+    %{} = timeouts
+
+    case Mint.HTTP.recv(mint, 0, timeouts.receive_timeout) do
+      {:ok, mint, entries} ->
+        timeouts =
+          if is_integer(timeouts.request_timeout) do
+            elapsed_time = System.monotonic_time(:millisecond) - start_time
+            update_in(timeouts.request_timeout, &(&1 - elapsed_time))
+          else
+            timeouts
+          end
+
+        {[], {entries, mint, mint_ref, timeouts, resp_metadata}}
+
+      {:error, mint, error, _responses} ->
+        {:halt, {mint, error, resp_metadata}}
+    end
+    |> IO.inspect(label: :x3)
+  end
+
+  defp receive_stream_response({
+         [entry | entries],
+         mint,
+         mint_ref,
+         timeouts,
+         resp_metadata
+       }) do
+    case entry do
+      {key, ^mint_ref, value} when key in ~w[status headers data]a ->
+        resp_metadata =
+          case key do
+            :headers ->
+              Map.update(resp_metadata, :headers, value, &(&1 ++ value))
+
+            _ ->
+              resp_metadata
+          end
+
+        acc = {
+          entries,
+          mint,
+          mint_ref,
+          timeouts,
+          %{resp_metadata | status: value}
+        }
+
+        {[{key, value}], acc}
+
+      {:error, ^mint_ref, error} ->
+        {:halt, {mint, error, resp_metadata}}
+    end
+    |> IO.inspect(label: :x4)
   end
 end
