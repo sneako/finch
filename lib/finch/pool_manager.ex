@@ -122,7 +122,7 @@ defmodule Finch.PoolManager do
 
   defp maybe_drop_tls_options(config, _), do: config
 
-  # Hostname is required when the address is not a url (binary) so we need to specify
+  # Hostname is required when the address is not a URL (binary) so we need to specify
   # a default value in case the configuration does not specify one.
   defp maybe_add_hostname(config, {_scheme, {:local, _path}, _port} = _shp) when is_map(config) do
     conn_opts =
