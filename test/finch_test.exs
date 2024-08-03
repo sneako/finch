@@ -625,6 +625,43 @@ defmodule FinchTest do
     end
   end
 
+  describe "actual_stream/3" do
+    test "Not supported for HTTP2", %{finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{default: [protocols: [:http2], size: 10, count: 1]}}
+      )
+
+      request = Finch.build("GET", "http://example.com/")
+
+      assert {:error, %RuntimeError{message: "Streaming is not supported for HTTP2"}} =
+               Finch.actual_stream(request, finch_name)
+    end
+
+    test "Streams response", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build("GET", endpoint(bypass))
+
+      assert {:ok, stream} = Finch.actual_stream(request, finch_name)
+
+      assert [
+               {:status, 200},
+               {:headers,
+                [
+                  {"cache-control", "max-age=0, private, must-revalidate"},
+                  {"content-length", "2"},
+                  {"date", _},
+                  {"server", "Cowboy"}
+                ]},
+               {:data, "OK"}
+             ] = Enum.to_list(stream)
+    end
+  end
+
   describe "stream/5" do
     test "successful get request, with query string", %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})

@@ -307,9 +307,26 @@ defmodule Finch do
     end
   end
 
+  @doc """
+  Like `stream/5`, but returns valid `Stream` structure, safe for passing between processes, but working __only__
+  on local node. Works only for HTTP1, HTTP2 not supported currently
+  """
+  @spec actual_stream(Request.t(), name(), request_opts()) ::
+          {:ok, Enumerable.t()} | {:error, Exception.t()}
   def actual_stream(request, name, opts \\ []) do
     {pool, pool_mod} = get_pool(request, name)
     pool_mod.stream(pool, request, name, opts)
+  end
+
+  @doc """
+  Raising version of `actual_stream/3`
+  """
+  @spec actual_stream!(Request.t(), name(), request_opts()) :: Enumerable.t()
+  def actual_stream!(request, name, opts \\ []) do
+    case actual_stream(request, name, opts) do
+      {:ok, stream} -> stream
+      exception -> raise exception
+    end
   end
 
   @doc """

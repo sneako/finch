@@ -461,7 +461,6 @@ defmodule Finch.HTTP1.Conn do
          resp_metadata
        }) do
     {:halt, {mint, nil, resp_metadata}}
-    |> IO.inspect(label: :x1)
   end
 
   defp receive_stream_response({
@@ -473,9 +472,7 @@ defmodule Finch.HTTP1.Conn do
        })
        when timeouts.request_timeout < 0 do
     {:ok, mint} = Mint.HTTP1.close(mint)
-
     {:halt, {mint, %Mint.TransportError{reason: :timeout}, resp_metadata}}
-    |> IO.inspect(label: :x2)
   end
 
   defp receive_stream_response({
@@ -503,7 +500,6 @@ defmodule Finch.HTTP1.Conn do
       {:error, mint, error, _responses} ->
         {:halt, {mint, error, resp_metadata}}
     end
-    |> IO.inspect(label: :x3)
   end
 
   defp receive_stream_response({
@@ -537,6 +533,5 @@ defmodule Finch.HTTP1.Conn do
       {:error, ^mint_ref, error} ->
         {:halt, {mint, error, resp_metadata}}
     end
-    |> IO.inspect(label: :x4)
   end
 end

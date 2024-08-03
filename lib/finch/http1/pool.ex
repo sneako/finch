@@ -38,6 +38,7 @@ defmodule Finch.HTTP1.Pool do
     )
   end
 
+  @impl Finch.Pool
   def stream(pool, req, name, opts) do
     pool_timeout = Keyword.get(opts, :pool_timeout, 5_000)
     receive_timeout = Keyword.get(opts, :receive_timeout, 15_000)
@@ -57,16 +58,7 @@ defmodule Finch.HTTP1.Pool do
             :checkout,
             fn from, {state, conn, idle_time} ->
               Telemetry.stop(:queue, start_time, metadata, %{idle_time: idle_time})
-
-              case Conn.connect(conn, name) do
-                {:ok, conn} ->
-                  send(owner, {ref, :ok, {conn, from, idle_time}})
-                  {:ok, if_open(conn, state, from)}
-
-                {:error, _conn, reason} ->
-                  send(owner, {ref, :error, reason})
-                  {:ok, if_open(conn, state, from)}
-              end
+              send(owner, {ref, :ok, {conn, from, state, idle_time}})
 
               receive do
                 {^ref, :stop, state} -> {:ok, state}
@@ -83,37 +75,38 @@ defmodule Finch.HTTP1.Pool do
 
     receive do
       {^ref, :ok, conn_from} ->
-        {conn, _from, idle_time} = conn_from
+        {conn, from, state, idle_time} = conn_from
 
-        case Conn.transfer(conn, self()) do
-          {:ok, conn} ->
-            case Conn.stream(
-                   conn,
-                   req,
-                   name,
-                   ref,
-                   holder,
-                   receive_timeout,
-                   request_timeout,
-                   idle_time
-                 ) do
-              {:ok, stream} ->
-                {:ok, stream}
+        with {:ok, conn} <- Conn.connect(conn, name),
+             {:ok, conn} <- transfer_if_open(conn, state, from),
+             {:ok, stream} <-
+               Conn.stream(
+                 conn,
+                 req,
+                 name,
+                 ref,
+                 holder,
+                 receive_timeout,
+                 request_timeout,
+                 idle_time
+               ) do
+          {:ok, stream}
+        else
+          :closed ->
+            send(holder, {ref, :stop, state})
+            # FIXME
+            {:error, :closed}
 
-              {:error, conn, error} ->
-                state =
-                  if Conn.open?(conn) do
-                    {:ok, conn}
-                  else
-                    :closed
-                  end
+          {:error, conn, error} ->
+            state =
+              if Conn.open?(conn) do
+                {:ok, conn}
+              else
+                :closed
+              end
 
-                send(holder, {ref, :stop, state})
-                {:error, error}
-            end
-
-          {:error, _, _} ->
-            send(holder, {ref, :stop, :closed})
+            send(holder, {ref, :stop, state})
+            {:error, error}
         end
 
       {^ref, :error, reason} ->
@@ -392,19 +385,11 @@ defmodule Finch.HTTP1.Pool do
 
   def handle_cancelled(:queued, _pool_state), do: :ok
 
-  defp if_open(conn, state, from) do
-    if Conn.open?(conn) do
-      with :fresh <- state do
-        NimblePool.update(from, conn)
-      end
-
-      {:ok, conn}
-    else
-      :closed
-    end
+  defp transfer_if_open(conn, state, {pid, _} = from) do
+    transfer_if_open(conn, state, from, pid)
   end
 
-  defp transfer_if_open(conn, state, {pid, _} = from) do
+  defp transfer_if_open(conn, state, from, pid) do
     if Conn.open?(conn) do
       case state do
         :fresh ->
