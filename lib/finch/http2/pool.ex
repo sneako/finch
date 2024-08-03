@@ -450,7 +450,7 @@ defmodule Finch.HTTP2.Pool do
     {:keep_state, data}
   end
 
-  # If we're in a read only state than respond with an error immediately
+  # If we're in a read only state then respond with an error immediately
   def connected_read_only({:call, from}, {:request, _, _, _}, _) do
     {:keep_state_and_data, {:reply, from, {:error, Error.exception(:read_only)}}}
   end

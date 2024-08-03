@@ -6,7 +6,7 @@ defmodule Finch.HTTP1.PoolMetrics do
 
     * `:pool_index` - Index of the pool
     * `:pool_size` - Total number of connections of the pool
-    * `:available_connections` - Number of avaialable connections
+    * `:available_connections` - Number of available connections
     * `:in_use_connections` - Number of connections currently in use
 
   Caveats:
