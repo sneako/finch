@@ -309,7 +309,18 @@ defmodule Finch do
 
   @doc """
   Like `stream/5`, but returns valid `Stream` structure, safe for passing between processes, but working __only__
-  on local node. Works only for HTTP1, HTTP2 not supported currently
+  on local node. Works only for HTTP1, HTTP2 not supported currently.
+
+  ## Options
+
+  Same as `request/3` plus
+
+    * `:fail_safe_timeout` (`t:timeout/0`) (optional) (default is 15 minutes) - timeout in milliseconds.
+      Since this function returns an Enumerable which is lazily executed, it makes sense to
+      have a timeout which will close the connection in case it's never read from in erroneous situations.
+
+    * `:stop_notify` (`{t:GenServer.name/0 | t:pid/0, t:any/0}`) (optional) - destination and message which
+      will be notified once connection is returned to pool or closed.
   """
   @spec actual_stream(Request.t(), name(), request_opts()) ::
           {:ok, Enumerable.t()} | {:error, Exception.t()}

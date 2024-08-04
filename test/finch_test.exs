@@ -697,6 +697,78 @@ defmodule FinchTest do
         :continue -> :ok
       end
     end
+
+    test "Stream can be halted", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build("GET", endpoint(bypass))
+
+      assert {:ok, stream} =
+               Finch.actual_stream(request, finch_name, stop_notify: {self(), :stopped})
+
+      assert [status: 200] = Enum.take_while(stream, &(not match?({:headers, _}, &1)))
+
+      assert_receive :stopped
+    end
+
+    test "Raising in stream closes the connection", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build("GET", endpoint(bypass))
+
+      assert {:ok, stream} =
+               Finch.actual_stream(request, finch_name, stop_notify: {self(), :stopped})
+
+      assert_raise RuntimeError, fn ->
+        Enum.map(stream, fn _ -> raise "oops" end)
+      end
+
+      assert_receive :stopped
+    end
+
+    test "Fail safe timeout works", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      Process.flag(:trap_exit, true)
+
+      Bypass.stub(bypass, "GET", "/", fn conn ->
+        Process.sleep(1_000)
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build("GET", endpoint(bypass))
+
+      assert {:ok, stream} =
+               Finch.actual_stream(request, finch_name,
+                 stop_notify: {self(), :stopped},
+                 fail_safe_timeout: 100
+               )
+
+      Process.sleep(200)
+
+      assert_raise RuntimeError, fn ->
+        Enum.to_list(stream)
+      end
+
+      assert_receive :stopped
+    end
   end
 
   describe "stream/5" do

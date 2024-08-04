@@ -44,6 +44,7 @@ defmodule Finch.HTTP1.Pool do
     receive_timeout = Keyword.get(opts, :receive_timeout, 15_000)
     request_timeout = Keyword.get(opts, :request_timeout, 30_000)
     fail_safe_timeout = Keyword.get(opts, :fail_safe_timeout, 15 * 60_000)
+    stop_notify = Keyword.get(opts, :stop_notify, nil)
 
     metadata = %{request: req, pool: pool, name: name}
 
@@ -58,17 +59,37 @@ defmodule Finch.HTTP1.Pool do
             pool,
             :checkout,
             fn from, {state, conn, idle_time} ->
-              Telemetry.stop(:queue, start_time, metadata, %{idle_time: idle_time})
-              send(owner, {ref, :ok, {conn, idle_time}})
-
-              receive do
-                {^ref, :stop, conn} ->
-                  transfer_if_open(conn, state, from)
-              after
-                fail_safe_timeout ->
-                  {_, state} = transfer_if_open(conn, state, from)
-                  {:fail_safe_timeout, state}
+              if fail_safe_timeout != :infinity do
+                Process.send_after(self(), :fail_safe_timeout, fail_safe_timeout)
               end
+
+              Telemetry.stop(:queue, start_time, metadata, %{idle_time: idle_time})
+
+              return =
+                case Conn.connect(conn, name) do
+                  {:ok, conn} ->
+                    send(owner, {ref, :ok, {conn, idle_time}})
+
+                    receive do
+                      {^ref, :stop, conn} ->
+                        with :closed <- transfer_if_open(conn, state, from) do
+                          {:ok, :closed}
+                        end
+
+                      :fail_safe_timeout ->
+                        Conn.close(conn)
+                        {:fail_safe_timeout, :closed}
+                    end
+
+                  {:error, conn, error} ->
+                    {{:error, error}, transfer_if_open(conn, state, from)}
+                end
+
+              with {to, message} <- stop_notify do
+                send(to, message)
+              end
+
+              return
             end,
             pool_timeout
           )
@@ -92,12 +113,18 @@ defmodule Finch.HTTP1.Pool do
         stream =
           fn
             {:cont, acc}, function ->
-              Process.link(holder)
+              case Process.alive?(holder) do
+                true ->
+                  Process.link(holder)
+
+                false ->
+                  raise "Process holding the connection in pool died" <>
+                          " before the stream enumeration started." <>
+                          " Most likely fail_safe_timeout occured"
+              end
 
               try do
-                with {:ok, conn} <- Conn.connect(conn, name),
-                     {:ok, conn} <- Conn.transfer(conn, self()),
-                     {:ok, conn, acc} <-
+                with {:ok, conn, acc} <-
                        Conn.request(
                          conn,
                          req,
@@ -109,10 +136,11 @@ defmodule Finch.HTTP1.Pool do
                          idle_time
                        ) do
                   send(holder, {ref, :stop, conn})
-                  {:cont, acc}
+                  {:done, acc}
                 else
-                  {:error, conn, _error} ->
+                  {:error, conn, error} ->
                     send(holder, {ref, :stop, conn})
+                    raise error
                 end
               catch
                 class, reason ->
@@ -120,8 +148,9 @@ defmodule Finch.HTTP1.Pool do
                   :erlang.raise(class, reason, __STACKTRACE__)
               end
 
-            {_, _acc}, _function ->
+            {_, acc}, _function ->
               send(holder, {ref, :stop, conn})
+              {:done, acc}
           end
 
         {:ok, stream}
