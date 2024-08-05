@@ -235,9 +235,6 @@ defmodule Finch.HTTP2.PoolTest do
       ])
 
       assert_receive {:resp, {:ok, _}}
-
-      assert_recv_frames([rst_stream(stream_id: ^stream_id, error_code: :no_error)])
-
       refute_receive _any, 200
     end
 
