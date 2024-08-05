@@ -328,6 +328,15 @@ defmodule Finch do
 
   See also `stream_while/5`.
 
+  > ### HTTP2 streaming and back-pressure {: .warning}
+  >
+  > At the moment, streaming over HTTP2 connections do not provide
+  > any back-pressure mechanism: this means the response will be
+  > sent to the client as quickly as possible. Therefore, you must
+  > not use streaming over HTTP2 for non-terminating responses or
+  > when streaming large responses which you do not intend to keep
+  > in memory.
+
   ## Stream commands
 
     * `{:status, status}` - the http response status
@@ -383,6 +392,15 @@ defmodule Finch do
     * `{:halt, acc}` to halt streaming
 
   See also `stream/5`.
+
+  > ### HTTP2 streaming and back-pressure {: .warning}
+  >
+  > At the moment, streaming over HTTP2 connections do not provide
+  > any back-pressure mechanism: this means the response will be
+  > sent to the client as quickly as possible. Therefore, you must
+  > not use streaming over HTTP2 for non-terminating responses or
+  > when streaming large responses which you do not intend to keep
+  > in memory.
 
   ## Stream commands
 
