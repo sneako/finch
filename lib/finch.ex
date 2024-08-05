@@ -484,7 +484,7 @@ defmodule Finch do
           {:cont, {status, headers ++ value, body, trailers}}
 
         {:data, value}, {status, headers, body, trailers} ->
-          {:cont, {status, headers, [value | body], trailers}}
+          {:cont, {status, headers, [body | value], trailers}}
 
         {:trailers, value}, {status, headers, body, trailers} ->
           {:cont, {status, headers, body, trailers ++ value}}
@@ -495,7 +495,7 @@ defmodule Finch do
          %Response{
            status: status,
            headers: headers,
-           body: body |> Enum.reverse() |> IO.iodata_to_binary(),
+           body: IO.iodata_to_binary(body),
            trailers: trailers
          }}
       end
