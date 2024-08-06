@@ -27,6 +27,11 @@ defmodule Finch.HTTP2.Pool do
     }
   end
 
+  @impl Finch.Pool
+  def stream(_pool, _request, _name, _opts) do
+    {:error, %RuntimeError{message: "Streaming is not supported for HTTP2"}}
+  end
+
   # Call the pool with the request. The pool will multiplex multiple requests
   # and stream the result set back to the calling process using `send`
   @impl Finch.Pool

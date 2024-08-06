@@ -625,6 +625,152 @@ defmodule FinchTest do
     end
   end
 
+  describe "actual_stream/3" do
+    test "Not supported for HTTP2", %{finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{default: [protocols: [:http2], size: 10, count: 1]}}
+      )
+
+      request = Finch.build("GET", "http://example.com/")
+
+      assert {:error, %RuntimeError{message: "Streaming is not supported for HTTP2"}} =
+               Finch.actual_stream(request, finch_name)
+    end
+
+    test "Streams response", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build("GET", endpoint(bypass))
+
+      assert {:ok, stream} = Finch.actual_stream(request, finch_name)
+
+      assert [
+               {:status, 200},
+               {:headers,
+                [
+                  {"cache-control", "max-age=0, private, must-revalidate"},
+                  {"content-length", "2"},
+                  {"date", _},
+                  {"server", "Cowboy"}
+                ]},
+               {:data, "OK"}
+             ] = Enum.to_list(stream)
+    end
+
+    test "Streams response even when sent to another process", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build("GET", endpoint(bypass))
+
+      assert {:ok, stream} = Finch.actual_stream(request, finch_name)
+
+      owner = self()
+
+      spawn_link(fn ->
+        assert [
+                 {:status, 200},
+                 {:headers,
+                  [
+                    {"cache-control", "max-age=0, private, must-revalidate"},
+                    {"content-length", "2"},
+                    {"date", _},
+                    {"server", "Cowboy"}
+                  ]},
+                 {:data, "OK"}
+               ] = Enum.to_list(stream)
+
+        send(owner, :continue)
+      end)
+
+      receive do
+        :continue -> :ok
+      end
+    end
+
+    test "Stream can be halted", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build("GET", endpoint(bypass))
+
+      assert {:ok, stream} =
+               Finch.actual_stream(request, finch_name, stop_notify: {self(), :stopped})
+
+      assert [status: 200] = Enum.take_while(stream, &(not match?({:headers, _}, &1)))
+
+      assert_receive :stopped
+    end
+
+    test "Raising in stream closes the connection", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build("GET", endpoint(bypass))
+
+      assert {:ok, stream} =
+               Finch.actual_stream(request, finch_name, stop_notify: {self(), :stopped})
+
+      assert_raise RuntimeError, fn ->
+        Enum.map(stream, fn _ -> raise "oops" end)
+      end
+
+      assert_receive :stopped
+    end
+
+    test "Fail safe timeout works", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      Process.flag(:trap_exit, true)
+
+      Bypass.stub(bypass, "GET", "/", fn conn ->
+        Process.sleep(1_000)
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build("GET", endpoint(bypass))
+
+      assert {:ok, stream} =
+               Finch.actual_stream(request, finch_name,
+                 stop_notify: {self(), :stopped},
+                 fail_safe_timeout: 100
+               )
+
+      Process.sleep(200)
+
+      assert_raise RuntimeError, fn ->
+        Enum.to_list(stream)
+      end
+
+      assert_receive :stopped
+    end
+  end
+
   describe "stream/5" do
     test "successful get request, with query string", %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
