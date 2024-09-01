@@ -38,19 +38,16 @@ defmodule Finch.HTTP1.Pool do
     )
   end
 
-  @impl Finch.Pool
-  def stream(pool, req, name, opts) do
-    pool_timeout = Keyword.get(opts, :pool_timeout, 5_000)
-    receive_timeout = Keyword.get(opts, :receive_timeout, 15_000)
-    request_timeout = Keyword.get(opts, :request_timeout, 30_000)
+  defp spawn_holder(pool, req, name, opts) do
+    metadata = %{request: req, pool: pool, name: name}
     fail_safe_timeout = Keyword.get(opts, :fail_safe_timeout, 15 * 60_000)
     stop_notify = Keyword.get(opts, :stop_notify, nil)
+    pool_timeout = Keyword.get(opts, :pool_timeout, 5_000)
 
-    metadata = %{request: req, pool: pool, name: name}
-
-    start_time = Telemetry.start(:queue, metadata)
     owner = self()
     ref = make_ref()
+
+    start_time = Telemetry.start(:queue, metadata)
 
     holder =
       spawn_link(fn ->
@@ -78,7 +75,7 @@ defmodule Finch.HTTP1.Pool do
 
                       :fail_safe_timeout ->
                         Conn.close(conn)
-                        {:fail_safe_timeout, :closed}
+                        {:ok, :closed}
                     end
 
                   {:error, conn, error} ->
@@ -93,12 +90,9 @@ defmodule Finch.HTTP1.Pool do
             end,
             pool_timeout
           )
-        else
-          :fail_safe_timeout ->
-            raise "Fail safe timeout was hit"
-
-          other ->
-            other
+        rescue
+          x ->
+            IO.inspect(x)
         catch
           :exit, data ->
             Telemetry.exception(:queue, start_time, :exit, data, __STACKTRACE__, metadata)
@@ -107,53 +101,9 @@ defmodule Finch.HTTP1.Pool do
       end)
 
     receive do
-      {^ref, :ok, conn_idle_time} ->
-        {conn, idle_time} = conn_idle_time
-
-        stream =
-          fn
-            {:cont, acc}, function ->
-              case Process.alive?(holder) do
-                true ->
-                  Process.link(holder)
-
-                false ->
-                  raise "Process holding the connection in pool died" <>
-                          " before the stream enumeration started." <>
-                          " Most likely fail_safe_timeout occured"
-              end
-
-              try do
-                with {:ok, conn, acc} <-
-                       Conn.request(
-                         conn,
-                         req,
-                         acc,
-                         function,
-                         name,
-                         receive_timeout,
-                         request_timeout,
-                         idle_time
-                       ) do
-                  send(holder, {ref, :stop, conn})
-                  {:done, acc}
-                else
-                  {:error, conn, error} ->
-                    send(holder, {ref, :stop, conn})
-                    raise error
-                end
-              catch
-                class, reason ->
-                  send(holder, {ref, :stop, conn})
-                  :erlang.raise(class, reason, __STACKTRACE__)
-              end
-
-            {_, acc}, _function ->
-              send(holder, {ref, :stop, conn})
-              {:done, acc}
-          end
-
-        {:ok, stream}
+      {^ref, :ok, {conn, idle_time}} ->
+        Process.link(holder)
+        {:ok, holder, ref, conn, idle_time}
 
       {^ref, :error, reason} ->
         {:error, reason}
@@ -178,7 +128,7 @@ defmodule Finch.HTTP1.Pool do
             exit(data)
         end
     after
-      pool_timeout + request_timeout ->
+      pool_timeout ->
         # Cleanup late messages
         receive do
           {^ref, _, _} -> :ok
@@ -188,6 +138,64 @@ defmodule Finch.HTTP1.Pool do
 
         raise "Has not received message from pool yet"
     end
+  rescue
+    x ->
+      IO.inspect({x, __STACKTRACE__})
+  end
+
+  @impl Finch.Pool
+  def stream(pool, req, name, opts) do
+    receive_timeout = Keyword.get(opts, :receive_timeout, 15_000)
+    request_timeout = Keyword.get(opts, :request_timeout, 30_000)
+
+    stream =
+      fn
+        {:cont, acc}, function ->
+          case spawn_holder(pool, req, name, opts) do
+            {:ok, holder, ref, conn, idle_time} ->
+              function = fn x, y ->
+                with {:suspend, acc} <- function.(x, y) do
+                  {:__finch_suspend__, acc, {holder, ref, conn}}
+                end
+              end
+
+              try do
+                with {:ok, conn, acc} <-
+                       Conn.request(
+                         conn,
+                         req,
+                         acc,
+                         function,
+                         name,
+                         receive_timeout,
+                         request_timeout,
+                         idle_time
+                       ) do
+                  send(holder, {ref, :stop, conn})
+                  {:done, acc}
+                else
+                  {:error, conn, error} ->
+                    send(holder, {ref, :stop, conn})
+                    raise error
+
+                  {:suspended, _, _} = suspended ->
+                    suspended
+                end
+              catch
+                class, reason ->
+                  send(holder, {ref, :stop, conn})
+                  :erlang.raise(class, reason, __STACKTRACE__)
+              end
+
+            other ->
+              other
+          end
+
+        {:halt, acc}, _function ->
+          {:halted, acc}
+      end
+
+    {:ok, stream}
   end
 
   @impl Finch.Pool
