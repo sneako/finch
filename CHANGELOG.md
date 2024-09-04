@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.19.0 (2024-09-04)
+
+### Enhancements
+
+- Update @mint_tls_opts in pool_manager.ex #266
+- Document there is no backpressure on HTTP2 #283
+- Fix test: compare file size instead of map #284
+- Finch.request/3: Use improper list and avoid Enum.reverse #286
+- Require Mint 1.6 #287
+- Remove castore dependency #274
+- Fix typos and improve language in docs and comments #285
+- fix logo size in README #275
+
+### Bug Fixes
+
+- Tweak Finch supervisor children startup order #289, fixes #277
+- implement handle_cancelled/2 pool callback #268, fixes #257
+- type Finch.request_opt() was missing the :request_timeout option #278
+
 ## v0.18.0 (2024-02-09)
 
 ### Enhancements
