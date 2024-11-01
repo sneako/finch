@@ -218,7 +218,7 @@ defmodule Finch.HTTP1.Pool do
     with true <- Conn.reusable?(conn, idle_time),
          {:ok, conn} <- Conn.set_mode(conn, :passive) do
       PoolMetrics.maybe_add(metric_ref, in_use_connections: 1)
-      {:ok, {:reuse, conn, idle_time}, conn, pool_state}
+      {:ok, {:reuse, conn, idle_time}, conn, update_last_checkout_ts(pool_state)}
     else
       false ->
         meta = %{
@@ -271,15 +271,24 @@ defmodule Finch.HTTP1.Pool do
   def handle_ping(_conn, %__MODULE__.State{} = pool_state) do
     %__MODULE__.State{shp: {scheme, host, port}} = pool_state
 
-    meta = %{
-      scheme: scheme,
-      host: host,
-      port: port
-    }
+    max_idle_time = Map.get(opts, :pool_max_idle_time, :infinity)
+    now = System.monotonic_time(:millisecond)
+    diff_from_last_checkout = now - last_checkout_ts
 
-    Telemetry.event(:pool_max_idle_time_exceeded, %{}, meta)
+    cond do
+      is_number(max_idle_time) and diff_from_last_checkout > max_idle_time ->
+        meta = %{
+          scheme: scheme,
+          host: host,
+          port: port
+        }
 
-    {:stop, :idle_timeout}
+        Telemetry.event(:pool_max_idle_time_exceeded, %{}, meta)
+        {:stop, :idle_timeout}
+
+      true ->
+        {:ok, conn}
+    end
   end
 
   @impl NimblePool
@@ -321,4 +330,7 @@ defmodule Finch.HTTP1.Pool do
 
   defp pool_idle_timeout(:infinity), do: nil
   defp pool_idle_timeout(pool_max_idle_time), do: pool_max_idle_time
+
+  defp update_last_checkout_ts(pool_state),
+    do: put_elem(pool_state, 5, System.monotonic_time(:millisecond))
 end
