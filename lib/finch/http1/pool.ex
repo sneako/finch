@@ -285,7 +285,7 @@ defmodule Finch.HTTP1.Pool do
 
   @impl NimblePool
   def handle_cancelled(:checked_out, pool_state) do
-    {_name, _shp, _pool_idx, metric_ref, _opts} = pool_state
+    {_name, _shp, _pool_idx, metric_ref, _opts, _last_checkout_ts} = pool_state
     PoolMetrics.maybe_add(metric_ref, in_use_connections: -1)
     :ok
   end

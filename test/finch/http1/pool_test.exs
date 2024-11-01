@@ -60,7 +60,7 @@ defmodule Finch.HTTP1.PoolTest do
   end
 
   @tag capture_log: true
-  test "should terminate pool while connection is checked out", %{
+  test "should consider last checkout timestamp on pool idle termination", %{
     bypass: bypass,
     finch_name: finch_name
   } do
@@ -70,7 +70,7 @@ defmodule Finch.HTTP1.PoolTest do
       {Finch,
        name: finch_name,
        pools: %{
-         default: [count: 1, size: 2, pool_max_idle_time: 50]
+         default: [count: 1, size: 2, pool_max_idle_time: 200]
        }}
     )
 
@@ -95,28 +95,32 @@ defmodule Finch.HTTP1.PoolTest do
     end
 
     ref1 = make_ref()
-    Task.async(fn -> delay_exec.(ref1, 5) end)
+    Task.async(fn -> delay_exec.(ref1, 10) end)
 
     ref2 = make_ref()
-    Task.async(fn -> delay_exec.(ref2, 5) end)
+    Task.async(fn -> delay_exec.(ref2, 10) end)
 
-    assert_receive {^ref1, :done}
-    assert_receive {^ref2, :done}
+    assert_receive {^ref1, :done}, 150
 
-    Process.sleep(47)
+    assert_receive {^ref2, :done}, 150
+
+    # after here the next idle termination will trigger in =~  ms
 
     assert [{pool, _pool_mod}] = Registry.lookup(finch_name, shp(bypass))
 
     Process.monitor(pool)
 
+    refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
+
     ref3 = make_ref()
-    Task.async(fn -> assert {:ok, %{status: 200}} = delay_exec.(ref3, 40) end)
 
-    assert_receive {^ref3, :done}
+    Task.async(fn -> assert {:ok, %{status: 200}} = delay_exec.(ref3, 10) end)
 
-    refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 30
+    assert_receive {^ref3, :done}, 150
 
-    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 50
+    refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
+
+    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
 
     assert [] = DynamicSupervisor.which_children(:"#{finch_name}.PoolSupervisor")
   end
