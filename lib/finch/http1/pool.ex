@@ -55,22 +55,19 @@ defmodule Finch.HTTP1.Pool do
         fn from, {state, conn, idle_time} ->
           Telemetry.stop(:queue, start_time, metadata, %{idle_time: idle_time})
 
-          with {:ok, conn} <- Conn.connect(conn, name),
-               {:ok, conn, acc} <-
-                 Conn.request(
-                   conn,
-                   req,
-                   acc,
-                   fun,
-                   name,
-                   receive_timeout,
-                   request_timeout,
-                   idle_time
-                 ) do
-            {{:ok, acc}, transfer_if_open(conn, state, from)}
-          else
+          case Conn.connect(conn, name) do
+            {:ok, conn} ->
+              Conn.request(conn, req, acc, fun, name, receive_timeout, request_timeout, idle_time)
+              |> case do
+                {:ok, conn, acc} ->
+                  {{:ok, acc}, transfer_if_open(conn, state, from)}
+
+                {:error, conn, error, acc} ->
+                  {{:error, error, acc}, transfer_if_open(conn, state, from)}
+              end
+
             {:error, conn, error} ->
-              {{:error, error}, transfer_if_open(conn, state, from)}
+              {{:error, error, acc}, transfer_if_open(conn, state, from)}
           end
         end,
         pool_timeout
@@ -116,7 +113,7 @@ defmodule Finch.HTTP1.Pool do
                opts
              ) do
           {:ok, _} -> send(owner, {request_ref, :done})
-          {:error, error} -> send(owner, {request_ref, {:error, error}})
+          {:error, error, _acc} -> send(owner, {request_ref, {:error, error}})
         end
       end)
 

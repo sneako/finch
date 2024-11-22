@@ -369,7 +369,7 @@ defmodule Finch do
       File.close(file)
   """
   @spec stream(Request.t(), name(), acc, stream(acc), request_opts()) ::
-          {:ok, acc} | {:error, Exception.t()}
+          {:ok, acc} | {:error, Exception.t(), acc}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
     fun = fn entry, acc ->
@@ -437,7 +437,7 @@ defmodule Finch do
       File.close(file)
   """
   @spec stream_while(Request.t(), name(), acc, stream_while(acc), request_opts()) ::
-          {:ok, acc} | {:error, Exception.t()}
+          {:ok, acc} | {:error, Exception.t(), acc}
         when acc: term()
   def stream_while(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
     request_span req, name do
@@ -490,14 +490,18 @@ defmodule Finch do
           {:cont, {status, headers, body, trailers ++ value}}
       end
 
-      with {:ok, {status, headers, body, trailers}} <- __stream__(req, name, acc, fun, opts) do
-        {:ok,
-         %Response{
-           status: status,
-           headers: headers,
-           body: IO.iodata_to_binary(body),
-           trailers: trailers
-         }}
+      case __stream__(req, name, acc, fun, opts) do
+        {:ok, {status, headers, body, trailers}} ->
+          {:ok,
+           %Response{
+             status: status,
+             headers: headers,
+             body: IO.iodata_to_binary(body),
+             trailers: trailers
+           }}
+
+        {:error, error, _acc} ->
+          {:error, error}
       end
     end
   end

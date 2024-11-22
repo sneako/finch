@@ -35,28 +35,32 @@ defmodule Finch.HTTP2.Pool do
     timeout = opts[:receive_timeout]
     request_ref = make_request_ref(pool)
 
-    with {:ok, recv_start} <- :gen_statem.call(pool, {:request, request_ref, request, opts}) do
-      monitor = Process.monitor(pool)
-      # If the timeout is an integer, we add a fail-safe "after" clause that fires
-      # after a timeout that is double the original timeout (min 2000ms). This means
-      # that if there are no bugs in our code, then the normal :request_timeout is
-      # returned, but otherwise we have a way to escape this code, raise an error, and
-      # get the process unstuck.
-      fail_safe_timeout = if is_integer(timeout), do: max(2000, timeout * 2), else: :infinity
+    case :gen_statem.call(pool, {:request, request_ref, request, opts}) do
+      {:ok, recv_start} ->
+        monitor = Process.monitor(pool)
+        # If the timeout is an integer, we add a fail-safe "after" clause that fires
+        # after a timeout that is double the original timeout (min 2000ms). This means
+        # that if there are no bugs in our code, then the normal :request_timeout is
+        # returned, but otherwise we have a way to escape this code, raise an error, and
+        # get the process unstuck.
+        fail_safe_timeout = if is_integer(timeout), do: max(2000, timeout * 2), else: :infinity
 
-      try do
-        response_waiting_loop(acc, fun, request_ref, monitor, fail_safe_timeout, :headers)
-      catch
-        kind, error ->
-          metadata = %{request: request, name: name}
-          Telemetry.exception(:recv, recv_start, kind, error, __STACKTRACE__, metadata)
+        try do
+          response_waiting_loop(acc, fun, request_ref, monitor, fail_safe_timeout, :headers)
+        catch
+          kind, error ->
+            metadata = %{request: request, name: name}
+            Telemetry.exception(:recv, recv_start, kind, error, __STACKTRACE__, metadata)
 
-          :ok = :gen_statem.call(pool, {:cancel, request_ref})
-          clean_responses(request_ref)
-          Process.demonitor(monitor)
+            :ok = :gen_statem.call(pool, {:cancel, request_ref})
+            clean_responses(request_ref)
+            Process.demonitor(monitor)
 
-          :erlang.raise(kind, error, __STACKTRACE__)
-      end
+            :erlang.raise(kind, error, __STACKTRACE__)
+        end
+
+      {:error, error} ->
+        {:error, error, acc}
     end
   end
 
@@ -171,7 +175,7 @@ defmodule Finch.HTTP2.Pool do
 
       {^request_ref, {:error, error}} ->
         Process.demonitor(monitor_ref)
-        {:error, error}
+        {:error, error, acc}
 
       {:DOWN, ^monitor_ref, _, _, _} ->
         {:error, :connection_process_went_down}
