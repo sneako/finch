@@ -11,7 +11,7 @@ defmodule Finch.Pool do
               Finch.stream(acc),
               Finch.name(),
               list()
-            ) :: {:ok, acc} | {:error, term()}
+            ) :: {:ok, acc} | {:error, term(), acc}
             when acc: term()
 
   @callback async_request(

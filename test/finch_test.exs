@@ -648,6 +648,21 @@ defmodule FinchTest do
                |> Finch.stream(finch_name, acc, fun)
     end
 
+    test "unsuccessful get request", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      acc = {nil, [], ""}
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {value, headers, body}
+        {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
+        {:data, value}, {status, headers, body} -> {status, headers, body <> value}
+      end
+
+      assert {:error, %{reason: :nxdomain}, ^acc} =
+               Finch.build(:get, "http://idontexist.wat") |> Finch.stream(finch_name, acc, fun)
+    end
+
     test "HTTP/1 with atom accumulator, illustrating that the type/shape of the accumulator is not important",
          %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
@@ -766,6 +781,22 @@ defmodule FinchTest do
 
       assert {:ok, {200, [_ | _], "OK"}} =
                Finch.build(:get, endpoint(bypass))
+               |> Finch.stream_while(finch_name, acc, fun)
+    end
+
+    test "unsuccessful get request", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      acc = {nil, [], ""}
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {:cont, {value, headers, body}}
+        {:headers, value}, {status, headers, body} -> {:cont, {status, headers ++ value, body}}
+        {:data, value}, {status, headers, body} -> {:cont, {status, headers, body <> value}}
+      end
+
+      assert {:error, %{reason: :nxdomain}, ^acc} =
+               Finch.build(:get, "http://idontexist.wat")
                |> Finch.stream_while(finch_name, acc, fun)
     end
 
