@@ -195,27 +195,22 @@ defmodule Finch.HTTP1.Pool do
     idle_time = System.monotonic_time() - conn.last_checkin
     {_name, {scheme, host, port}, _pool_idx, metric_ref, _opts} = pool_state
 
-    with true <- Conn.reusable?(conn, idle_time),
-         {:ok, conn} <- Conn.set_mode(conn, :passive) do
+    if Conn.reusable?(conn, idle_time) do
       PoolMetrics.maybe_add(metric_ref, in_use_connections: 1)
       {:ok, {:reuse, conn, idle_time}, conn, pool_state}
     else
-      false ->
-        meta = %{
-          scheme: scheme,
-          host: host,
-          port: port
-        }
+      meta = %{
+        scheme: scheme,
+        host: host,
+        port: port
+      }
 
-        # Deprecated, remember to delete when we remove the :max_idle_time pool config option!
-        Telemetry.event(:max_idle_time_exceeded, %{idle_time: idle_time}, meta)
+      # Deprecated, remember to delete when we remove the :max_idle_time pool config option!
+      Telemetry.event(:max_idle_time_exceeded, %{idle_time: idle_time}, meta)
 
-        Telemetry.event(:conn_max_idle_time_exceeded, %{idle_time: idle_time}, meta)
+      Telemetry.event(:conn_max_idle_time_exceeded, %{idle_time: idle_time}, meta)
 
-        {:remove, :closed, pool_state}
-
-      _ ->
-        {:remove, :closed, pool_state}
+      {:remove, :closed, pool_state}
     end
   end
 
@@ -224,10 +219,10 @@ defmodule Finch.HTTP1.Pool do
     {_name, _shp, _pool_idx, metric_ref, _opts} = pool_state
     PoolMetrics.maybe_add(metric_ref, in_use_connections: -1)
 
-    with {:ok, conn} <- checkin,
-         {:ok, conn} <- Conn.set_mode(conn, :active) do
-      {:ok, %{conn | last_checkin: System.monotonic_time()}, pool_state}
-    else
+    case checkin do
+      {:ok, conn} ->
+        {:ok, %{conn | last_checkin: System.monotonic_time()}, pool_state}
+
       _ ->
         {:remove, :closed, pool_state}
     end
