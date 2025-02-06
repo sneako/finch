@@ -1019,6 +1019,39 @@ defmodule FinchTest do
     end
   end
 
+  describe "get_pool_status/2" do
+    test "fails if the pool doesn't exist", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+      assert Finch.stop_pool(finch_name, "http://unknown.url/") == {:error, :not_found}
+    end
+
+    test "succeeds with a string url", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)
+
+      url = endpoint(bypass)
+      {:ok, %{status: 200}} = Finch.build(:get, url) |> Finch.request(finch_name)
+
+      assert Finch.stop_pool(finch_name, url) == :ok
+      assert Finch.get_pool_status(finch_name, url) == {:error, :not_found}
+    end
+
+    test "succeeds with an shp tuple", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)
+
+      url = endpoint(bypass)
+      {:ok, %{status: 200}} = Finch.build(:get, url) |> Finch.request(finch_name)
+
+      {s, h, p, _, _} = Finch.Request.parse_url(url)
+
+      assert Finch.stop_pool(finch_name, {s, h, p}) == :ok
+      assert Finch.get_pool_status(finch_name, {s, h, p}) == {:error, :not_found}
+    end
+  end
+
   defp get_pools(name, shp) do
     Registry.lookup(name, shp)
   end
