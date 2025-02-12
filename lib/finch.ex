@@ -675,12 +675,17 @@ defmodule Finch do
   end
 
   def stop_pool(finch_name, shp) when is_tuple(shp) do
-    case PoolManager.get_pool(finch_name, shp, auto_start?: false) do
-      {pid, _pool_mod} ->
-        DynamicSupervisor.terminate_child(pool_supervisor_name(finch_name), pid)
-
-      :not_found ->
+    case PoolManager.all_pool_instances(finch_name, shp) do
+      [] ->
         {:error, :not_found}
+
+      children ->
+        Enum.each(
+          children,
+          fn {pid, _module} ->
+            DynamicSupervisor.terminate_child(pool_supervisor_name(finch_name), pid)
+          end
+        )
     end
   end
 end

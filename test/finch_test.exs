@@ -1026,7 +1026,9 @@ defmodule FinchTest do
     end
 
     test "succeeds with a string url", %{bypass: bypass, finch_name: finch_name} do
-      start_supervised!({Finch, name: finch_name, pools: %{default: [start_pool_metrics?: true]}})
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{default: [start_pool_metrics?: true, count: 2]}}
+      )
 
       Bypass.expect_once(bypass, "GET", "/", fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)
 
@@ -1039,7 +1041,9 @@ defmodule FinchTest do
     end
 
     test "succeeds with an shp tuple", %{bypass: bypass, finch_name: finch_name} do
-      start_supervised!({Finch, name: finch_name, pools: %{default: [start_pool_metrics?: true]}})
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{default: [start_pool_metrics?: true, count: 2]}}
+      )
 
       Bypass.expect_once(bypass, "GET", "/", fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)
 
