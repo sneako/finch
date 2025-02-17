@@ -656,4 +656,36 @@ defmodule Finch do
         {:error, :not_found}
     end
   end
+
+  @doc """
+  Stops the pool of processes associated with the given scheme, host, port (aka SHP).
+
+  This function can be invoked to manually stop the pool to the given SHP when you know it's not
+  going to be used anymore.
+
+  Note that this function is not safe with respect to concurrent requests. Invoking it while
+  another request to the same SHP is taking place might result in the failure of that request. It
+  is the responsibility of the client to ensure that no request to the same SHP is taking place
+  while this function is being invoked.
+  """
+  @spec stop_pool(name(), url :: String.t() | scheme_host_port()) :: :ok | {:error, :not_found}
+  def stop_pool(finch_name, url) when is_binary(url) do
+    {s, h, p, _, _} = Request.parse_url(url)
+    stop_pool(finch_name, {s, h, p})
+  end
+
+  def stop_pool(finch_name, shp) when is_tuple(shp) do
+    case PoolManager.all_pool_instances(finch_name, shp) do
+      [] ->
+        {:error, :not_found}
+
+      children ->
+        Enum.each(
+          children,
+          fn {pid, _module} ->
+            DynamicSupervisor.terminate_child(pool_supervisor_name(finch_name), pid)
+          end
+        )
+    end
+  end
 end

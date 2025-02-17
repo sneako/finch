@@ -1019,6 +1019,64 @@ defmodule FinchTest do
     end
   end
 
+  describe "get_pool_status/2" do
+    test "fails if the pool doesn't exist", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+      assert Finch.stop_pool(finch_name, "http://unknown.url/") == {:error, :not_found}
+    end
+
+    test "succeeds with a string url", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{default: [start_pool_metrics?: true, count: 2]}}
+      )
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)
+
+      url = endpoint(bypass)
+      {:ok, %{status: 200}} = Finch.build(:get, url) |> Finch.request(finch_name)
+
+      assert Finch.stop_pool(finch_name, url) == :ok
+
+      assert pool_stopped?(finch_name, url)
+    end
+
+    test "succeeds with an shp tuple", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{default: [start_pool_metrics?: true, count: 2]}}
+      )
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)
+
+      url = endpoint(bypass)
+      {:ok, %{status: 200}} = Finch.build(:get, url) |> Finch.request(finch_name)
+
+      {s, h, p, _, _} = Finch.Request.parse_url(url)
+
+      assert Finch.stop_pool(finch_name, {s, h, p}) == :ok
+      assert pool_stopped?(finch_name, {s, h, p})
+    end
+
+    defp pool_stopped?(finch_name, url) do
+      # Need to use this pattern because the pools may linger on for a short while in the registry.
+      eventually(
+        fn -> Finch.get_pool_status(finch_name, url) == {:error, :not_found} end,
+        100,
+        50
+      )
+    end
+
+    defp eventually(fun, _backoff, 0), do: fun.()
+
+    defp eventually(fun, backoff, retries) do
+      if fun.() do
+        true
+      else
+        Process.sleep(backoff)
+        eventually(fun, backoff, retries - 1)
+      end
+    end
+  end
+
   defp get_pools(name, shp) do
     Registry.lookup(name, shp)
   end
