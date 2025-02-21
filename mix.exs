@@ -9,7 +9,7 @@ defmodule Finch.MixProject do
     [
       app: :finch,
       version: @version,
-      elixir: "~> 1.11",
+      elixir: "~> 1.13",
       description: "An HTTP client focused on performance.",
       package: package(),
       docs: docs(),
