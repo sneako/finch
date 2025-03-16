@@ -125,6 +125,68 @@ defmodule Finch.HTTP1.PoolTest do
     assert [] = DynamicSupervisor.which_children(:"#{finch_name}.PoolSupervisor")
   end
 
+  # @tag capture_log: true
+  test "should not terminate if a connection is checked out", %{
+    bypass: bypass,
+    finch_name: finch_name
+  } do
+    parent = self()
+
+    start_supervised!(
+      {Finch,
+       name: finch_name,
+       pools: %{
+         default: [count: 1, size: 2, pool_max_idle_time: 100]
+       }}
+    )
+
+    Bypass.expect(bypass, fn conn ->
+      {"delay", str_delay} =
+        Enum.find(conn.req_headers, fn h -> match?({"delay", _}, h) end)
+
+      Process.sleep(String.to_integer(str_delay))
+      Plug.Conn.send_resp(conn, 200, "OK")
+    end)
+
+    delay_exec = fn ref, delay ->
+      send(parent, {ref, :start})
+
+      resp =
+        Finch.build(:get, endpoint(bypass), [{"delay", "#{delay}"}])
+        |> Finch.request(finch_name)
+
+      send(parent, {ref, :done})
+
+      resp
+    end
+
+    ref1 = make_ref()
+    ref2 = make_ref()
+
+    Task.async(fn -> delay_exec.(ref1, 10) end)
+    Task.async(fn -> delay_exec.(ref2, 10) end)
+
+    assert_receive {^ref1, :done}
+    assert_receive {^ref2, :done}
+
+    assert [{pool, _pool_mod}] = Registry.lookup(finch_name, shp(bypass))
+
+    Process.monitor(pool)
+
+    ref2 = make_ref()
+    Task.async(fn -> delay_exec.(ref2, 1000) end)
+
+    assert_receive {^ref2, :start}
+
+    refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 1000
+
+    assert_receive {^ref2, :done}
+
+    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
+
+    assert [] = DynamicSupervisor.which_children(:"#{finch_name}.PoolSupervisor")
+  end
+
   describe "async_request" do
     @describetag bypass: false
 
