@@ -172,17 +172,21 @@ defmodule Finch.HTTP1.Pool do
     # Register our pool with our module name as the key. This allows the caller
     # to determine the correct pool module to use to make the request
     {:ok, _} = Registry.register(registry, shp, __MODULE__)
-    {:ok, {registry, shp, pool_idx, metric_ref, opts}}
+
+    {:ok, {registry, shp, pool_idx, metric_ref, opts, init_activity_info()}}
   end
 
   @impl NimblePool
-  def init_worker({_name, {scheme, host, port}, _pool_idx, _metric_ref, opts} = pool_state) do
+  def init_worker(
+        {_name, {scheme, host, port}, _pool_idx, _metric_ref, opts, _actt_info} =
+          pool_state
+      ) do
     {:ok, Conn.new(scheme, host, port, opts, self()), pool_state}
   end
 
   @impl NimblePool
   def handle_checkout(:checkout, _, %{mint: nil} = conn, pool_state) do
-    {_name, _shp, _pool_idx, metric_ref, _opts} = pool_state
+    {_name, _shp, _pool_idx, metric_ref, _opts, _actt_info} = pool_state
     idle_time = System.monotonic_time() - conn.last_checkin
     PoolMetrics.maybe_add(metric_ref, in_use_connections: 1)
     {:ok, {:fresh, conn, idle_time}, conn, pool_state}
@@ -190,12 +194,12 @@ defmodule Finch.HTTP1.Pool do
 
   def handle_checkout(:checkout, _from, conn, pool_state) do
     idle_time = System.monotonic_time() - conn.last_checkin
-    {_name, {scheme, host, port}, _pool_idx, metric_ref, _opts} = pool_state
+    {_name, {scheme, host, port}, _pool_idx, metric_ref, _opts, _actt_info} = pool_state
 
     with true <- Conn.reusable?(conn, idle_time),
          {:ok, conn} <- Conn.set_mode(conn, :passive) do
       PoolMetrics.maybe_add(metric_ref, in_use_connections: 1)
-      {:ok, {:reuse, conn, idle_time}, conn, pool_state}
+      {:ok, {:reuse, conn, idle_time}, conn, update_activity_info(:checkout, pool_state)}
     else
       false ->
         meta = %{
@@ -218,15 +222,19 @@ defmodule Finch.HTTP1.Pool do
 
   @impl NimblePool
   def handle_checkin(checkin, _from, _old_conn, pool_state) do
-    {_name, _shp, _pool_idx, metric_ref, _opts} = pool_state
+    {_name, _shp, _pool_idx, metric_ref, _opts, _actt_info} = pool_state
     PoolMetrics.maybe_add(metric_ref, in_use_connections: -1)
 
     with {:ok, conn} <- checkin,
          {:ok, conn} <- Conn.set_mode(conn, :active) do
-      {:ok, %{conn | last_checkin: System.monotonic_time()}, pool_state}
+      {
+        :ok,
+        %{conn | last_checkin: System.monotonic_time()},
+        update_activity_info(:checkin, pool_state)
+      }
     else
       _ ->
-        {:remove, :closed, pool_state}
+        {:remove, :closed, update_activity_info(:checkin, pool_state)}
     end
   end
 
@@ -245,18 +253,37 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
-  def handle_ping(_conn, pool_state) do
-    {_name, {scheme, host, port}, _pool_idx, _metric_ref, _opts} = pool_state
+  def handle_ping(conn, pool_state) do
+    {_name, {scheme, host, port}, _pool_idx, _metric_ref, opts, activity_info} = pool_state
 
-    meta = %{
-      scheme: scheme,
-      host: host,
-      port: port
-    }
+    max_idle_time = Map.get(opts, :pool_max_idle_time, :infinity)
+    now = System.monotonic_time(:millisecond)
+    diff_from_last_checkout = now - activity_info.last_checkout_ts
 
-    Telemetry.event(:pool_max_idle_time_exceeded, %{}, meta)
+    is_idle? = diff_from_last_checkout > max_idle_time
+    max_idle_time_configured? = is_number(max_idle_time)
+    any_connection_in_use? = activity_info.in_use_count > 0
 
-    {:stop, :idle_timeout}
+    cond do
+      not max_idle_time_configured? ->
+        {:ok, conn}
+
+      any_connection_in_use? ->
+        {:ok, conn}
+
+      is_idle? ->
+        meta = %{
+          scheme: scheme,
+          host: host,
+          port: port
+        }
+
+        Telemetry.event(:pool_max_idle_time_exceeded, %{}, meta)
+        {:stop, :idle_timeout}
+
+      true ->
+        {:ok, conn}
+    end
   end
 
   @impl NimblePool
@@ -269,7 +296,7 @@ defmodule Finch.HTTP1.Pool do
 
   @impl NimblePool
   def handle_cancelled(:checked_out, pool_state) do
-    {_name, _shp, _pool_idx, metric_ref, _opts} = pool_state
+    {_name, _shp, _pool_idx, metric_ref, _opts, _actt_info} = pool_state
     PoolMetrics.maybe_add(metric_ref, in_use_connections: -1)
     :ok
   end
@@ -298,4 +325,23 @@ defmodule Finch.HTTP1.Pool do
 
   defp pool_idle_timeout(:infinity), do: nil
   defp pool_idle_timeout(pool_max_idle_time), do: pool_max_idle_time
+
+  defp init_activity_info(),
+    do: %{in_use_count: 0, last_checkout_ts: System.monotonic_time(:millisecond)}
+
+  defp update_activity_info(:checkout, pool_state) do
+    info = %{in_use_count: count} = elem(pool_state, 5)
+
+    put_elem(pool_state, 5, %{
+      info
+      | in_use_count: count + 1,
+        last_checkout_ts: System.monotonic_time(:millisecond)
+    })
+  end
+
+  defp update_activity_info(:checkin, pool_state) do
+    info = %{in_use_count: count} = elem(pool_state, 5)
+
+    put_elem(pool_state, 5, %{info | in_use_count: max(count - 1, 0)})
+  end
 end
