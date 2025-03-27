@@ -14,6 +14,7 @@ defmodule Finch.PoolManager do
     :server_name_indication,
     :signature_algs,
     :signature_algs_cert,
+    :supported_groups,
     :verify,
     :verify_fun,
     :versions
