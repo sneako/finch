@@ -10,7 +10,8 @@ defmodule Finch.HTTP1.Pool do
       :shp,
       :pool_idx,
       :metric_ref,
-      :opts
+      :opts,
+      :activity_info
     ]
   end
 
@@ -189,7 +190,8 @@ defmodule Finch.HTTP1.Pool do
       shp: shp,
       pool_idx: pool_idx,
       metric_ref: metric_ref,
-      opts: opts
+      opts: opts,
+      activity_info: init_activity_info()
     }
 
     {:ok, state}
@@ -272,8 +274,12 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
-  def handle_ping(_conn, %__MODULE__.State{} = pool_state) do
-    %__MODULE__.State{shp: {scheme, host, port}} = pool_state
+  def handle_ping(conn, %__MODULE__.State{} = pool_state) do
+    %__MODULE__.State{
+      shp: {scheme, host, port},
+      opts: opts,
+      activity_info: activity_info
+    } = pool_state
 
     max_idle_time = Map.get(opts, :pool_max_idle_time, :infinity)
     now = System.monotonic_time(:millisecond)
@@ -348,19 +354,28 @@ defmodule Finch.HTTP1.Pool do
   defp init_activity_info(),
     do: %{in_use_count: 0, last_checkout_ts: System.monotonic_time(:millisecond)}
 
-  defp update_activity_info(:checkout, pool_state) do
-    info = %{in_use_count: count} = elem(pool_state, 5)
+  defp update_activity_info(:checkout, %__MODULE__.State{} = pool_state) do
+    info = %{in_use_count: count} = pool_state.activity_info
 
-    put_elem(pool_state, 5, %{
-      info
-      | in_use_count: count + 1,
-        last_checkout_ts: System.monotonic_time(:millisecond)
-    })
+    %__MODULE__.State{
+      pool_state
+      | activity_info: %{
+          info
+          | in_use_count: count + 1,
+            last_checkout_ts: System.monotonic_time(:millisecond)
+        }
+    }
   end
 
   defp update_activity_info(:checkin, pool_state) do
-    info = %{in_use_count: count} = elem(pool_state, 5)
+    info = %{in_use_count: count} = pool_state.activity_info
 
-    put_elem(pool_state, 5, %{info | in_use_count: max(count - 1, 0)})
+    %__MODULE__.State{
+      pool_state
+      | activity_info: %{
+          info
+          | in_use_count: max(count - 1, 0)
+        }
+    }
   end
 end
