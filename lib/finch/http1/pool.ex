@@ -4,6 +4,7 @@ defmodule Finch.HTTP1.Pool do
   @behaviour Finch.Pool
 
   defmodule State do
+    @moduledoc false
     defstruct [
       :registry,
       :shp,
