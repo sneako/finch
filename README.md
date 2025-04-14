@@ -51,7 +51,7 @@ children = [
   {Finch,
    name: MyConfiguredFinch,
    pools: %{
-     :default => [size: 10],
+     :default => [size: 10, count: 2],
      "https://hex.pm" => [size: 32, count: 8]
    }}
 ]
@@ -59,7 +59,11 @@ children = [
 
 Pools will be started for each configured `{scheme, host, port}` when Finch is started.
 For any unconfigured `{scheme, host, port}`, the pool will be started the first time
-it is requested. Note pools are not automatically terminated by default, if you need to
+it is requested using the `:default` configuration. This means given the pool
+configuration above each origin/`{scheme, host, port}` will launch 2 (`:count`) new pool
+processes. So, if you encountered 10 separate combinations, that'd be 20 pool processes.
+
+Note pools are not automatically terminated by default, if you need to
 terminate them after some idle time, use the `pool_max_idle_time` option (available only for HTTP1 pools).
 
 ## Telemetry
