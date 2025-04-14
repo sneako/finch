@@ -18,7 +18,7 @@ defmodule Finch do
   @pool_config_schema [
     protocol: [
       type: {:in, [:http2, :http1]},
-      deprecated: "Use :protocols instead."
+      deprecated: "Use `:protocols` instead."
     ],
     protocols: [
       type: {:list, {:in, [:http1, :http2]}},
