@@ -18,7 +18,7 @@ defmodule Finch do
   @pool_config_schema [
     protocol: [
       type: {:in, [:http2, :http1]},
-      deprecated: "Use :protocols instead."
+      deprecated: "Use `:protocols` instead."
     ],
     protocols: [
       type: {:list, {:in, [:http1, :http2]}},
@@ -151,7 +151,8 @@ defmodule Finch do
     * `:pools` - A map specifying the configuration for your pools. The keys should be URLs
     provided as binaries, a tuple `{scheme, {:local, unix_socket}}` where `unix_socket` is the path for
     the socket, or the atom `:default` to provide a catch-all configuration to be used for any
-    unspecified URLs. See "Pool Configuration Options" below for details on the possible map
+    unspecified URLs - meaning that new pools for unspecified URLs will be started using the `:default`
+    configuration. See "Pool Configuration Options" below for details on the possible map
     values. Default value is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
 
   ### Pool Configuration Options
