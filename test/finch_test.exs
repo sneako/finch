@@ -842,6 +842,21 @@ defmodule FinchTest do
                |> Finch.stream(finch_name, acc, fun)
     end
 
+    test "unsuccessful get request", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      acc = {nil, [], ""}
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {value, headers, body}
+        {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
+        {:data, value}, {status, headers, body} -> {status, headers, body <> value}
+      end
+
+      assert {:error, %{reason: :nxdomain}, ^acc} =
+               Finch.build(:get, "http://idontexist.wat") |> Finch.stream(finch_name, acc, fun)
+    end
+
     test "HTTP/1 with atom accumulator, illustrating that the type/shape of the accumulator is not important",
          %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
@@ -960,6 +975,22 @@ defmodule FinchTest do
 
       assert {:ok, {200, [_ | _], "OK"}} =
                Finch.build(:get, endpoint(bypass))
+               |> Finch.stream_while(finch_name, acc, fun)
+    end
+
+    test "unsuccessful get request", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      acc = {nil, [], ""}
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {:cont, {value, headers, body}}
+        {:headers, value}, {status, headers, body} -> {:cont, {status, headers ++ value, body}}
+        {:data, value}, {status, headers, body} -> {:cont, {status, headers, body <> value}}
+      end
+
+      assert {:error, %{reason: :nxdomain}, ^acc} =
+               Finch.build(:get, "http://idontexist.wat")
                |> Finch.stream_while(finch_name, acc, fun)
     end
 
@@ -1179,6 +1210,64 @@ defmodule FinchTest do
       assert_receive {^request_ref, {:headers, headers}} when is_list(headers)
       for _ <- 1..5, do: assert_receive({^request_ref, {:data, "chunk-data"}})
       assert_receive {^request_ref, :done}
+    end
+  end
+
+  describe "get_pool_status/2" do
+    test "fails if the pool doesn't exist", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+      assert Finch.stop_pool(finch_name, "http://unknown.url/") == {:error, :not_found}
+    end
+
+    test "succeeds with a string url", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{default: [start_pool_metrics?: true, count: 2]}}
+      )
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)
+
+      url = endpoint(bypass)
+      {:ok, %{status: 200}} = Finch.build(:get, url) |> Finch.request(finch_name)
+
+      assert Finch.stop_pool(finch_name, url) == :ok
+
+      assert pool_stopped?(finch_name, url)
+    end
+
+    test "succeeds with an shp tuple", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{default: [start_pool_metrics?: true, count: 2]}}
+      )
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)
+
+      url = endpoint(bypass)
+      {:ok, %{status: 200}} = Finch.build(:get, url) |> Finch.request(finch_name)
+
+      {s, h, p, _, _} = Finch.Request.parse_url(url)
+
+      assert Finch.stop_pool(finch_name, {s, h, p}) == :ok
+      assert pool_stopped?(finch_name, {s, h, p})
+    end
+
+    defp pool_stopped?(finch_name, url) do
+      # Need to use this pattern because the pools may linger on for a short while in the registry.
+      eventually(
+        fn -> Finch.get_pool_status(finch_name, url) == {:error, :not_found} end,
+        100,
+        50
+      )
+    end
+
+    defp eventually(fun, _backoff, 0), do: fun.()
+
+    defp eventually(fun, backoff, retries) do
+      if fun.() do
+        true
+      else
+        Process.sleep(backoff)
+        eventually(fun, backoff, retries - 1)
+      end
     end
   end
 

@@ -2,14 +2,14 @@ defmodule Finch.MixProject do
   use Mix.Project
 
   @name "Finch"
-  @version "0.18.0"
+  @version "0.19.0"
   @repo_url "https://github.com/sneako/finch"
 
   def project do
     [
       app: :finch,
       version: @version,
-      elixir: "~> 1.11",
+      elixir: "~> 1.13",
       description: "An HTTP client focused on performance.",
       package: package(),
       docs: docs(),
@@ -33,8 +33,7 @@ defmodule Finch.MixProject do
 
   defp deps do
     [
-      {:mint, "~> 1.3"},
-      {:castore, "~> 0.1 or ~> 1.0"},
+      {:mint, "~> 1.6.2 or ~> 1.7"},
       {:nimble_pool, "~> 1.1"},
       {:nimble_options, "~> 0.4 or ~> 1.0"},
       {:telemetry, "~> 0.4 or ~> 1.0"},

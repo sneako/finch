@@ -120,7 +120,7 @@ defmodule Finch.HTTP2.IntegrationTest do
     try do
       assert {:ok, response} = Finch.build(:get, url) |> Finch.request(TestFinch)
       assert response.body == "Hello world!"
-      assert File.stat!(log_file) > 0
+      assert File.stat!(log_file).size > 0
     after
       File.rm!(log_file)
       System.delete_env("SSLKEYLOGFILE")

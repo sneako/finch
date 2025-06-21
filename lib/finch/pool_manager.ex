@@ -14,6 +14,7 @@ defmodule Finch.PoolManager do
     :server_name_indication,
     :signature_algs,
     :signature_algs_cert,
+    :supported_groups,
     :verify,
     :verify_fun,
     :versions
@@ -47,7 +48,7 @@ defmodule Finch.PoolManager do
   end
 
   def lookup_pool(registry, key) do
-    case Registry.lookup(registry, key) do
+    case all_pool_instances(registry, key) do
       [] ->
         :none
 
@@ -59,6 +60,8 @@ defmodule Finch.PoolManager do
         Enum.random(pools)
     end
   end
+
+  def all_pool_instances(registry, key), do: Registry.lookup(registry, key)
 
   def start_pools(registry_name, shp) do
     {:ok, config} = Registry.meta(registry_name, :config)
@@ -122,7 +125,7 @@ defmodule Finch.PoolManager do
 
   defp maybe_drop_tls_options(config, _), do: config
 
-  # Hostname is required when the address is not a url (binary) so we need to specify
+  # Hostname is required when the address is not a URL (binary) so we need to specify
   # a default value in case the configuration does not specify one.
   defp maybe_add_hostname(config, {_scheme, {:local, _path}, _port} = _shp) when is_map(config) do
     conn_opts =

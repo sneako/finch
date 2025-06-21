@@ -18,6 +18,6 @@ defmodule FinchCase do
     {:ok, bypass ++ [finch_name: context.test]}
   end
 
-  @doc "Returns the url for a Bypass instance"
+  @doc "Returns the URL for a Bypass instance"
   def endpoint(%{port: port}, path \\ "/"), do: "http://localhost:#{port}#{path}"
 end
