@@ -768,6 +768,7 @@ defmodule FinchTest do
       start_supervised!({Finch, name: finch_name})
 
       Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        assert Plug.Conn.get_http_protocol(conn) == :"HTTP/1.1"
         Plug.Conn.send_resp(conn, 200, "OK")
       end)
 
@@ -814,13 +815,11 @@ defmodule FinchTest do
       end
     end
 
-    test "function halts on HTTP/1", %{test: test, finch_name: finch_name} do
+    test "function halts on HTTP/1", %{finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
 
-      # Start custom server, as opposed to Bypass, because the latter would complain when
-      # it outlives test process.
-      start_supervised!({Plug.Cowboy, scheme: :http, plug: InfiniteStream, port: 0, ref: test})
-      url = "http://localhost:#{:ranch.get_port(test)}"
+      # Start custom server because Bypass would complain when it outlives test process.
+      url = start_server(plug: InfiniteStream)
 
       acc = {nil, [], ""}
 
@@ -883,6 +882,7 @@ defmodule FinchTest do
       )
 
       Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        assert Plug.Conn.get_http_protocol(conn) == :"HTTP/2"
         Plug.Conn.send_resp(conn, 200, "OK")
       end)
 
@@ -899,7 +899,7 @@ defmodule FinchTest do
                |> Finch.stream_while(finch_name, acc, fun)
     end
 
-    test "function halts on HTTP/2", %{test: test, finch_name: finch_name} do
+    test "function halts on HTTP/2", %{finch_name: finch_name} do
       start_supervised!(
         {Finch,
          name: finch_name,
@@ -910,10 +910,17 @@ defmodule FinchTest do
          }}
       )
 
-      # Start custom server, as opposed to Bypass, because the latter would complain when
-      # it outlives test process.
-      start_supervised!({Plug.Cowboy, scheme: :http, plug: InfiniteStream, port: 0, ref: test})
-      url = "http://localhost:#{:ranch.get_port(test)}"
+      # Start custom server because Bypass would complain when it outlives test process.
+      url =
+        start_server(
+          plug: [
+            fn conn ->
+              assert Plug.Conn.get_http_protocol(conn) == :"HTTP/2"
+              conn
+            end,
+            {InfiniteStream, []}
+          ]
+        )
 
       acc = {nil, [], ""}
 
@@ -944,7 +951,7 @@ defmodule FinchTest do
                Finch.build(:get, url)
                |> Finch.stream_while(finch_name, acc, fun)
 
-      Process.sleep(5000)
+      Process.sleep(1000)
     end
 
     test "invalid return value on HTTP/2", %{bypass: bypass, finch_name: finch_name} do
@@ -972,6 +979,73 @@ defmodule FinchTest do
         Finch.build(:get, endpoint(bypass))
         |> Finch.stream_while(finch_name, acc, fun)
       end
+    end
+
+    test "successful get request with HTTP/1 + HTTP/2", %{finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocols: [:http1, :http2],
+             conn_opts: [transport_opts: [verify: :verify_none]]
+           ]
+         }}
+      )
+
+      # Start custom server because Bypass does not support HTTP/1.1 + HTTP/2 (ALPN)
+      url =
+        start_server(
+          plug: fn conn ->
+            assert Plug.Conn.get_http_protocol(conn) == :"HTTP/2"
+            Plug.Conn.send_resp(conn, 200, "OK")
+          end,
+          scheme: :https
+        )
+
+      acc = []
+      fun = fn {name, value}, acc -> {:cont, acc ++ [{name, value}]} end
+
+      assert {:ok, [status: 200, headers: _, data: "OK"]} =
+               Finch.build(:get, url)
+               |> Finch.stream_while(finch_name, acc, fun)
+    end
+
+    test "function halts on HTTP/1 + HTTP/2", %{finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocols: [:http1, :http2],
+             conn_opts: [transport_opts: [verify: :verify_none]]
+           ]
+         }}
+      )
+
+      # Start custom server because Bypass does not support HTTP/1.1 + HTTP/2 (ALPN)
+      url =
+        start_server(
+          plug: [
+            fn conn ->
+              assert Plug.Conn.get_http_protocol(conn) == :"HTTP/2"
+              conn
+            end,
+            {InfiniteStream, []}
+          ],
+          scheme: :https
+        )
+
+      acc = []
+
+      fun = fn
+        {:status, value}, acc -> {:cont, acc ++ [{:status, value}]}
+        {:headers, value}, acc -> {:halt, acc ++ [{:headers, value}]}
+      end
+
+      assert {:ok, [status: 200, headers: _]} =
+               Finch.build(:get, url)
+               |> Finch.stream_while(finch_name, acc, fun)
     end
   end
 
@@ -1086,5 +1160,47 @@ defmodule FinchTest do
 
   defp expect_any(bypass) do
     Bypass.expect(bypass, fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)
+  end
+
+  defmodule PlugFn do
+    def init(fun) when is_function(fun, 1) do
+      fun
+    end
+
+    def call(conn, fun) do
+      fun.(conn)
+    end
+  end
+
+  defp start_server(opts) do
+    opts =
+      opts
+      |> Keyword.put_new(:port, 0)
+      |> Keyword.put_new(:scheme, :http)
+      |> Keyword.put_new_lazy(:ref, fn ->
+        :"test_server_#{System.unique_integer([:positive])}"
+      end)
+      |> Keyword.update!(:plug, fn
+        plug when is_function(plug, 1) ->
+          {PlugFn, plug}
+
+        plugs when is_list(plugs) ->
+          {PlugFn, &Plug.run(&1, plugs)}
+
+        plug ->
+          plug
+      end)
+
+    opts =
+      if opts[:scheme] == :https do
+        opts
+        |> Keyword.put_new(:keyfile, "#{__DIR__}/fixtures/selfsigned_key.pem")
+        |> Keyword.put_new(:certfile, "#{__DIR__}/fixtures/selfsigned.pem")
+      else
+        opts
+      end
+
+    start_supervised!({Plug.Cowboy, opts})
+    "#{opts[:scheme]}://localhost:#{:ranch.get_port(opts[:ref])}"
   end
 end
