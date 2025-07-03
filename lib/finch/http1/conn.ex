@@ -244,7 +244,7 @@ defmodule Finch.HTTP1.Conn do
          resp_metadata
        )
        when timeouts.request_timeout < 0 do
-    {:ok, mint} = Mint.HTTP1.close(mint)
+    {:ok, mint} = Mint.HTTP.close(mint)
     {:error, mint, %Mint.TransportError{reason: :timeout}, acc, resp_metadata}
   end
 
@@ -312,7 +312,7 @@ defmodule Finch.HTTP1.Conn do
             )
 
           {:halt, acc} ->
-            {:ok, mint} = Mint.HTTP1.close(mint)
+            {:ok, mint} = Mint.HTTP.close(mint)
             {:ok, mint, acc, resp_metadata}
 
           other ->
@@ -336,7 +336,7 @@ defmodule Finch.HTTP1.Conn do
             )
 
           {:halt, acc} ->
-            {:ok, mint} = Mint.HTTP1.close(mint)
+            {:ok, mint} = Mint.HTTP.close(mint)
             {:ok, mint, acc, resp_metadata}
 
           other ->
@@ -358,7 +358,7 @@ defmodule Finch.HTTP1.Conn do
             )
 
           {:halt, acc} ->
-            {:ok, mint} = Mint.HTTP1.close(mint)
+            {:ok, mint} = Mint.HTTP.close(mint)
             {:ok, mint, acc, resp_metadata}
 
           other ->
