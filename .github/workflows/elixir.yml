@@ -6,7 +6,7 @@ on:
       - main
 jobs:
   mix_test:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     env:
       MIX_ENV: test
     strategy:
@@ -15,10 +15,10 @@ jobs:
         include:
           - pair:
               elixir: "1.13"
-              otp: "22"
+              otp: "24"
           - pair:
               elixir: "1.18"
-              otp: "27"
+              otp: "28"
             lint: lint
     steps:
       - uses: actions/checkout@v4
