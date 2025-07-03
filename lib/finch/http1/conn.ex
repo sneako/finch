@@ -202,6 +202,9 @@ defmodule Finch.HTTP1.Conn do
         Telemetry.stop(:recv, start_time, metadata, extra_measurements)
         {:ok, %{conn | mint: mint}, acc}
 
+      {:suspended, _, _} = suspended ->
+        suspended
+
       {:error, mint, error, acc, resp_metadata} ->
         metadata = Map.merge(metadata, Map.put(resp_metadata, :error, error))
         Telemetry.stop(:recv, start_time, metadata, extra_measurements)
@@ -298,75 +301,73 @@ defmodule Finch.HTTP1.Conn do
        ) do
     case entry do
       {:status, ^ref, value} ->
-        case fun.({:status, value}, acc) do
-          {:cont, acc} ->
-            receive_response(
-              entries,
-              acc,
-              fun,
-              mint,
-              ref,
-              timeouts,
-              fields,
-              %{resp_metadata | status: value}
-            )
-
-          {:halt, acc} ->
-            {:ok, mint} = Mint.HTTP1.close(mint)
-            {:ok, mint, acc, resp_metadata}
-
-          other ->
-            raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: #{inspect(other)}"
-        end
+        resp_metadata = %{resp_metadata | status: value}
+        call_fun(:status, value, acc, entries, fun, mint, ref, timeouts, fields, resp_metadata)
 
       {:headers, ^ref, value} ->
         resp_metadata = update_in(resp_metadata, [fields], &(&1 ++ value))
-
-        case fun.({fields, value}, acc) do
-          {:cont, acc} ->
-            receive_response(
-              entries,
-              acc,
-              fun,
-              mint,
-              ref,
-              timeouts,
-              fields,
-              resp_metadata
-            )
-
-          {:halt, acc} ->
-            {:ok, mint} = Mint.HTTP1.close(mint)
-            {:ok, mint, acc, resp_metadata}
-
-          other ->
-            raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: #{inspect(other)}"
-        end
+        call_fun(fields, value, acc, entries, fun, mint, ref, timeouts, fields, resp_metadata)
 
       {:data, ^ref, value} ->
-        case fun.({:data, value}, acc) do
-          {:cont, acc} ->
-            receive_response(
-              entries,
-              acc,
-              fun,
-              mint,
-              ref,
-              timeouts,
-              :trailers,
-              resp_metadata
-            )
-
-          {:halt, acc} ->
-            {:ok, mint} = Mint.HTTP1.close(mint)
-            {:ok, mint, acc, resp_metadata}
-
-          other ->
-            raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: #{inspect(other)}"
-        end
+        call_fun(:data, value, acc, entries, fun, mint, ref, timeouts, :trailers, resp_metadata)
 
       {:error, ^ref, error} ->
         {:error, mint, error, acc, resp_metadata}
+    end
+  end
+
+  defp call_fun(tag, value, acc, entries, fun, mint, ref, timeouts, fields, resp_metadata) do
+    case fun.({tag, value}, acc) do
+      {:cont, acc} ->
+        receive_response(
+          entries,
+          acc,
+          fun,
+          mint,
+          ref,
+          timeouts,
+          fields,
+          resp_metadata
+        )
+
+      {:halt, acc} ->
+        {:ok, mint} = Mint.HTTP1.close(mint)
+        {:ok, mint, acc, resp_metadata}
+
+      {:__finch_suspend__, acc, extra} ->
+        enum_acc = {entries, fun, mint, ref, timeouts, fields, resp_metadata, extra}
+        {:suspended, acc, suspension_function(enum_acc)}
+
+      other ->
+        raise ArgumentError, "expected {:cont, acc} or {:halt, acc}, got: #{inspect(other)}"
+    end
+  end
+
+  def suspension_function(enum_acc) do
+    fn acc ->
+      {entries, fun, mint, ref, timeouts, fields, resp_metadata, extra} = enum_acc
+      case acc do
+        {:cont, acc} ->
+          receive_response(
+            entries,
+            acc,
+            fun,
+            mint,
+            ref,
+            timeouts,
+            fields,
+            resp_metadata
+          )
+
+        {:suspend, acc} ->
+          {:suspended, acc, &suspension_function/1}
+
+        {:halt, acc} ->
+          {holder, holder_ref, conn} = extra
+          conn = %{conn | mint: mint}
+          send(holder, {holder_ref, :stop, conn})
+          {:ok, mint, acc, resp_metadata}
+      end
     end
   end
 end

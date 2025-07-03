@@ -4,6 +4,9 @@ defmodule Finch.Pool do
 
   @type request_ref :: {pool_mod :: module(), cancel_ref :: term()}
 
+  @callback stream(pid(), Finch.Request.t(), finch_name :: atom(), list()) ::
+              {:ok, Stream.t()} | {:error, Exception.t()}
+
   @callback request(
               pid(),
               Finch.Request.t(),

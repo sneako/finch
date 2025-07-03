@@ -49,6 +49,166 @@ defmodule Finch.HTTP1.Pool do
     )
   end
 
+  defp spawn_holder(pool, req, name, opts) do
+    metadata = %{request: req, pool: pool, name: name}
+    fail_safe_timeout = Keyword.get(opts, :fail_safe_timeout, 15 * 60_000)
+    stop_notify = Keyword.get(opts, :stop_notify, nil)
+    pool_timeout = Keyword.get(opts, :pool_timeout, 5_000)
+
+    owner = self()
+    ref = make_ref()
+
+    start_time = Telemetry.start(:queue, metadata)
+
+    holder =
+      spawn_link(fn ->
+        try do
+          NimblePool.checkout!(
+            pool,
+            :checkout,
+            fn from, {state, conn, idle_time} ->
+              if fail_safe_timeout != :infinity do
+                Process.send_after(self(), :fail_safe_timeout, fail_safe_timeout)
+              end
+
+              Telemetry.stop(:queue, start_time, metadata, %{idle_time: idle_time})
+
+              return =
+                case Conn.connect(conn, name) do
+                  {:ok, conn} ->
+                    send(owner, {ref, :ok, {conn, idle_time}})
+
+                    receive do
+                      {^ref, :stop, conn} ->
+                        with :closed <- transfer_if_open(conn, state, from) do
+                          {:ok, :closed}
+                        end
+
+                      :fail_safe_timeout ->
+                        Conn.close(conn)
+                        {:ok, :closed}
+                    end
+
+                  {:error, conn, error} ->
+                    {{:error, error}, transfer_if_open(conn, state, from)}
+                end
+
+              with {to, message} <- stop_notify do
+                send(to, message)
+              end
+
+              return
+            end,
+            pool_timeout
+          )
+        rescue
+          x ->
+            IO.inspect(x)
+        catch
+          :exit, data ->
+            Telemetry.exception(:queue, start_time, :exit, data, __STACKTRACE__, metadata)
+            send(owner, {ref, :exit, {data, __STACKTRACE__}})
+        end
+      end)
+
+    receive do
+      {^ref, :ok, {conn, idle_time}} ->
+        Process.link(holder)
+        {:ok, holder, ref, conn, idle_time}
+
+      {^ref, :error, reason} ->
+        {:error, reason}
+
+      {^ref, :exit, data_trace} ->
+        {data, trace} = data_trace
+
+        case data do
+          {:timeout, {NimblePool, :checkout, _affected_pids}} ->
+            # Provide helpful error messages for known errors
+            reraise(
+              """
+              Finch was unable to provide a connection within the timeout due to excess queuing \
+              for connections. Consider adjusting the pool size, count, timeout or reducing the \
+              rate of requests if it is possible that the downstream service is unable to keep up \
+              with the current rate.
+              """,
+              trace
+            )
+
+          _ ->
+            exit(data)
+        end
+    after
+      pool_timeout ->
+        # Cleanup late messages
+        receive do
+          {^ref, _, _} -> :ok
+        after
+          0 -> :ok
+        end
+
+        raise "Has not received message from pool yet"
+    end
+  rescue
+    x ->
+      IO.inspect({x, __STACKTRACE__})
+  end
+
+  @impl Finch.Pool
+  def stream(pool, req, name, opts) do
+    receive_timeout = Keyword.get(opts, :receive_timeout, 15_000)
+    request_timeout = Keyword.get(opts, :request_timeout, 30_000)
+
+    stream =
+      fn
+        {:cont, acc}, function ->
+          case spawn_holder(pool, req, name, opts) do
+            {:ok, holder, ref, conn, idle_time} ->
+              function = fn x, y ->
+                with {:suspend, acc} <- function.(x, y) do
+                  {:__finch_suspend__, acc, {holder, ref, conn}}
+                end
+              end
+
+              try do
+                with {:ok, conn, acc} <-
+                       Conn.request(
+                         conn,
+                         req,
+                         acc,
+                         function,
+                         name,
+                         receive_timeout,
+                         request_timeout,
+                         idle_time
+                       ) do
+                  send(holder, {ref, :stop, conn})
+                  {:done, acc}
+                else
+                  {:error, conn, error} ->
+                    send(holder, {ref, :stop, conn})
+                    raise error
+
+                  {:suspended, _, _} = suspended ->
+                    suspended
+                end
+              catch
+                class, reason ->
+                  send(holder, {ref, :stop, conn})
+                  :erlang.raise(class, reason, __STACKTRACE__)
+              end
+
+            other ->
+              other
+          end
+
+        {:halt, acc}, _function ->
+          {:halted, acc}
+      end
+
+    {:ok, stream}
+  end
+
   @impl Finch.Pool
   def request(pool, req, acc, fun, name, opts) do
     pool_timeout = Keyword.get(opts, :pool_timeout, 5_000)
@@ -300,6 +460,10 @@ defmodule Finch.HTTP1.Pool do
   def handle_cancelled(:queued, _pool_state), do: :ok
 
   defp transfer_if_open(conn, state, {pid, _} = from) do
+    transfer_if_open(conn, state, from, pid)
+  end
+
+  defp transfer_if_open(conn, state, from, pid) do
     if Conn.open?(conn) do
       if state == :fresh do
         NimblePool.update(from, conn)
