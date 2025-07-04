@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.20.0 (2025-06-04)
+
+### Enhancements
+
+- Support manual pool termination #299
+- Refactor HTTP1 pool state for better maintainability #308
+- Add `:supported_groups` to list of TLS options #307
+- Be more explicit about the `:default` pool in documentation #314
+- Upgrade `nimble_options` to document deprecations #315
+
+### Bug Fixes
+
+- Fix Finch.stream_while/5 on halt for both HTTP/1 and HTTP/2 #320
+- Return accumulator when Finch.stream/5 and Finch.stream_while/5 fail #295
+- Fix documentation reference for get_pool_status/2 #301
+
+### Other
+
+- Upgrade CI VM to Ubuntu 24 #321
+- CI housekeeping: support Elixir 1.17/Erlang OTP 27, bump Credo and deps #303
+- Update GitHub CI badge URL #304
+
 ## v0.19.0 (2024-09-04)
 
 ### Enhancements
