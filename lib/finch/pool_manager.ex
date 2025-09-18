@@ -84,9 +84,8 @@ defmodule Finch.PoolManager do
   defp do_start_pools(shp, config) do
     pool_config = pool_config(config, shp)
 
-    maybe_track_default_shp(config, shp)
-
     if pool_config.start_pool_metrics? do
+      maybe_track_default_shp(config, shp)
       put_pool_count(config, shp, pool_config.count)
     end
 
