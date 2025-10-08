@@ -185,13 +185,16 @@ defmodule Finch.HTTP1.Pool do
     # to determine the correct pool module to use to make the request
     {:ok, _} = Registry.register(registry, shp, __MODULE__)
 
+    acitivity_info =
+      if opts[:pool_max_idle_time] != :infinity, do: init_activity_info(), else: nil
+
     state = %__MODULE__.State{
       registry: registry,
       shp: shp,
       pool_idx: pool_idx,
       metric_ref: metric_ref,
       opts: opts,
-      activity_info: init_activity_info()
+      activity_info: acitivity_info
     }
 
     {:ok, state}
@@ -351,10 +354,21 @@ defmodule Finch.HTTP1.Pool do
   defp pool_idle_timeout(:infinity), do: nil
   defp pool_idle_timeout(pool_max_idle_time), do: pool_max_idle_time
 
-  defp init_activity_info(),
-    do: %{in_use_count: 0, last_checkout_ts: System.monotonic_time(:millisecond)}
+  defp init_activity_info() do
+    %{in_use_count: 0, last_checkout_ts: System.monotonic_time(:millisecond)}
+  end
 
-  defp update_activity_info(:checkout, %__MODULE__.State{} = pool_state) do
+  defp update_activity_info(
+         _checkout_or_checkin,
+         %__MODULE__.State{activity_info: nil} = pool_state
+       ) do
+    pool_state
+  end
+
+  defp update_activity_info(
+         :checkout,
+         %__MODULE__.State{} = pool_state
+       ) do
     info = %{in_use_count: count} = pool_state.activity_info
 
     %__MODULE__.State{
