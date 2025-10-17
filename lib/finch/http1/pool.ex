@@ -381,7 +381,7 @@ defmodule Finch.HTTP1.Pool do
     }
   end
 
-  defp update_activity_info(:checkin, pool_state) do
+  defp update_activity_info(:checkin, %__MODULE__.State{} = pool_state) do
     info = %{in_use_count: count} = pool_state.activity_info
 
     %__MODULE__.State{
