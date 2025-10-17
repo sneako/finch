@@ -28,6 +28,8 @@ defmodule Finch.PoolManager do
 
   @impl true
   def init(config) do
+    reset_default_shps(config)
+
     Enum.each(config.pools, fn {shp, _} ->
       do_start_pools(shp, config)
     end)
@@ -83,6 +85,7 @@ defmodule Finch.PoolManager do
     pool_config = pool_config(config, shp)
 
     if pool_config.start_pool_metrics? do
+      maybe_track_default_shp(config, shp)
       put_pool_count(config, shp, pool_config.count)
     end
 
@@ -102,6 +105,37 @@ defmodule Finch.PoolManager do
 
   def get_pool_count(finch_name, shp),
     do: :persistent_term.get({__MODULE__, :pool_count, finch_name, shp}, nil)
+
+  def get_default_shps(finch_name) do
+    default_shps_key(finch_name)
+    |> :persistent_term.get(MapSet.new())
+    |> MapSet.to_list()
+  end
+
+  def maybe_remove_default_shp(finch_name, shp) do
+    update_default_shps(finch_name, &MapSet.delete(&1, shp))
+  end
+
+  defp reset_default_shps(%{registry_name: name}) do
+    :persistent_term.put(default_shps_key(name), MapSet.new())
+  end
+
+  defp maybe_track_default_shp(%{pools: pools, registry_name: name}, shp) do
+    if Map.has_key?(pools, shp) do
+      :ok
+    else
+      update_default_shps(name, &MapSet.put(&1, shp))
+    end
+  end
+
+  defp update_default_shps(name, fun) do
+    key = default_shps_key(name)
+    current = :persistent_term.get(key, MapSet.new())
+    :persistent_term.put(key, fun.(current))
+    :ok
+  end
+
+  defp default_shps_key(name), do: {__MODULE__, :default_shps, name}
 
   defp pool_config(%{pools: config, default_pool_config: default}, shp) do
     config

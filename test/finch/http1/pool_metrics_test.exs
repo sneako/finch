@@ -36,6 +36,38 @@ defmodule Finch.HTTP1.PoolMetricsTest do
     wait_connection_checkin()
     assert nil == PoolManager.get_pool_count(finch_name, shp)
     assert {:error, :not_found} = Finch.get_pool_status(finch_name, shp)
+    assert [] == PoolManager.get_default_shps(finch_name)
+    assert {:error, :not_found} = Finch.get_pool_status(finch_name, :default)
+  end
+
+  test "get default pool status", %{bypass: bypass, finch_name: finch_name} do
+    start_supervised!(
+      {Finch,
+       name: finch_name, pools: %{default: [protocols: [:http1], start_pool_metrics?: true]}}
+    )
+
+    shp = shp_from_bypass(bypass)
+
+    Bypass.expect_once(bypass, "GET", "/", fn conn ->
+      Plug.Conn.send_resp(conn, 200, "OK")
+    end)
+
+    assert {:ok, %Finch.Response{status: 200}} =
+             Finch.build(:get, endpoint(bypass))
+             |> Finch.request(finch_name)
+
+    wait_connection_checkin()
+
+    assert {:ok, %{^shp => [%PoolMetrics{}]}} = Finch.get_pool_status(finch_name, :default)
+  end
+
+  test "get default pool status returns error when no pools", %{finch_name: finch_name} do
+    start_supervised!(
+      {Finch,
+       name: finch_name, pools: %{default: [protocols: [:http1], start_pool_metrics?: true]}}
+    )
+
+    assert {:error, :not_found} = Finch.get_pool_status(finch_name, :default)
   end
 
   test "get pool status", %{bypass: bypass, finch_name: finch_name} do
