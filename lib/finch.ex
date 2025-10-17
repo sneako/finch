@@ -466,6 +466,8 @@ defmodule Finch do
   @doc """
   Sends an HTTP request and returns a `Finch.Response` struct.
 
+  It can still raise exceptions if it was not possible to check out a connection in the given `:pool_timeout`.
+
   ## Options
 
     * `:pool_timeout` - This timeout is applied when we check out a connection from the pool.
