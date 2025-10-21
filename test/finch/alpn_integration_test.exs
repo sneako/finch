@@ -52,7 +52,7 @@ defmodule Finch.ALPNIntegrationTest do
         body = Jason.decode!(response.body)
         assert body["received_bytes"] == 65_538
 
-      {:error, %Mint.HTTPError{reason: {:exceeds_window_size, :request, 65535}}} ->
+      {:error, %Mint.HTTPError{reason: {:exceeds_window_size, :request, 65_535}}} ->
         flunk("""
         Request failed with window size error - this is the bug we're trying to fix.
         The HTTP/1 pool doesn't implement HTTP/2 flow control when connections upgrade via ALPN.
