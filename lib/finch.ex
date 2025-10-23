@@ -262,6 +262,13 @@ defmodule Finch do
 
     conn_opts = valid[:conn_opts] |> List.wrap()
 
+    # Only relevant to HTTP2, but just gracefully ignored in HTTP1.
+    # Since we cannot handle server push responses, we need to disable the feature.
+    client_settings =
+      conn_opts
+      |> Keyword.get(:client_settings, [])
+      |> Keyword.put(:enable_push, false)
+
     ssl_key_log_file =
       Keyword.get(conn_opts, :ssl_key_log_file) || System.get_env("SSLKEYLOGFILE")
 
@@ -272,6 +279,7 @@ defmodule Finch do
       |> Keyword.put(:ssl_key_log_file_device, ssl_key_log_file_device)
       |> Keyword.put(:transport_opts, transport_opts)
       |> Keyword.put(:protocols, valid[:protocols])
+      |> Keyword.put(:client_settings, client_settings)
 
     # TODO: Remove :protocol on v0.18
     mod =
