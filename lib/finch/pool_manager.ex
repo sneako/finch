@@ -4,6 +4,7 @@ defmodule Finch.PoolManager do
 
   @mint_tls_opts [
     :cacertfile,
+    :cacerts,
     :ciphers,
     :depth,
     :eccs,
