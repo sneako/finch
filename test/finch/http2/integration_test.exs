@@ -76,20 +76,24 @@ defmodule Finch.HTTP2.IntegrationTest do
     # they shouldn't block each other which we check with a rough time estimates
     request = Finch.build(:get, url <> "/wait/1000")
 
+    # Warm the connection
+    {:ok, _} = Finch.request(request, TestFinch)
+
     results =
-      1..50
-      |> Enum.map(fn _ ->
-        Task.async(fn ->
+      Task.async_stream(
+        1..50,
+        fn _ ->
           start = System.monotonic_time()
           {:ok, _} = Finch.request(request, TestFinch)
           System.monotonic_time() - start
-        end)
-      end)
-      |> Enum.map(&Task.await/1)
+        end,
+        ordered: false
+      )
+      |> Enum.into([])
 
-    for result <- results do
+    for {:ok, result} <- results do
       time = System.convert_time_unit(result, :native, :millisecond)
-      assert time <= 1200
+      assert time <= 1_050
     end
   end
 
