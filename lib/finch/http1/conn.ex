@@ -84,13 +84,6 @@ defmodule Finch.HTTP1.Conn do
   def reusable?(%{max_idle_time: :infinity}, _idle_time), do: true
   def reusable?(%{max_idle_time: max_idle_time}, idle_time), do: idle_time <= max_idle_time
 
-  def set_mode(conn, mode) when mode in [:active, :passive] do
-    case Mint.HTTP.set_mode(conn.mint, mode) do
-      {:ok, mint} -> {:ok, %{conn | mint: mint}}
-      _ -> {:error, "Connection is dead"}
-    end
-  end
-
   def cancel_idle_probe(%{idle_probe_ref: nil} = conn), do: conn
 
   def cancel_idle_probe(%{idle_probe_ref: {_ref, tref}} = conn) do

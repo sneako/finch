@@ -225,8 +225,8 @@ defmodule Finch.HTTP1.Pool do
       metric_ref: metric_ref
     } = pool_state
 
-    with true <- Conn.reusable?(conn, idle_time),
-         {:ok, conn} <- Conn.set_mode(Conn.cancel_idle_probe(conn), :passive) do
+    with true <- Conn.reusable?(conn, idle_time) do
+      conn = Conn.cancel_idle_probe(conn)
       PoolMetrics.maybe_add(metric_ref, in_use_connections: 1)
       {:ok, {:reuse, conn, idle_time}, conn, update_activity_info(:checkout, pool_state)}
     else
