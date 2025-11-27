@@ -11,6 +11,7 @@ defmodule Finch.HTTP1.Pool do
       :pool_idx,
       :metric_ref,
       :opts,
+      :idle_probe_interval,
       :activity_info
     ]
   end
@@ -26,6 +27,7 @@ defmodule Finch.HTTP1.Pool do
       _pool_size,
       _conn_opts,
       pool_max_idle_time,
+      _idle_probe_interval,
       _start_pool_metrics?,
       _pool_idx
     } = opts
@@ -38,12 +40,14 @@ defmodule Finch.HTTP1.Pool do
   end
 
   def start_link(
-        {shp, registry_name, pool_size, conn_opts, pool_max_idle_time, start_pool_metrics?,
-         pool_idx}
+        {shp, registry_name, pool_size, conn_opts, pool_max_idle_time, idle_probe_interval,
+         start_pool_metrics?, pool_idx}
       ) do
     NimblePool.start_link(
       worker:
-        {__MODULE__, {registry_name, shp, pool_idx, pool_size, start_pool_metrics?, conn_opts}},
+        {__MODULE__,
+         {registry_name, shp, pool_idx, pool_size, start_pool_metrics?, conn_opts,
+          idle_probe_interval}},
       pool_size: pool_size,
       lazy: true,
       worker_idle_timeout: pool_idle_timeout(pool_max_idle_time)
@@ -175,7 +179,7 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
-  def init_pool({registry, shp, pool_idx, pool_size, start_pool_metrics?, opts}) do
+  def init_pool({registry, shp, pool_idx, pool_size, start_pool_metrics?, opts, idle_probe_interval}) do
     {:ok, metric_ref} =
       if start_pool_metrics?,
         do: PoolMetrics.init(registry, shp, pool_idx, pool_size),
@@ -194,6 +198,7 @@ defmodule Finch.HTTP1.Pool do
       pool_idx: pool_idx,
       metric_ref: metric_ref,
       opts: opts,
+      idle_probe_interval: idle_probe_interval,
       activity_info: acitivity_info
     }
 
@@ -221,7 +226,7 @@ defmodule Finch.HTTP1.Pool do
     } = pool_state
 
     with true <- Conn.reusable?(conn, idle_time),
-         {:ok, conn} <- Conn.set_mode(conn, :passive) do
+         {:ok, conn} <- Conn.set_mode(Conn.cancel_idle_probe(conn), :passive) do
       PoolMetrics.maybe_add(metric_ref, in_use_connections: 1)
       {:ok, {:reuse, conn, idle_time}, conn, update_activity_info(:checkout, pool_state)}
     else
@@ -249,8 +254,12 @@ defmodule Finch.HTTP1.Pool do
     %__MODULE__.State{metric_ref: metric_ref} = pool_state
     PoolMetrics.maybe_add(metric_ref, in_use_connections: -1)
 
-    with {:ok, conn} <- checkin,
-         {:ok, conn} <- Conn.set_mode(conn, :active) do
+    with {:ok, conn} <- checkin do
+      conn =
+        conn
+        |> Conn.cancel_idle_probe()
+        |> Conn.schedule_idle_probe(pool_state.idle_probe_interval)
+
       {
         :ok,
         %{conn | last_checkin: System.monotonic_time()},
@@ -268,6 +277,24 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
+  def handle_info({:finch_idle_probe, ref, interval}, %{idle_probe_ref: {ref, _}} = conn) do
+    conn = Conn.cancel_idle_probe(conn)
+
+    case Conn.probe_remote_close(conn) do
+      {:ok, conn} ->
+        conn = Conn.schedule_idle_probe(conn, interval)
+        {:ok, conn}
+
+      {:closed, _conn} ->
+        {:remove, :closed}
+
+      {:error, _conn} ->
+        {:remove, :closed}
+    end
+  end
+
+  def handle_info({:finch_idle_probe, _ref, _}, conn), do: {:ok, conn}
+
   def handle_info(message, conn) do
     case Conn.discard(conn, message) do
       {:ok, conn} -> {:ok, conn}
@@ -318,7 +345,7 @@ defmodule Finch.HTTP1.Pool do
   # On terminate, effectively close it.
   # This will succeed even if it was already closed or if we don't own it.
   def terminate_worker(_reason, conn, %__MODULE__.State{} = pool_state) do
-    Conn.close(conn)
+    conn |> Conn.cancel_idle_probe() |> Conn.close()
     {:ok, pool_state}
   end
 

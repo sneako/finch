@@ -13,6 +13,7 @@ defmodule Finch.HTTP1.Conn do
       parent: parent,
       last_checkin: System.monotonic_time(),
       max_idle_time: opts.conn_max_idle_time,
+      idle_probe_ref: nil,
       mint: nil
     }
   end
@@ -87,6 +88,43 @@ defmodule Finch.HTTP1.Conn do
     case Mint.HTTP.set_mode(conn.mint, mode) do
       {:ok, mint} -> {:ok, %{conn | mint: mint}}
       _ -> {:error, "Connection is dead"}
+    end
+  end
+
+  def cancel_idle_probe(%{idle_probe_ref: nil} = conn), do: conn
+
+  def cancel_idle_probe(%{idle_probe_ref: {_ref, tref}} = conn) do
+    _ = Process.cancel_timer(tref, async: false, info: false)
+    %{conn | idle_probe_ref: nil}
+  end
+
+  def schedule_idle_probe(%{mint: nil} = conn, _interval), do: conn
+  def schedule_idle_probe(conn, :infinity), do: conn
+
+  def schedule_idle_probe(conn, interval) when is_integer(interval) and interval >= 0 do
+    ref = make_ref()
+    tref = Process.send_after(self(), {:finch_idle_probe, ref, interval}, interval)
+    %{conn | idle_probe_ref: {ref, tref}}
+  end
+
+  def probe_remote_close(%{mint: nil} = conn), do: {:ok, conn}
+
+  def probe_remote_close(conn) do
+    case Mint.HTTP.recv(conn.mint, 0, 0) do
+      {:ok, mint, []} ->
+        {:ok, %{conn | mint: mint}}
+
+      {:error, mint, %Mint.TransportError{reason: :timeout}, _} ->
+        {:ok, %{conn | mint: mint}}
+
+      {:error, mint, %Mint.TransportError{reason: :closed}, _} ->
+        {:closed, %{conn | mint: mint}}
+
+      {:error, mint, _error, _responses} ->
+        {:error, %{conn | mint: mint}}
+
+      {:ok, mint, _unexpected} ->
+        {:error, %{conn | mint: mint}}
     end
   end
 

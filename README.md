@@ -65,6 +65,8 @@ processes. So, if you encountered 10 separate combinations, that'd be 20 pool pr
 
 Note pools are not automatically terminated by default, if you need to
 terminate them after some idle time, use the `pool_max_idle_time` option (available only for HTTP1 pools).
+To keep idle HTTP/1 sockets passive while still detecting remote closes, configure
+`idle_probe_interval` (defaults to 5000 ms) to run a non-blocking probe on idle connections.
 
 ## Telemetry
 

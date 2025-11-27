@@ -80,6 +80,15 @@ defmodule Finch do
       """,
       default: :infinity
     ],
+    idle_probe_interval: [
+      type: :timeout,
+      doc: """
+      Interval in milliseconds used by HTTP1 pools to probe idle connections with a non-blocking \
+      zero-byte recv. This keeps idle sockets passive while still detecting remote closes. \
+      Set to `:infinity` to disable probing.
+      """,
+      default: 5_000
+    ],
     conn_max_idle_time: [
       type: :timeout,
       doc: """
@@ -305,6 +314,7 @@ defmodule Finch do
       conn_opts: conn_opts,
       conn_max_idle_time: to_native(valid[:max_idle_time] || valid[:conn_max_idle_time]),
       pool_max_idle_time: valid[:pool_max_idle_time],
+      idle_probe_interval: valid[:idle_probe_interval],
       start_pool_metrics?: valid[:start_pool_metrics?]
     }
   end

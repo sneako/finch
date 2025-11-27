@@ -178,6 +178,7 @@ defmodule Finch.PoolManager do
       pool_config.size,
       pool_config,
       pool_config.pool_max_idle_time,
+      pool_config.idle_probe_interval,
       pool_config.start_pool_metrics?,
       pool_idx
     }
