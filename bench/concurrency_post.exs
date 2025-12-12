@@ -24,10 +24,18 @@ end
 
 # Start the server
 port = 4000
-{:ok, _} = Plug.Cowboy.http(BenchServer, [], port: port)
+{:ok, _} = Plug.Cowboy.http(BenchServer, [], port: port, protocol_options: [max_keepalive: 10_000_000])
 
 # Start Finch
-{:ok, _} = Finch.start_link(name: MyFinch)
+{:ok, _} = Finch.start_link(
+  name: MyFinch,
+  pools: %{
+    :default => [
+      size: 50,
+      conn_opts: [transport_opts: [recbuf: 1024 * 1024]]
+    ]
+  }
+)
 
 url = "http://localhost:#{port}/"
 body = "some payload"
