@@ -32,6 +32,7 @@ port = 4000
   pools: %{
     :default => [
       size: 50,
+      count: 4,
       conn_opts: [transport_opts: [recbuf: 1024 * 1024]]
     ]
   }
