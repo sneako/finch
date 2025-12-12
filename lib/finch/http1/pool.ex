@@ -24,7 +24,7 @@ defmodule Finch.HTTP1.Pool do
       _shp,
       _registry_name,
       _pool_size,
-      _conn_opts,
+      _pool_config,
       pool_max_idle_time,
       _start_pool_metrics?,
       _pool_idx
@@ -38,13 +38,28 @@ defmodule Finch.HTTP1.Pool do
   end
 
   def start_link(
-        {shp, registry_name, pool_size, conn_opts, pool_max_idle_time, start_pool_metrics?,
+        {shp, registry_name, pool_size, pool_config, pool_max_idle_time, start_pool_metrics?,
          pool_idx}
       ) do
+    name = {:via, Registry, {:"#{registry_name}.PoolRegistry", shp, __MODULE__}}
+
+    partitions = if pool_config.count > 1, do: pool_config.count, else: nil
+
+    pool_config =
+      if start_pool_metrics? do
+        total_size = if pool_config.count > 1, do: pool_size * pool_config.count, else: pool_size
+        {:ok, ref} = PoolMetrics.init(registry_name, shp, pool_idx, total_size)
+        Map.put(pool_config, :metrics_ref, ref)
+      else
+        pool_config
+      end
+
     NimblePool.start_link(
       worker:
-        {__MODULE__, {registry_name, shp, pool_idx, pool_size, start_pool_metrics?, conn_opts}},
+        {__MODULE__, {registry_name, shp, pool_idx, pool_size, start_pool_metrics?, pool_config}},
       pool_size: pool_size,
+      partitions: partitions,
+      name: name,
       lazy: true,
       worker_idle_timeout: pool_idle_timeout(pool_max_idle_time)
     )
@@ -58,11 +73,13 @@ defmodule Finch.HTTP1.Pool do
 
     metadata = %{request: req, pool: pool, name: name}
 
+    worker_pid = resolve_worker(pool, req, name)
+
     start_time = Telemetry.start(:queue, metadata)
 
     try do
       NimblePool.checkout!(
-        pool,
+        worker_pid,
         :checkout,
         fn from, {state, conn, idle_time} ->
           Telemetry.stop(:queue, start_time, metadata, %{idle_time: idle_time})
@@ -104,6 +121,27 @@ defmodule Finch.HTTP1.Pool do
           _ ->
             exit(data)
         end
+    end
+  end
+
+  defp resolve_worker(pool, req, name) do
+    if Code.ensure_loaded?(PartitionSupervisor) do
+      shp =
+        if is_binary(req.unix_socket) do
+          {req.scheme, {:local, req.unix_socket}, 0}
+        else
+          {req.scheme, req.host, req.port}
+        end
+
+      pool_name = {:via, Registry, {:"#{name}.PoolRegistry", shp, __MODULE__}}
+
+      try do
+        GenServer.whereis({:via, PartitionSupervisor, {pool_name, self()}}) || pool
+      catch
+        _, _ -> pool
+      end
+    else
+      pool
     end
   end
 
@@ -175,11 +213,13 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
-  def init_pool({registry, shp, pool_idx, pool_size, start_pool_metrics?, opts}) do
+  def init_pool({registry, shp, pool_idx, _pool_size, start_pool_metrics?, opts}) do
     {:ok, metric_ref} =
-      if start_pool_metrics?,
-        do: PoolMetrics.init(registry, shp, pool_idx, pool_size),
-        else: {:ok, nil}
+      if start_pool_metrics? do
+        {:ok, opts.metrics_ref}
+      else
+        {:ok, nil}
+      end
 
     # Register our pool with our module name as the key. This allows the caller
     # to determine the correct pool module to use to make the request

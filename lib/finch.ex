@@ -198,6 +198,7 @@ defmodule Finch do
   def init(config) do
     children = [
       {Registry, [keys: :duplicate, name: config.registry_name, meta: [config: config]]},
+      {Registry, [keys: :unique, name: pool_registry_name(config.registry_name)]},
       {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
       {PoolManager, config}
     ]
@@ -735,20 +736,35 @@ defmodule Finch do
   end
 
   def stop_pool(finch_name, shp) when is_tuple(shp) do
-    case PoolManager.all_pool_instances(finch_name, shp) do
-      [] ->
-        {:error, :not_found}
+    pool_pid =
+      case Registry.lookup(pool_registry_name(finch_name), shp) do
+        [{pid, _}] -> pid
+        [] -> nil
+      end
 
-      children ->
-        Enum.each(
-          children,
-          fn {pid, _module} ->
-            DynamicSupervisor.terminate_child(pool_supervisor_name(finch_name), pid)
-          end
-        )
+    if pool_pid do
+      DynamicSupervisor.terminate_child(pool_supervisor_name(finch_name), pool_pid)
+      PoolManager.maybe_remove_default_shp(finch_name, shp)
+      :ok
+    else
+      case PoolManager.all_pool_instances(finch_name, shp) do
+        [] ->
+          {:error, :not_found}
 
-        PoolManager.maybe_remove_default_shp(finch_name, shp)
-        :ok
+        children ->
+          Enum.each(
+            children,
+            fn {pid, _module} ->
+              DynamicSupervisor.terminate_child(pool_supervisor_name(finch_name), pid)
+            end
+          )
+
+          PoolManager.maybe_remove_default_shp(finch_name, shp)
+          :ok
+      end
     end
   end
+
+  @doc false
+  def pool_registry_name(name), do: :"#{name}.PoolRegistry"
 end

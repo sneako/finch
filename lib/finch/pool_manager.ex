@@ -85,12 +85,16 @@ defmodule Finch.PoolManager do
   defp do_start_pools(shp, config) do
     pool_config = pool_config(config, shp)
 
+    # If we're using HTTP1, we use NimblePool partitions so we only start one pool.
+    # Otherwise we start `count` pools.
+    count = if pool_config.mod == Finch.HTTP1.Pool, do: 1, else: pool_config.count
+
     if pool_config.start_pool_metrics? do
       maybe_track_default_shp(config, shp)
-      put_pool_count(config, shp, pool_config.count)
+      put_pool_count(config, shp, count)
     end
 
-    Enum.map(1..pool_config.count, fn pool_idx ->
+    Enum.map(1..count, fn pool_idx ->
       pool_args = pool_args(shp, config, pool_config, pool_idx)
       # Choose pool type here...
       {:ok, pid} =

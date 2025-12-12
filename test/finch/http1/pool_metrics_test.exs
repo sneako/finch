@@ -154,18 +154,14 @@ defmodule Finch.HTTP1.PoolMetricsTest do
             [
               %PoolMetrics{
                 pool_index: 1,
-                available_connections: p1_available_conns,
-                in_use_connections: p1_in_use_conns
-              },
-              %PoolMetrics{
-                pool_index: 2,
-                available_connections: p2_available_conns,
-                in_use_connections: p2_in_use_conns
+                pool_size: 100,
+                available_connections: available_conns,
+                in_use_connections: in_use_conns
               }
             ]} = Finch.get_pool_status(finch_name, shp)
 
-    assert p1_available_conns + p2_available_conns == 80
-    assert p1_in_use_conns + p2_in_use_conns == 20
+    assert available_conns + in_use_conns == 100
+    assert in_use_conns == 20
 
     Enum.each(refs, fn req_ref ->
       assert_receive {^req_ref, {:status, 200}}, 2000
@@ -177,18 +173,11 @@ defmodule Finch.HTTP1.PoolMetricsTest do
             [
               %PoolMetrics{
                 pool_index: 1,
-                available_connections: p1_available_conns,
-                in_use_connections: p1_in_use_conns
-              },
-              %PoolMetrics{
-                pool_index: 2,
-                available_connections: p2_available_conns,
-                in_use_connections: p2_in_use_conns
+                pool_size: 100,
+                available_connections: 100,
+                in_use_connections: 0
               }
             ]} = Finch.get_pool_status(finch_name, shp)
-
-    assert p1_available_conns + p2_available_conns == 100
-    assert p1_in_use_conns + p2_in_use_conns == 0
   end
 
   test "get pool status with not reusable connections", %{bypass: bypass, finch_name: finch_name} do
