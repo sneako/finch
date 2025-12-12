@@ -45,7 +45,10 @@ defmodule Finch.MixProject do
       {:cowboy, "~> 2.7", only: [:dev, :test]},
       {:plug_cowboy, "~> 2.0", only: [:dev, :test]},
       {:x509, "~> 0.8", only: [:dev, :test]},
-      {:mimic, "~> 1.7", only: :test}
+      {:mimic, "~> 1.7", only: :test},
+      {:benchee, "~> 1.0", only: [:dev, :test]},
+      {:benchee_html, "~> 1.0", only: [:dev, :test]},
+      {:benchee_json, "~> 1.0", only: [:dev, :test]}
     ]
   end
 
