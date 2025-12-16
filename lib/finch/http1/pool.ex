@@ -60,14 +60,14 @@ defmodule Finch.HTTP1.Pool do
               Conn.request(conn, req, acc, fun, name, receive_timeout, request_timeout, idle_time)
               |> case do
                 {:ok, conn, acc} ->
-                  {{:ok, acc}, transfer_if_open(conn, state, from)}
+                  {{:ok, acc}, transfer_if_open(conn, state, from, pool)}
 
                 {:error, conn, error, acc} ->
-                  {{:error, error, acc}, transfer_if_open(conn, state, from)}
+                  {{:error, error, acc}, transfer_if_open(conn, state, from, pool)}
               end
 
             {:error, conn, error} ->
-              {{:error, error, acc}, transfer_if_open(conn, state, from)}
+              {{:error, error, acc}, transfer_if_open(conn, state, from, pool)}
           end
         end,
         pool_timeout
@@ -194,7 +194,7 @@ defmodule Finch.HTTP1.Pool do
     {:ok, {:fresh, conn, idle_time}, conn, pool_state}
   end
 
-  def handle_checkout(:checkout, _from, conn, %__MODULE__.State{} = pool_state) do
+  def handle_checkout(:checkout, {pid, _}, conn, %__MODULE__.State{} = pool_state) do
     idle_time = System.monotonic_time() - conn.last_checkin
 
     %__MODULE__.State{
@@ -202,24 +202,30 @@ defmodule Finch.HTTP1.Pool do
       metric_ref: metric_ref
     } = pool_state
 
-    with true <- Conn.reusable?(conn, idle_time),
-         {:ok, conn} <- Conn.set_mode(conn, :passive) do
+    if Conn.reusable?(conn, idle_time) do
       PoolMetrics.maybe_add(metric_ref, in_use_connections: 1)
-      {:ok, {:reuse, conn, idle_time}, conn, update_activity_info(:checkout, pool_state)}
+
+      case Conn.transfer(conn, pid) do
+        {:ok, conn} ->
+          Conn.flush_messages(conn, pid)
+          {:ok, {:reuse, conn, idle_time}, conn, update_activity_info(:checkout, pool_state)}
+
+        {:error, _, _} ->
+          {:remove, :closed, pool_state}
+      end
     else
-      false ->
-        meta = %{
-          scheme: pool.scheme,
-          host: pool.host,
-          port: pool.port
-        }
+      meta = %{
+        scheme: pool.scheme,
+        host: pool.host,
+        port: pool.port
+      }
 
-        Telemetry.event(:conn_max_idle_time_exceeded, %{idle_time: idle_time}, meta)
+      # Deprecated, remember to delete when we remove the :max_idle_time pool config option!
+      Telemetry.event(:max_idle_time_exceeded, %{idle_time: idle_time}, meta)
 
-        {:remove, :closed, pool_state}
+      Telemetry.event(:conn_max_idle_time_exceeded, %{idle_time: idle_time}, meta)
 
-      _ ->
-        {:remove, :closed, pool_state}
+      {:remove, :closed, pool_state}
     end
   end
 
@@ -228,14 +234,14 @@ defmodule Finch.HTTP1.Pool do
     %__MODULE__.State{metric_ref: metric_ref} = pool_state
     PoolMetrics.maybe_add(metric_ref, in_use_connections: -1)
 
-    with {:ok, conn} <- checkin,
-         {:ok, conn} <- Conn.set_mode(conn, :active) do
-      {
-        :ok,
-        %{conn | last_checkin: System.monotonic_time()},
-        update_activity_info(:checkin, pool_state)
-      }
-    else
+    case checkin do
+      {:ok, conn} ->
+        {
+          :ok,
+          %{conn | last_checkin: System.monotonic_time()},
+          update_activity_info(:checkin, pool_state)
+        }
+
       _ ->
         {:remove, :closed, update_activity_info(:checkin, pool_state)}
     end
@@ -310,17 +316,18 @@ defmodule Finch.HTTP1.Pool do
 
   def handle_cancelled(:queued, _pool_state), do: :ok
 
-  defp transfer_if_open(conn, state, {pid, _} = from) do
+  defp transfer_if_open(conn, state, {_pid, _} = from, pool) do
     if Conn.open?(conn) do
-      if state == :fresh do
-        NimblePool.update(from, conn)
+      case Conn.transfer(conn, pool) do
+        {:ok, conn} ->
+          if state == :fresh do
+            NimblePool.update(from, conn)
+          end
 
-        case Conn.transfer(conn, pid) do
-          {:ok, conn} -> {:ok, conn}
-          {:error, _, _} -> :closed
-        end
-      else
-        {:ok, conn}
+          {:ok, conn}
+
+        {:error, _, _} ->
+          :closed
       end
     else
       :closed
