@@ -46,7 +46,7 @@ defmodule Finch.HTTP1.Conn do
 
     conn_opts =
       conn.opts
-      |> Keyword.put(:mode, :passive)
+      |> Keyword.put(:mode, :active)
       |> Keyword.put_new(:protocols, [:http1])
 
     case Mint.HTTP.connect(conn.scheme, conn.host, conn.port, conn_opts) do
@@ -82,13 +82,6 @@ defmodule Finch.HTTP1.Conn do
 
   def reusable?(%{max_idle_time: :infinity}, _idle_time), do: true
   def reusable?(%{max_idle_time: max_idle_time}, idle_time), do: idle_time <= max_idle_time
-
-  def set_mode(conn, mode) when mode in [:active, :passive] do
-    case Mint.HTTP.set_mode(conn.mint, mode) do
-      {:ok, mint} -> {:ok, %{conn | mint: mint}}
-      _ -> {:error, "Connection is dead"}
-    end
-  end
 
   def discard(%{mint: nil}, _), do: :unknown
 
@@ -259,30 +252,38 @@ defmodule Finch.HTTP1.Conn do
          resp_metadata
        ) do
     start_time = System.monotonic_time(:millisecond)
+    socket = Mint.HTTP.get_socket(mint)
 
-    case Mint.HTTP.recv(mint, 0, timeouts.receive_timeout) do
-      {:ok, mint, entries} ->
-        timeouts =
-          if is_integer(timeouts.request_timeout) do
-            elapsed_time = System.monotonic_time(:millisecond) - start_time
-            update_in(timeouts.request_timeout, &(&1 - elapsed_time))
-          else
-            timeouts
-          end
-
-        receive_response(
-          entries,
+    receive do
+      {_, ^socket, _} = message ->
+        stream_message(
+          message,
           acc,
           fun,
           mint,
           ref,
           timeouts,
           fields,
-          resp_metadata
+          resp_metadata,
+          start_time
         )
 
-      {:error, mint, error, _responses} ->
-        {:error, mint, error, acc, resp_metadata}
+      {_, ^socket} = message ->
+        stream_message(
+          message,
+          acc,
+          fun,
+          mint,
+          ref,
+          timeouts,
+          fields,
+          resp_metadata,
+          start_time
+        )
+    after
+      timeouts.receive_timeout ->
+        {:ok, mint} = Mint.HTTP.close(mint)
+        {:error, mint, %Mint.TransportError{reason: :timeout}, acc, resp_metadata}
     end
   end
 
@@ -367,6 +368,65 @@ defmodule Finch.HTTP1.Conn do
 
       {:error, ^ref, error} ->
         {:error, mint, error, acc, resp_metadata}
+    end
+  end
+
+  def flush_messages(conn, pid) do
+    socket = Mint.HTTP.get_socket(conn.mint)
+    do_flush_messages(socket, pid)
+    conn
+  end
+
+  defp do_flush_messages(socket, pid) do
+    receive do
+      {_, ^socket, _} = msg ->
+        send(pid, msg)
+        do_flush_messages(socket, pid)
+
+      {_, ^socket} = msg ->
+        send(pid, msg)
+        do_flush_messages(socket, pid)
+    after
+      0 -> :ok
+    end
+  end
+
+  defp stream_message(message, acc, fun, mint, ref, timeouts, fields, resp_metadata, start_time) do
+    timeouts =
+      if is_integer(timeouts.request_timeout) do
+        elapsed_time = System.monotonic_time(:millisecond) - start_time
+        update_in(timeouts.request_timeout, &(&1 - elapsed_time))
+      else
+        timeouts
+      end
+
+    case Mint.HTTP.stream(mint, message) do
+      {:ok, mint, entries} ->
+        receive_response(
+          entries,
+          acc,
+          fun,
+          mint,
+          ref,
+          timeouts,
+          fields,
+          resp_metadata
+        )
+
+      {:error, mint, error, _responses} ->
+        {:error, mint, error, acc, resp_metadata}
+
+      :unknown ->
+        receive_response(
+          [],
+          acc,
+          fun,
+          mint,
+          ref,
+          timeouts,
+          fields,
+          resp_metadata
+        )
     end
   end
 end
