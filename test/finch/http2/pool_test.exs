@@ -167,7 +167,7 @@ defmodule Finch.HTTP2.PoolTest do
 
       assert_recv_frames([headers(stream_id: _stream_id)])
 
-      assert {:error, %Mint.HTTPError{reason: :too_many_concurrent_requests}, _acc} =
+      assert {:error, %Finch.HTTPError{reason: :too_many_concurrent_requests}, _acc} =
                request(pool, req, [])
     end
 

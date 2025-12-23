@@ -3,6 +3,7 @@ defmodule Finch.HTTP1.Conn do
 
   alias Finch.SSL
   alias Finch.Telemetry
+  alias Finch.Error
 
   def new(scheme, host, port, opts, parent) do
     %{
@@ -56,9 +57,10 @@ defmodule Finch.HTTP1.Conn do
         {:ok, %{conn | mint: mint}}
 
       {:error, error} ->
-        meta = Map.put(meta, :error, error)
+        wrapped_error = Error.wrap(error)
+        meta = Map.put(meta, :error, wrapped_error)
         Telemetry.stop(:connect, start_time, meta)
-        {:error, conn, error}
+        {:error, conn, wrapped_error}
     end
   end
 
@@ -86,7 +88,7 @@ defmodule Finch.HTTP1.Conn do
   def set_mode(conn, mode) when mode in [:active, :passive] do
     case Mint.HTTP.set_mode(conn.mint, mode) do
       {:ok, mint} -> {:ok, %{conn | mint: mint}}
-      _ -> {:error, "Connection is dead"}
+      _ -> {:error, Error.exception(:connection_dead)}
     end
   end
 
@@ -100,7 +102,8 @@ defmodule Finch.HTTP1.Conn do
     end
   end
 
-  def request(%{mint: nil} = conn, _, _, _, _, _, _, _), do: {:error, conn, "Could not connect"}
+  def request(%{mint: nil} = conn, _, _, _, _, _, _, _),
+    do: {:error, conn, Error.exception(:could_not_connect)}
 
   def request(conn, req, acc, fun, name, receive_timeout, request_timeout, idle_time) do
     full_path = Finch.Request.request_path(req)
@@ -168,9 +171,10 @@ defmodule Finch.HTTP1.Conn do
   defp stream_or_body(body), do: body
 
   defp handle_request_error(conn, mint, error, acc, metadata, start_time, extra_measurements) do
-    metadata = Map.put(metadata, :error, error)
+    wrapped_error = Error.wrap(error)
+    metadata = Map.put(metadata, :error, wrapped_error)
     Telemetry.stop(:send, start_time, metadata, extra_measurements)
-    {:error, %{conn | mint: mint}, error, acc}
+    {:error, %{conn | mint: mint}, wrapped_error, acc}
   end
 
   defp maybe_stream_request_body(mint, ref, {:stream, stream}) do
@@ -203,9 +207,10 @@ defmodule Finch.HTTP1.Conn do
         {:ok, %{conn | mint: mint}, acc}
 
       {:error, mint, error, acc, resp_metadata} ->
-        metadata = Map.merge(metadata, Map.put(resp_metadata, :error, error))
+        wrapped_error = Error.wrap(error)
+        metadata = Map.merge(metadata, Map.put(resp_metadata, :error, wrapped_error))
         Telemetry.stop(:recv, start_time, metadata, extra_measurements)
-        {:error, %{conn | mint: mint}, error, acc}
+        {:error, %{conn | mint: mint}, wrapped_error, acc}
     end
   end
 

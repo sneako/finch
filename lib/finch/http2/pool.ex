@@ -178,7 +178,7 @@ defmodule Finch.HTTP2.Pool do
         {:error, error, acc}
 
       {:DOWN, ^monitor_ref, _, _, _} ->
-        {:error, :connection_process_went_down}
+        {:error, Error.exception(:connection_process_went_down), acc}
     after
       fail_safe_timeout ->
         Process.demonitor(monitor_ref)
@@ -281,12 +281,13 @@ defmodule Finch.HTTP2.Pool do
         {:next_state, :connected, data}
 
       {:error, error} ->
-        metadata = Map.put(metadata, :error, error)
+        wrapped_error = Error.wrap(error)
+        metadata = Map.put(metadata, :error, wrapped_error)
         Telemetry.stop(:connect, start, metadata)
 
         Logger.warning([
           "Failed to connect to #{data.pool.scheme}://#{data.pool.host}:#{data.pool.port}: ",
-          Exception.message(error)
+          Exception.message(wrapped_error)
         ])
 
         delay = backoff(data.backoff_base, data.backoff_max, failure_count)
@@ -382,9 +383,11 @@ defmodule Finch.HTTP2.Pool do
         end
 
       {:error, conn, error, responses} ->
+        wrapped_error = Error.wrap(error)
+
         Logger.error([
           "Received error from server #{data.pool.scheme}:#{data.pool.host}:#{data.pool.port}: ",
-          Exception.message(error)
+          Exception.message(wrapped_error)
         ])
 
         data = put_in(data.conn, conn)
@@ -487,9 +490,11 @@ defmodule Finch.HTTP2.Pool do
         end
 
       {:error, conn, error, responses} ->
+        wrapped_error = Error.wrap(error)
+
         Logger.error([
           "Received error from server #{data.pool.scheme}://#{data.pool.host}:#{data.pool.port}: ",
-          Exception.message(error)
+          Exception.message(wrapped_error)
         ])
 
         data = put_in(data.conn, conn)
@@ -589,7 +594,7 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp stream_request({:error, data, error}, request, _opts) do
-    reply(request, {:error, error})
+    reply(request, {:error, Error.wrap(error)})
 
     if HTTP2.open?(data.conn) do
       {:keep_state, data}
@@ -641,12 +646,13 @@ defmodule Finch.HTTP2.Pool do
     {request, data} = pop_request(data, ref)
 
     if request do
-      send(request.from_pid, {request.request_ref, {:error, error}})
+      wrapped_error = Error.wrap(error)
+      send(request.from_pid, {request.request_ref, {:error, wrapped_error}})
 
       Telemetry.stop(
         :recv,
         request.telemetry.recv,
-        Map.put(request.telemetry.metadata, :error, error)
+        Map.put(request.telemetry.metadata, :error, wrapped_error)
       )
     end
 
@@ -708,7 +714,7 @@ defmodule Finch.HTTP2.Pool do
           data
 
         {:error, data, reason} ->
-          reply(request, {:error, reason})
+          reply(request, {:error, Error.wrap(reason)})
           data
       end
     end)

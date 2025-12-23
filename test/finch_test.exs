@@ -598,7 +598,7 @@ defmodule FinchTest do
     test "raises exception on bad request", %{finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
 
-      assert_raise(Mint.TransportError, fn ->
+      assert_raise(Finch.TransportError, fn ->
         Finch.build(:get, "http://idontexist.wat") |> Finch.request!(finch_name)
       end)
     end
