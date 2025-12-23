@@ -244,7 +244,7 @@ defmodule Finch.HTTP1.Conn do
          resp_metadata
        )
        when timeouts.request_timeout < 0 do
-    {:ok, mint} = Mint.HTTP.close(mint)
+    # Keep the connection open on request timeouts.
     {:error, mint, %Mint.TransportError{reason: :timeout}, acc, resp_metadata}
   end
 
@@ -367,6 +367,14 @@ defmodule Finch.HTTP1.Conn do
 
       {:error, ^ref, error} ->
         {:error, mint, error, acc, resp_metadata}
+
+      {:done, _other_ref} ->
+        # Ignore responses for other refs (e.g., a previous request that timed out).
+        receive_response(entries, acc, fun, mint, ref, timeouts, fields, resp_metadata)
+
+      {kind, _other_ref, _value} when kind in [:status, :headers, :data, :error] ->
+        # Ignore responses for other refs (e.g., a previous request that timed out).
+        receive_response(entries, acc, fun, mint, ref, timeouts, fields, resp_metadata)
     end
   end
 end
