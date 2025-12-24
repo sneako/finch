@@ -103,6 +103,10 @@ defmodule Finch.HTTP1.Conn do
   def request(%{mint: nil} = conn, _, _, _, _, _, _, _), do: {:error, conn, "Could not connect"}
 
   def request(conn, req, acc, fun, name, receive_timeout, request_timeout, idle_time) do
+    request(conn, req, acc, fun, name, receive_timeout, request_timeout, idle_time, nil)
+  end
+
+  def request(conn, req, acc, fun, name, receive_timeout, request_timeout, idle_time, update_fun) do
     full_path = Finch.Request.request_path(req)
 
     metadata = %{request: req, name: name}
@@ -122,6 +126,7 @@ defmodule Finch.HTTP1.Conn do
         {:ok, mint, ref} ->
           case maybe_stream_request_body(mint, ref, req.body) do
             {:ok, mint} ->
+              maybe_update(update_fun, mint)
               Telemetry.stop(:send, start_time, metadata, extra_measurements)
               start_time = Telemetry.start(:recv, metadata, extra_measurements)
               resp_metadata = %{status: nil, headers: [], trailers: []}
@@ -136,7 +141,8 @@ defmodule Finch.HTTP1.Conn do
                   ref,
                   timeouts,
                   :headers,
-                  resp_metadata
+                  resp_metadata,
+                  update_fun
                 )
 
               handle_response(response, conn, metadata, start_time, extra_measurements)
@@ -191,8 +197,13 @@ defmodule Finch.HTTP1.Conn do
   def close(%{mint: nil} = conn), do: conn
 
   def close(conn) do
-    {:ok, mint} = Mint.HTTP.close(conn.mint)
-    %{conn | mint: mint}
+    try do
+      {:ok, mint} = Mint.HTTP.close(conn.mint)
+      %{conn | mint: mint}
+    catch
+      _kind, _reason ->
+        conn
+    end
   end
 
   defp handle_response(response, conn, metadata, start_time, extra_measurements) do
@@ -217,7 +228,8 @@ defmodule Finch.HTTP1.Conn do
          ref,
          timeouts,
          fields,
-         resp_metadata
+         resp_metadata,
+         update_fun
        )
 
   defp receive_response(
@@ -228,7 +240,8 @@ defmodule Finch.HTTP1.Conn do
          ref,
          _timeouts,
          _fields,
-         resp_metadata
+         resp_metadata,
+         _update_fun
        ) do
     {:ok, mint, acc, resp_metadata}
   end
@@ -241,7 +254,8 @@ defmodule Finch.HTTP1.Conn do
          _ref,
          timeouts,
          _fields,
-         resp_metadata
+         resp_metadata,
+         _update_fun
        )
        when timeouts.request_timeout < 0 do
     # Keep the connection open on request timeouts.
@@ -256,12 +270,15 @@ defmodule Finch.HTTP1.Conn do
          ref,
          timeouts,
          fields,
-         resp_metadata
+         resp_metadata,
+         update_fun
        ) do
     start_time = System.monotonic_time(:millisecond)
 
     case Mint.HTTP.recv(mint, 0, timeouts.receive_timeout) do
       {:ok, mint, entries} ->
+        maybe_update(update_fun, mint)
+
         timeouts =
           if is_integer(timeouts.request_timeout) do
             elapsed_time = System.monotonic_time(:millisecond) - start_time
@@ -278,7 +295,8 @@ defmodule Finch.HTTP1.Conn do
           ref,
           timeouts,
           fields,
-          resp_metadata
+          resp_metadata,
+          update_fun
         )
 
       {:error, mint, error, _responses} ->
@@ -294,7 +312,8 @@ defmodule Finch.HTTP1.Conn do
          ref,
          timeouts,
          fields,
-         resp_metadata
+         resp_metadata,
+         update_fun
        ) do
     case entry do
       {:status, ^ref, value} ->
@@ -308,7 +327,8 @@ defmodule Finch.HTTP1.Conn do
               ref,
               timeouts,
               fields,
-              %{resp_metadata | status: value}
+              %{resp_metadata | status: value},
+              update_fun
             )
 
           {:halt, acc} ->
@@ -332,7 +352,8 @@ defmodule Finch.HTTP1.Conn do
               ref,
               timeouts,
               fields,
-              resp_metadata
+              resp_metadata,
+              update_fun
             )
 
           {:halt, acc} ->
@@ -354,7 +375,8 @@ defmodule Finch.HTTP1.Conn do
               ref,
               timeouts,
               :trailers,
-              resp_metadata
+              resp_metadata,
+              update_fun
             )
 
           {:halt, acc} ->
@@ -370,11 +392,62 @@ defmodule Finch.HTTP1.Conn do
 
       {:done, _other_ref} ->
         # Ignore responses for other refs (e.g., a previous request that timed out).
-        receive_response(entries, acc, fun, mint, ref, timeouts, fields, resp_metadata)
+        receive_response(entries, acc, fun, mint, ref, timeouts, fields, resp_metadata, update_fun)
 
       {kind, _other_ref, _value} when kind in [:status, :headers, :data, :error] ->
         # Ignore responses for other refs (e.g., a previous request that timed out).
-        receive_response(entries, acc, fun, mint, ref, timeouts, fields, resp_metadata)
+        receive_response(entries, acc, fun, mint, ref, timeouts, fields, resp_metadata, update_fun)
     end
   end
+
+  def drain(%{mint: nil} = conn, _timeout), do: {:ok, conn}
+
+  def drain(conn, timeout) do
+    deadline =
+      case timeout do
+        :infinity -> :infinity
+        ms when is_integer(ms) and ms >= 0 -> System.monotonic_time(:millisecond) + ms
+      end
+
+    case drain_mint(conn.mint, deadline) do
+      {:ok, mint} -> {:ok, %{conn | mint: mint}}
+      {:timeout, mint} -> {:timeout, %{conn | mint: mint}}
+      {:error, mint, reason} -> {:error, %{conn | mint: mint}, reason}
+    end
+  end
+
+  defp drain_mint(mint, deadline) do
+    if Mint.HTTP.open_request_count(mint) == 0 do
+      {:ok, mint}
+    else
+      timeout =
+        case deadline do
+          :infinity ->
+            :infinity
+
+          _ ->
+            remaining = deadline - System.monotonic_time(:millisecond)
+            if remaining > 0, do: remaining, else: 0
+        end
+
+      if timeout == 0 do
+        {:timeout, mint}
+      else
+        case Mint.HTTP.recv(mint, 0, timeout) do
+          {:ok, mint, _entries} ->
+            drain_mint(mint, deadline)
+
+          {:error, mint, %Mint.TransportError{reason: :ealready}, _responses} ->
+            Process.sleep(min(5, timeout))
+            drain_mint(mint, deadline)
+
+          {:error, mint, reason, _responses} ->
+            {:error, mint, reason}
+        end
+      end
+    end
+  end
+
+  defp maybe_update(nil, _mint), do: :ok
+  defp maybe_update(fun, mint), do: fun.(mint)
 end

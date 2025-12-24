@@ -69,7 +69,27 @@ defmodule Finch.HTTP1.Pool do
 
           case Conn.connect(conn, name) do
             {:ok, conn} ->
-              Conn.request(conn, req, acc, fun, name, receive_timeout, request_timeout, idle_time)
+              conn =
+                case Conn.transfer(conn, elem(from, 0)) do
+                  {:ok, conn} -> conn
+                  {:error, conn, _error} -> conn
+                end
+
+              update_fun = fn mint ->
+                NimblePool.update(from, %{conn | mint: mint})
+              end
+
+              Conn.request(
+                conn,
+                req,
+                acc,
+                fun,
+                name,
+                receive_timeout,
+                request_timeout,
+                idle_time,
+                update_fun
+              )
               |> case do
                 {:ok, conn, acc} ->
                   {{:ok, acc}, transfer_if_open(conn, state, from)}
@@ -330,6 +350,40 @@ defmodule Finch.HTTP1.Pool do
   end
 
   def handle_cancelled(:queued, _pool_state), do: :ok
+
+  @impl NimblePool
+  def handle_cancelled(:checked_out, reason, conn, %__MODULE__.State{} = pool_state) do
+    %__MODULE__.State{metric_ref: metric_ref, opts: opts} = pool_state
+    PoolMetrics.maybe_add(metric_ref, in_use_connections: -1)
+
+    if reason == :DOWN do
+      drain_timeout = Map.get(opts, :caller_down_drain_timeout, 1_000)
+
+      case Conn.drain(conn, drain_timeout) do
+        {:ok, conn} ->
+          if is_nil(conn.mint) do
+            conn = %{conn | last_checkin: System.monotonic_time()}
+            {:ok, conn, update_activity_info(:checkin, pool_state)}
+          else
+            case Conn.set_mode(conn, :active) do
+              {:ok, conn} ->
+                conn = %{conn | last_checkin: System.monotonic_time()}
+                {:ok, conn, update_activity_info(:checkin, pool_state)}
+
+              _ ->
+                {:remove, :closed, pool_state}
+            end
+          end
+
+        {:timeout, _conn} -> {:remove, :drain_timeout, pool_state}
+        {:error, _conn, _reason} -> {:remove, :closed, pool_state}
+      end
+    else
+      :ok
+    end
+  end
+
+  def handle_cancelled(:queued, _reason, _conn, _pool_state), do: :ok
 
   defp transfer_if_open(conn, state, {pid, _} = from) do
     if Conn.open?(conn) do

@@ -88,6 +88,15 @@ defmodule Finch do
       """,
       default: :infinity
     ],
+    caller_down_drain_timeout: [
+      type: :timeout,
+      doc: """
+      The maximum number of milliseconds to drain an in-flight HTTP1 response when \
+      the calling process dies. This is a best-effort attempt to keep the connection \
+      reusable without closing it.
+      """,
+      default: 1_000
+    ],
     start_pool_metrics?: [
       type: :boolean,
       doc: "When true, pool metrics will be collected and available through `get_pool_status/2`",
@@ -305,6 +314,7 @@ defmodule Finch do
       conn_opts: conn_opts,
       conn_max_idle_time: to_native(valid[:max_idle_time] || valid[:conn_max_idle_time]),
       pool_max_idle_time: valid[:pool_max_idle_time],
+      caller_down_drain_timeout: valid[:caller_down_drain_timeout],
       start_pool_metrics?: valid[:start_pool_metrics?]
     }
   end

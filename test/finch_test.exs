@@ -551,6 +551,68 @@ defmodule FinchTest do
                |> Finch.request(finch_name, request_timeout: timeout * 10)
     end
 
+    test "allows subsequent requests when caller dies", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{default: [size: 1, count: 1, caller_down_drain_timeout: 5_000]}}
+      )
+
+      test_pid = self()
+
+      Bypass.expect(bypass, fn conn ->
+        peer_port = Plug.Conn.get_peer_data(conn).port
+
+        case conn.request_path do
+          "/hold" ->
+            send(test_pid, {:hold, peer_port, self()})
+
+            receive do
+              :release -> :ok
+            end
+
+            conn = Plug.Conn.send_resp(conn, 200, "hold")
+            send(test_pid, {:released, peer_port})
+            conn
+
+          _ ->
+            send(test_pid, {:ok, peer_port})
+            Plug.Conn.send_resp(conn, 200, "ok")
+        end
+      end)
+
+      assert {:ok, %Response{}} =
+               Finch.build(:get, endpoint(bypass, "/ok"))
+               |> Finch.request(finch_name)
+
+      assert_receive {:ok, port1}
+
+      caller_pid =
+        spawn(fn ->
+          Finch.build(:get, endpoint(bypass, "/hold"))
+          |> Finch.request(finch_name, receive_timeout: 100)
+        end)
+
+      assert_receive {:hold, port2, handler_pid}
+      assert port2 == port1
+
+      Process.exit(caller_pid, :shutdown)
+
+      send(handler_pid, :release)
+      assert_receive {:released, ^port2}
+
+      Process.sleep(200)
+
+      assert {:ok, %Response{}} =
+               Finch.build(:get, endpoint(bypass, "/ok"))
+               |> Finch.request(finch_name)
+
+      assert_receive {:ok, _port3}
+    end
+
     test "returns error when requesting bad address", %{finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
 
