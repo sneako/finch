@@ -36,7 +36,7 @@ defmodule FinchTest do
       expect_any(bypass)
 
       {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
-      assert [_pool] = get_pools(finch_name, shp(bypass))
+      assert [_pool] = get_pools(finch_name, pool(bypass))
 
       {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
     end
@@ -51,7 +51,7 @@ defmodule FinchTest do
       expect_any(bypass)
 
       {:ok, %Response{}} = Finch.build("GET", endpoint(bypass)) |> Finch.request(finch_name)
-      pools = get_pools(finch_name, shp(bypass))
+      pools = get_pools(finch_name, pool(bypass))
       assert length(pools) == 5
     end
 
@@ -107,13 +107,13 @@ defmodule FinchTest do
          }}
       )
 
-      assert get_pools(finch_name, shp(bypass)) |> length() == 5
-      assert get_pools(finch_name, shp(other_bypass)) |> length() == 10
-      assert get_pools(finch_name, shp({:http, unix_socket})) |> length() == 5
-      assert get_pools(finch_name, shp({:https, unix_socket})) |> length() == 10
+      assert get_pools(finch_name, pool(bypass)) |> length() == 5
+      assert get_pools(finch_name, pool(other_bypass)) |> length() == 10
+      assert get_pools(finch_name, pool({:http, unix_socket})) |> length() == 5
+      assert get_pools(finch_name, pool({:https, unix_socket})) |> length() == 10
 
       # no pool has been started for this unconfigured shp
-      assert get_pools(finch_name, shp(default_bypass)) |> length() == 0
+      assert get_pools(finch_name, pool(default_bypass)) |> length() == 0
     end
 
     test "pools with an invalid URL cannot be started", %{finch_name: finch_name} do
@@ -167,7 +167,7 @@ defmodule FinchTest do
       )
       |> Stream.run()
 
-      assert get_pools(finch_name, shp(bypass)) |> length() == 5
+      assert get_pools(finch_name, pool(bypass)) |> length() == 5
     end
   end
 
@@ -1151,12 +1151,12 @@ defmodule FinchTest do
     end
   end
 
-  defp get_pools(name, shp) do
-    Registry.lookup(name, shp)
+  defp get_pools(name, pool) do
+    Registry.lookup(name, pool)
   end
 
-  defp shp(%{port: port}), do: {:http, "localhost", port}
-  defp shp({scheme, {:local, unix_socket}}), do: {scheme, {:local, unix_socket}, 0}
+  defp pool(%{port: port}), do: Finch.Pool.new(:http, "localhost", port)
+  defp pool({scheme, {:local, unix_socket}}), do: Finch.Pool.new(scheme, {:local, unix_socket}, 0)
 
   defp expect_any(bypass) do
     Bypass.expect(bypass, fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)

@@ -11,7 +11,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
        name: finch_name, pools: %{default: [protocols: [:http1], start_pool_metrics?: false]}}
     )
 
-    shp = shp_from_bypass(bypass)
+    pool = pool_from_bypass(bypass)
 
     parent = self()
 
@@ -34,9 +34,9 @@ defmodule Finch.HTTP1.PoolMetricsTest do
     end)
 
     wait_connection_checkin()
-    assert nil == PoolManager.get_pool_count(finch_name, shp)
-    assert {:error, :not_found} = Finch.get_pool_status(finch_name, shp)
-    assert [] == PoolManager.get_default_shps(finch_name)
+    assert nil == PoolManager.get_pool_count(finch_name, pool)
+    assert {:error, :not_found} = Finch.get_pool_status(finch_name, pool)
+    assert [] == PoolManager.get_default_pools(finch_name)
     assert {:error, :not_found} = Finch.get_pool_status(finch_name, :default)
   end
 
@@ -46,7 +46,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
        name: finch_name, pools: %{default: [protocols: [:http1], start_pool_metrics?: true]}}
     )
 
-    shp = shp_from_bypass(bypass)
+    pool = pool_from_bypass(bypass)
 
     Bypass.expect_once(bypass, "GET", "/", fn conn ->
       Plug.Conn.send_resp(conn, 200, "OK")
@@ -58,7 +58,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
 
     wait_connection_checkin()
 
-    assert {:ok, %{^shp => [%PoolMetrics{}]}} = Finch.get_pool_status(finch_name, :default)
+    assert {:ok, %{^pool => [%PoolMetrics{}]}} = Finch.get_pool_status(finch_name, :default)
   end
 
   test "get default pool status returns error when no pools", %{finch_name: finch_name} do
@@ -76,7 +76,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
        name: finch_name, pools: %{default: [protocols: [:http1], start_pool_metrics?: true]}}
     )
 
-    shp = shp_from_bypass(bypass)
+    pool = pool_from_bypass(bypass)
 
     parent = self()
 
@@ -104,7 +104,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
                 available_connections: 30,
                 in_use_connections: 20
               }
-            ]} = Finch.get_pool_status(finch_name, shp)
+            ]} = Finch.get_pool_status(finch_name, pool)
 
     Enum.each(refs, fn req_ref ->
       assert_receive {^req_ref, {:status, 200}}, 2000
@@ -120,7 +120,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
                 available_connections: 50,
                 in_use_connections: 0
               }
-            ]} = Finch.get_pool_status(finch_name, shp)
+            ]} = Finch.get_pool_status(finch_name, pool)
   end
 
   test "get multi pool status", %{bypass: bypass, finch_name: finch_name} do
@@ -130,7 +130,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
        pools: %{default: [protocols: [:http1], start_pool_metrics?: true, count: 2]}}
     )
 
-    shp = shp_from_bypass(bypass)
+    pool = pool_from_bypass(bypass)
 
     parent = self()
 
@@ -162,7 +162,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
                 available_connections: p2_available_conns,
                 in_use_connections: p2_in_use_conns
               }
-            ]} = Finch.get_pool_status(finch_name, shp)
+            ]} = Finch.get_pool_status(finch_name, pool)
 
     assert p1_available_conns + p2_available_conns == 80
     assert p1_in_use_conns + p2_in_use_conns == 20
@@ -185,7 +185,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
                 available_connections: p2_available_conns,
                 in_use_connections: p2_in_use_conns
               }
-            ]} = Finch.get_pool_status(finch_name, shp)
+            ]} = Finch.get_pool_status(finch_name, pool)
 
     assert p1_available_conns + p2_available_conns == 100
     assert p1_in_use_conns + p2_in_use_conns == 0
@@ -205,7 +205,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
        }}
     )
 
-    shp = shp_from_bypass(bypass)
+    pool = pool_from_bypass(bypass)
 
     parent = self()
 
@@ -235,7 +235,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
                 available_connections: 2,
                 in_use_connections: 8
               }
-            ]} = Finch.get_pool_status(finch_name, shp)
+            ]} = Finch.get_pool_status(finch_name, pool)
 
     Enum.each(refs, fn {req_ref, _number} -> assert_receive({^req_ref, {:status, 200}}, 2000) end)
 
@@ -249,7 +249,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
                 available_connections: 10,
                 in_use_connections: 0
               }
-            ]} = Finch.get_pool_status(finch_name, shp)
+            ]} = Finch.get_pool_status(finch_name, pool)
 
     refs =
       Enum.map(1..8, fn i ->
@@ -270,7 +270,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
                 available_connections: 2,
                 in_use_connections: 8
               }
-            ]} = Finch.get_pool_status(finch_name, shp)
+            ]} = Finch.get_pool_status(finch_name, pool)
 
     Enum.each(refs, fn {req_ref, _number} -> assert_receive({^req_ref, {:status, 200}}, 2000) end)
 
@@ -284,7 +284,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
                 available_connections: 10,
                 in_use_connections: 0
               }
-            ]} = Finch.get_pool_status(finch_name, shp)
+            ]} = Finch.get_pool_status(finch_name, pool)
   end
 
   test "get pool status with raise before checkin", %{finch_name: finch_name} do
@@ -305,7 +305,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
     )
 
     url = "http://raise.com"
-    shp = {:http, "raise.com", 80}
+    pool = {:http, "raise.com", 80}
 
     Enum.map(1..20, fn _idx ->
       assert_raise(RuntimeError, fn ->
@@ -323,10 +323,10 @@ defmodule Finch.HTTP1.PoolMetricsTest do
                 available_connections: 10,
                 in_use_connections: 0
               }
-            ]} = Finch.get_pool_status(finch_name, shp)
+            ]} = Finch.get_pool_status(finch_name, pool)
   end
 
-  defp shp_from_bypass(bypass), do: {:http, "localhost", bypass.port}
+  defp pool_from_bypass(bypass), do: {:http, "localhost", bypass.port}
 
   defp wait_connection_checkin(), do: Process.sleep(5)
 end

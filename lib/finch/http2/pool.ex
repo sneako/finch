@@ -81,14 +81,14 @@ defmodule Finch.HTTP2.Pool do
   end
 
   @impl Finch.Pool
-  def get_pool_status(finch_name, shp) do
-    case Finch.PoolManager.get_pool_count(finch_name, shp) do
+  def get_pool_status(finch_name, pool) do
+    case Finch.PoolManager.get_pool_count(finch_name, pool) do
       nil ->
         {:error, :not_found}
 
       count ->
         1..count
-        |> Enum.map(&PoolMetrics.get_pool_status(finch_name, shp, &1))
+        |> Enum.map(&PoolMetrics.get_pool_status(finch_name, pool, &1))
         |> Enum.filter(&match?({:ok, _}, &1))
         |> Enum.map(&elem(&1, 1))
         |> case do
@@ -197,25 +197,23 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  def start_link({_shp, _finch_name, _pool_config, _start_pool_metrics?, _pool_idx} = opts) do
+  def start_link({_pool, _finch_name, _pool_config, _start_pool_metrics?, _pool_idx} = opts) do
     :gen_statem.start_link(__MODULE__, opts, [])
   end
 
   @impl true
-  def init({{scheme, host, port} = shp, registry, pool_opts, start_pool_metrics?, pool_idx}) do
+  def init({pool, registry, pool_opts, start_pool_metrics?, pool_idx}) do
     {:ok, metrics_ref} =
       if start_pool_metrics?,
-        do: PoolMetrics.init(registry, shp, pool_idx),
+        do: PoolMetrics.init(registry, pool, pool_idx),
         else: {:ok, nil}
 
-    {:ok, _} = Registry.register(registry, shp, __MODULE__)
+    {:ok, _} = Registry.register(registry, pool, __MODULE__)
 
     data = %{
       conn: nil,
       finch_name: registry,
-      scheme: scheme,
-      host: host,
-      port: port,
+      pool: pool,
       pool_idx: pool_idx,
       requests: %{},
       refs: %{},
@@ -267,18 +265,18 @@ defmodule Finch.HTTP2.Pool do
 
   def disconnected(:internal, {:connect, failure_count}, data) do
     metadata = %{
-      scheme: data.scheme,
-      host: data.host,
-      port: data.port,
+      scheme: data.pool.scheme,
+      host: data.pool.host,
+      port: data.pool.port,
       name: data.finch_name
     }
 
     start = Telemetry.start(:connect, metadata)
 
-    case HTTP2.connect(data.scheme, data.host, data.port, data.connect_opts) do
+    case HTTP2.connect(data.pool.scheme, data.pool.host, data.pool.port, data.connect_opts) do
       {:ok, conn} ->
         Telemetry.stop(:connect, start, metadata)
-        SSL.maybe_log_secrets(data.scheme, data.connect_opts, conn)
+        SSL.maybe_log_secrets(data.pool.scheme, data.connect_opts, conn)
         data = %{data | conn: conn}
         {:next_state, :connected, data}
 
@@ -287,7 +285,7 @@ defmodule Finch.HTTP2.Pool do
         Telemetry.stop(:connect, start, metadata)
 
         Logger.warning([
-          "Failed to connect to #{data.scheme}://#{data.host}:#{data.port}: ",
+          "Failed to connect to #{data.pool.scheme}://#{data.pool.host}:#{data.pool.port}: ",
           Exception.message(error)
         ])
 
@@ -385,7 +383,7 @@ defmodule Finch.HTTP2.Pool do
 
       {:error, conn, error, responses} ->
         Logger.error([
-          "Received error from server #{data.scheme}:#{data.host}:#{data.port}: ",
+          "Received error from server #{data.pool.scheme}:#{data.pool.host}:#{data.pool.port}: ",
           Exception.message(error)
         ])
 
@@ -490,7 +488,7 @@ defmodule Finch.HTTP2.Pool do
 
       {:error, conn, error, responses} ->
         Logger.error([
-          "Received error from server #{data.scheme}://#{data.host}:#{data.port}: ",
+          "Received error from server #{data.pool.scheme}://#{data.pool.host}:#{data.pool.port}: ",
           Exception.message(error)
         ])
 
