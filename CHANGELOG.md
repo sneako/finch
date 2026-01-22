@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.21.0 (2026-01-22)
+
+### Enhancements
+
+- Add support for querying default pool metrics via `Finch.get_pool_status/2` #329
+- Add more details on `Finch.request/3` docs #327
+
+### Bug Fixes
+
+- Prevent idle HTTP/1 pools from being terminated while connections are in use #292
+- Disable unsupported HTTP/2 server push responses to avoid crashes #333
+- Drop `:cacerts` from defaults for HTTP connections to avoid breaking plain HTTP pools #333
+- Only track default pool metrics when `start_pool_metrics?` is enabled #329
+
+### Other
+
+- Elixir 1.19 compatibility updates for HTTP/1 pool state handling #331
+- CI: update test matrix and x509/deps for Elixir 1.19 #330
+- Add ALPN large-body regression test coverage (issue #265) #332
+
 ## v0.20.0 (2025-07-04)
 
 ### Enhancements
