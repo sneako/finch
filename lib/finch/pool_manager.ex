@@ -29,7 +29,13 @@ defmodule Finch.PoolManager do
 
   @impl true
   def init(config) do
-    reset_default_shps(config)
+    if config.default_pool_config.start_pool_metrics? do
+      :ets.new(default_shp_table(config.registry_name), [
+        :set,
+        :public,
+        :named_table
+      ])
+    end
 
     Enum.each(config.pools, fn {shp, _} ->
       do_start_pools(shp, config)
@@ -107,36 +113,45 @@ defmodule Finch.PoolManager do
   def get_pool_count(finch_name, shp),
     do: :persistent_term.get({__MODULE__, :pool_count, finch_name, shp}, nil)
 
-  def get_default_shps(finch_name) do
-    default_shps_key(finch_name)
-    |> :persistent_term.get(MapSet.new())
-    |> MapSet.to_list()
-  end
-
-  def maybe_remove_default_shp(finch_name, shp) do
-    update_default_shps(finch_name, &MapSet.delete(&1, shp))
-  end
-
-  defp reset_default_shps(%{registry_name: name}) do
-    :persistent_term.put(default_shps_key(name), MapSet.new())
-  end
-
   defp maybe_track_default_shp(%{pools: pools, registry_name: name}, shp) do
-    if Map.has_key?(pools, shp) do
-      :ok
-    else
-      update_default_shps(name, &MapSet.put(&1, shp))
-    end
+    if Map.has_key?(pools, shp),
+      do: :ok,
+      else: add_default_shp(name, shp)
   end
 
-  defp update_default_shps(name, fun) do
-    key = default_shps_key(name)
-    current = :persistent_term.get(key, MapSet.new())
-    :persistent_term.put(key, fun.(current))
+  defp default_shp_table(name), do: :"#{name}.default_shp_table"
+
+  defp add_default_shp(name, shp) do
+    true =
+      name
+      |> default_shp_table()
+      |> :ets.insert({shp})
+
     :ok
   end
 
-  defp default_shps_key(name), do: {__MODULE__, :default_shps, name}
+  def get_default_shps(name) do
+    tname = default_shp_table(name)
+
+    if :ets.whereis(tname) == :undefined do
+      []
+    else
+      tname
+      |> :ets.tab2list()
+      |> Enum.map(fn {shp} -> shp end)
+    end
+  end
+
+  def maybe_remove_default_shp(name, shp) do
+    tname = default_shp_table(name)
+
+    if :ets.whereis(tname) == :undefined do
+      :ok
+    else
+      true = :ets.delete(tname, shp)
+      :ok
+    end
+  end
 
   defp pool_config(%{pools: config, default_pool_config: default}, shp) do
     config
