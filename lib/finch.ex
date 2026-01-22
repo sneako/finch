@@ -104,6 +104,8 @@ defmodule Finch do
 
   @type scheme_host_port() :: {scheme(), host :: String.t(), port :: :inet.port_number()}
 
+  @type pool_identifier() :: url :: String.t() | scheme_host_port() | Finch.Pool.t()
+
   @typedoc """
   Pool metrics returned by `get_pool_status/2` for a single pool.
   """
@@ -112,7 +114,7 @@ defmodule Finch do
           | [Finch.HTTP2.PoolMetrics.t()]
 
   @typedoc """
-  Pool metrics grouped by SHP when querying the `:default` configuration.
+  Pool metrics grouped by pool identifier when querying the `:default` configuration.
   """
   @type default_pool_metrics() :: %{required(scheme_host_port()) => pool_metrics()}
 
@@ -175,6 +177,13 @@ defmodule Finch do
     name = finch_name!(opts)
     pools = Keyword.get(opts, :pools, []) |> pool_options!()
     {default_pool_config, pools} = Map.pop(pools, :default)
+
+    # Convert pools map keys from SHP tuples to Pool structs
+    pools =
+      Enum.into(pools, %{}, fn {shp, pool_config} ->
+        pool = shp_to_pool(shp)
+        {pool, pool_config}
+      end)
 
     config = %{
       registry_name: name,
@@ -621,17 +630,19 @@ defmodule Finch do
 
   defp get_pool(%Request{scheme: scheme, unix_socket: unix_socket}, name)
        when is_binary(unix_socket) do
-    PoolManager.get_pool(name, {scheme, {:local, unix_socket}, 0})
+    pool = Finch.Pool.new(scheme, {:local, unix_socket}, 0)
+    PoolManager.get_pool(name, pool)
   end
 
   defp get_pool(%Request{scheme: scheme, host: host, port: port}, name) do
-    PoolManager.get_pool(name, {scheme, host, port})
+    pool = Finch.Pool.new(scheme, host, port)
+    PoolManager.get_pool(name, pool)
   end
 
   @doc """
   Get pool metrics.
 
-  When given a URL or SHP tuple, this returns the metrics list for that specific
+  When given a URL or pool identifier tuple, this returns the metrics list for that specific
   pool. The number of items in the metrics list depends on the configured
   `:count` option and each entry will have a `pool_index` going from 1 to
   `:count`.
@@ -647,7 +658,7 @@ defmodule Finch do
 
   `{:error, :not_found}` is returned in the following scenarios:
 
-    * There is no pool registered for the given Finch instance and URL/SHP.
+    * There is no pool registered for the given Finch instance and pool identifier.
     * The pool has `start_pool_metrics?: false` (the default).
     * `:default` is provided but no pools have been started from the
       `:default` configuration (or none have metrics enabled).
@@ -683,7 +694,7 @@ defmodule Finch do
          ]
        }}
   """
-  @spec get_pool_status(name(), url :: String.t() | scheme_host_port() | :default) ::
+  @spec get_pool_status(name(), pool_identifier()) ::
           {:ok, pool_metrics()}
           | {:ok, default_pool_metrics()}
           | {:error, :not_found}
@@ -694,11 +705,16 @@ defmodule Finch do
 
   def get_pool_status(finch_name, :default) do
     finch_name
-    |> PoolManager.get_default_shps()
-    |> Enum.reduce(%{}, fn shp, acc ->
-      case get_pool_status(finch_name, shp) do
-        {:ok, metrics} -> Map.put(acc, shp, metrics)
-        {:error, :not_found} -> acc
+    |> PoolManager.get_default_pools()
+    |> Enum.reduce(%{}, fn pool, acc ->
+      case get_pool_status(finch_name, pool) do
+        {:ok, metrics} ->
+          # Convert Pool struct to SHP tuple for backward compatibility in return value
+          pool_id = Finch.Pool.to_shp(pool)
+          Map.put(acc, pool_id, metrics)
+
+        {:error, :not_found} ->
+          acc
       end
     end)
     |> case do
@@ -707,10 +723,22 @@ defmodule Finch do
     end
   end
 
-  def get_pool_status(finch_name, shp) when is_tuple(shp) do
-    case PoolManager.get_pool(finch_name, shp, auto_start?: false) do
+  def get_pool_status(finch_name, %Finch.Pool{} = pool) do
+    case PoolManager.get_pool(finch_name, pool, auto_start?: false) do
       {_pool, pool_mod} ->
-        pool_mod.get_pool_status(finch_name, shp)
+        pool_mod.get_pool_status(finch_name, pool)
+
+      :not_found ->
+        {:error, :not_found}
+    end
+  end
+
+  def get_pool_status(finch_name, {scheme, host, port} = _shp) do
+    pool = Finch.Pool.new(scheme, host, port)
+
+    case PoolManager.get_pool(finch_name, pool, auto_start?: false) do
+      {_pool, pool_mod} ->
+        pool_mod.get_pool_status(finch_name, pool)
 
       :not_found ->
         {:error, :not_found}
@@ -718,24 +746,24 @@ defmodule Finch do
   end
 
   @doc """
-  Stops the pool of processes associated with the given scheme, host, port (aka SHP).
+  Stops the pool of processes associated with the given pool identifier.
 
-  This function can be invoked to manually stop the pool to the given SHP when you know it's not
-  going to be used anymore.
+  This function can be invoked to manually stop the pool for the given identifier
+  when you know it's not going to be used anymore.
 
   Note that this function is not safe with respect to concurrent requests. Invoking it while
-  another request to the same SHP is taking place might result in the failure of that request. It
-  is the responsibility of the client to ensure that no request to the same SHP is taking place
-  while this function is being invoked.
+  another request to the same pool is taking place might result in the failure of that request.
+  It is the responsibility of the client to ensure that no request to the same pool is taking
+  place while this function is being invoked.
   """
-  @spec stop_pool(name(), url :: String.t() | scheme_host_port()) :: :ok | {:error, :not_found}
+  @spec stop_pool(name(), pool_identifier()) :: :ok | {:error, :not_found}
   def stop_pool(finch_name, url) when is_binary(url) do
     {s, h, p, _, _} = Request.parse_url(url)
     stop_pool(finch_name, {s, h, p})
   end
 
-  def stop_pool(finch_name, shp) when is_tuple(shp) do
-    case PoolManager.all_pool_instances(finch_name, shp) do
+  def stop_pool(finch_name, %Finch.Pool{} = pool) do
+    case PoolManager.all_pool_instances(finch_name, pool) do
       [] ->
         {:error, :not_found}
 
@@ -747,8 +775,31 @@ defmodule Finch do
           end
         )
 
-        PoolManager.maybe_remove_default_shp(finch_name, shp)
+        PoolManager.maybe_remove_default_pool(finch_name, pool)
         :ok
     end
   end
+
+  def stop_pool(finch_name, {scheme, host, port} = _shp) do
+    pool = Finch.Pool.new(scheme, host, port)
+
+    case PoolManager.all_pool_instances(finch_name, pool) do
+      [] ->
+        {:error, :not_found}
+
+      children ->
+        Enum.each(
+          children,
+          fn {pid, _module} ->
+            DynamicSupervisor.terminate_child(pool_supervisor_name(finch_name), pid)
+          end
+        )
+
+        PoolManager.maybe_remove_default_pool(finch_name, pool)
+        :ok
+    end
+  end
+
+  # Convert SHP tuple to Pool struct (used for config conversion)
+  defp shp_to_pool({scheme, host, port}), do: Finch.Pool.new(scheme, host, port)
 end

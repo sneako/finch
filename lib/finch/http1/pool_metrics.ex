@@ -34,12 +34,12 @@ defmodule Finch.HTTP1.PoolMetrics do
     in_use_connections: 3
   ]
 
-  def init(registry, shp, pool_idx, pool_size) do
+  def init(registry, pool, pool_idx, pool_size) do
     ref = :atomics.new(length(@atomic_idx), [])
     :atomics.add(ref, @atomic_idx[:pool_idx], pool_idx)
     :atomics.add(ref, @atomic_idx[:pool_size], pool_size)
 
-    :persistent_term.put({__MODULE__, registry, shp, pool_idx}, ref)
+    :persistent_term.put({__MODULE__, registry, pool, pool_idx}, ref)
     {:ok, ref}
   end
 
@@ -51,8 +51,8 @@ defmodule Finch.HTTP1.PoolMetrics do
     end)
   end
 
-  def get_pool_status(name, shp, pool_idx) do
-    {__MODULE__, name, shp, pool_idx}
+  def get_pool_status(name, pool, pool_idx) do
+    {__MODULE__, name, pool, pool_idx}
     |> :persistent_term.get(nil)
     |> get_pool_status()
   end

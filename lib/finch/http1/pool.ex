@@ -7,7 +7,7 @@ defmodule Finch.HTTP1.Pool do
     @moduledoc false
     defstruct [
       :registry,
-      :shp,
+      :pool,
       :pool_idx,
       :metric_ref,
       :opts,
@@ -21,7 +21,7 @@ defmodule Finch.HTTP1.Pool do
 
   def child_spec(opts) do
     {
-      _shp,
+      _pool,
       _registry_name,
       _pool_size,
       _conn_opts,
@@ -38,12 +38,12 @@ defmodule Finch.HTTP1.Pool do
   end
 
   def start_link(
-        {shp, registry_name, pool_size, conn_opts, pool_max_idle_time, start_pool_metrics?,
+        {pool, registry_name, pool_size, conn_opts, pool_max_idle_time, start_pool_metrics?,
          pool_idx}
       ) do
     NimblePool.start_link(
       worker:
-        {__MODULE__, {registry_name, shp, pool_idx, pool_size, start_pool_metrics?, conn_opts}},
+        {__MODULE__, {registry_name, pool, pool_idx, pool_size, start_pool_metrics?, conn_opts}},
       pool_size: pool_size,
       lazy: true,
       worker_idle_timeout: pool_idle_timeout(pool_max_idle_time)
@@ -157,14 +157,14 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl Finch.Pool
-  def get_pool_status(finch_name, shp) do
-    case Finch.PoolManager.get_pool_count(finch_name, shp) do
+  def get_pool_status(finch_name, pool) do
+    case Finch.PoolManager.get_pool_count(finch_name, pool) do
       nil ->
         {:error, :not_found}
 
       count ->
         1..count
-        |> Enum.map(&PoolMetrics.get_pool_status(finch_name, shp, &1))
+        |> Enum.map(&PoolMetrics.get_pool_status(finch_name, pool, &1))
         |> Enum.filter(&match?({:ok, _}, &1))
         |> Enum.map(&elem(&1, 1))
         |> case do
@@ -175,22 +175,22 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
-  def init_pool({registry, shp, pool_idx, pool_size, start_pool_metrics?, opts}) do
+  def init_pool({registry, pool, pool_idx, pool_size, start_pool_metrics?, opts}) do
     {:ok, metric_ref} =
       if start_pool_metrics?,
-        do: PoolMetrics.init(registry, shp, pool_idx, pool_size),
+        do: PoolMetrics.init(registry, pool, pool_idx, pool_size),
         else: {:ok, nil}
 
     # Register our pool with our module name as the key. This allows the caller
     # to determine the correct pool module to use to make the request
-    {:ok, _} = Registry.register(registry, shp, __MODULE__)
+    {:ok, _} = Registry.register(registry, pool, __MODULE__)
 
     acitivity_info =
       if opts[:pool_max_idle_time] != :infinity, do: init_activity_info(), else: nil
 
     state = %__MODULE__.State{
       registry: registry,
-      shp: shp,
+      pool: pool,
       pool_idx: pool_idx,
       metric_ref: metric_ref,
       opts: opts,
@@ -201,8 +201,8 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
-  def init_worker(%__MODULE__.State{shp: {scheme, host, port}, opts: opts} = pool_state) do
-    {:ok, Conn.new(scheme, host, port, opts, self()), pool_state}
+  def init_worker(%__MODULE__.State{pool: pool, opts: opts} = pool_state) do
+    {:ok, Conn.new(pool.scheme, pool.host, pool.port, opts, self()), pool_state}
   end
 
   @impl NimblePool
@@ -216,7 +216,7 @@ defmodule Finch.HTTP1.Pool do
     idle_time = System.monotonic_time() - conn.last_checkin
 
     %__MODULE__.State{
-      shp: {scheme, host, port},
+      pool: pool,
       metric_ref: metric_ref
     } = pool_state
 
@@ -227,9 +227,9 @@ defmodule Finch.HTTP1.Pool do
     else
       false ->
         meta = %{
-          scheme: scheme,
-          host: host,
-          port: port
+          scheme: pool.scheme,
+          host: pool.host,
+          port: pool.port
         }
 
         # Deprecated, remember to delete when we remove the :max_idle_time pool config option!
@@ -279,7 +279,7 @@ defmodule Finch.HTTP1.Pool do
   @impl NimblePool
   def handle_ping(conn, %__MODULE__.State{} = pool_state) do
     %__MODULE__.State{
-      shp: {scheme, host, port},
+      pool: pool,
       opts: opts,
       activity_info: activity_info
     } = pool_state
@@ -301,9 +301,9 @@ defmodule Finch.HTTP1.Pool do
 
       is_idle? ->
         meta = %{
-          scheme: scheme,
-          host: host,
-          port: port
+          scheme: pool.scheme,
+          host: pool.host,
+          port: pool.port
         }
 
         Telemetry.event(:pool_max_idle_time_exceeded, %{}, meta)
