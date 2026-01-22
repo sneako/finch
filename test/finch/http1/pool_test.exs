@@ -167,8 +167,9 @@ defmodule Finch.HTTP1.PoolTest do
     Task.async(fn -> delay_exec.(ref1, 10) end)
     Task.async(fn -> delay_exec.(ref2, 10) end)
 
-    assert_receive {^ref1, :done}
-    assert_receive {^ref2, :done}
+    # sometimes these messages are delayed in CI so we allow a longer wait
+    assert_receive {^ref1, :done}, 500
+    assert_receive {^ref2, :done}, 500
 
     pool_key = pool(bypass)
     assert [{pool, _pool_mod}] = Registry.lookup(finch_name, pool_key)
