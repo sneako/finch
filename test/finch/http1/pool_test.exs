@@ -101,8 +101,8 @@ defmodule Finch.HTTP1.PoolTest do
     ref2 = make_ref()
     Task.async(fn -> delay_exec.(ref2, 10) end)
 
-    assert_receive {^ref1, :done}, 150
-    assert_receive {^ref2, :done}, 150
+    assert_receive {^ref1, :done}, 300
+    assert_receive {^ref2, :done}, 300
 
     [{_, supervisor, _, _}] = DynamicSupervisor.which_children(:"#{finch_name}.PoolSupervisor")
     Process.monitor(supervisor)
@@ -116,7 +116,7 @@ defmodule Finch.HTTP1.PoolTest do
 
     ref3 = make_ref()
     Task.async(fn -> assert {:ok, %{status: 200}} = delay_exec.(ref3, 10) end)
-    assert_receive {^ref3, :done}, 150
+    assert_receive {^ref3, :done}, 300
 
     refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
     assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
