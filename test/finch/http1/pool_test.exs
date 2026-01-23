@@ -222,7 +222,7 @@ defmodule Finch.HTTP1.PoolTest do
       url: url
     } do
       ref =
-        Finch.build(:get, url <> "/stream/1/50")
+        Finch.build(:get, url <> "/stream/1/100")
         |> Finch.async_request(finch_name)
 
       assert_receive {^ref, {:status, 200}}, 500
