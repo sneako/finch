@@ -409,7 +409,7 @@ defmodule Finch.HTTP2.Pool do
     with {:pop, {request, data}} when not is_nil(request) <- {:pop, pop_request(data, ref)},
          {:ok, conn} <- HTTP2.cancel_request(data.conn, ref) do
       data = put_in(data.conn, conn)
-      send(request.from_pid, {request.request_ref, {:error, Error.exception(:request_timeout)}})
+      send(request.from_pid, {request.request_ref, {:error, Error.exception(:timeout)}})
       {:keep_state, data}
     else
       {:error, conn, _error} ->
@@ -525,7 +525,7 @@ defmodule Finch.HTTP2.Pool do
 
     # Its possible that the request doesn't exist so we guard against that here.
     if request != nil do
-      send(request.from_pid, {request.request_ref, {:error, Error.exception(:request_timeout)}})
+      send(request.from_pid, {request.request_ref, {:error, Error.exception(:timeout)}})
     end
 
     # If we're out of requests then we should enter the disconnected state.
