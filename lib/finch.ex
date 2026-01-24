@@ -199,7 +199,8 @@ defmodule Finch do
   @impl true
   def init(config) do
     children = [
-      {Registry, [keys: :duplicate, name: config.registry_name, meta: [config: config]]},
+      {Registry,
+       [keys: :duplicate, name: config.registry_name, meta: [manager_name: config.manager_name]]},
       {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
       {PoolManager, config}
     ]

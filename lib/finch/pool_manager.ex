@@ -89,8 +89,8 @@ defmodule Finch.PoolManager do
 
   @spec start_pools(atom(), Finch.Pool.t()) :: {pid(), module()}
   defp start_pools(registry_name, pool) do
-    {:ok, config} = Registry.meta(registry_name, :config)
-    GenServer.call(config.manager_name, {:start_pools, pool})
+    {:ok, manager_name} = Registry.meta(registry_name, :manager_name)
+    GenServer.call(manager_name, {:start_pools, pool})
   end
 
   @impl true
@@ -116,7 +116,7 @@ defmodule Finch.PoolManager do
 
     Enum.map(1..pool_config.count, fn pool_idx ->
       pool_args = pool_args(pool, config, pool_config, pool_idx)
-      # Choose pool type here...
+
       {:ok, pid} =
         DynamicSupervisor.start_child(config.supervisor_name, {pool_config.mod, pool_args})
 
