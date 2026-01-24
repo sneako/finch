@@ -4,6 +4,7 @@ defmodule Finch.Pool do
 
   @typedoc false
   @type request_ref :: {pool_mod :: module(), cancel_ref :: term()}
+  @type shp :: {scheme(), host(), :inet.port_number()}
 
   @doc false
   @callback request(
@@ -34,19 +35,14 @@ defmodule Finch.Pool do
   @enforce_keys [:scheme, :host, :port]
   defstruct [:scheme, :host, :port]
 
-  @type t :: %__MODULE__{
-          scheme: :http | :https,
-          host: String.t() | {:local, String.t()},
-          port: :inet.port_number()
-        }
+  @type scheme :: :http | :https
+  @type host :: String.t() | {:local, String.t()}
+
+  @type t :: %__MODULE__{scheme: scheme(), host: host(), port: :inet.port_number()}
 
   @doc false
   def new(scheme, host, port) do
-    %__MODULE__{
-      scheme: scheme,
-      host: host,
-      port: port
-    }
+    %__MODULE__{scheme: scheme, host: host, port: port}
   end
 
   @doc false

@@ -694,15 +694,10 @@ defmodule Finch do
   def get_pool_status(finch_name, :default) do
     finch_name
     |> PoolManager.get_default_pools()
-    |> Enum.reduce(%{}, fn pool, acc ->
-      case get_pool_status(finch_name, pool) do
-        {:ok, metrics} ->
-          # Convert Pool struct to SHP tuple for backward compatibility in return value
-          pool_id = Finch.Pool.to_shp(pool)
-          Map.put(acc, pool_id, metrics)
-
-        {:error, :not_found} ->
-          acc
+    |> Enum.reduce(%{}, fn {pool_name, pool_mod}, acc ->
+      case pool_mod.get_pool_status(finch_name, pool_name) do
+        {:ok, metrics} -> Map.put(acc, pool_name, metrics)
+        {:error, :not_found} -> acc
       end
     end)
     |> case do
@@ -713,8 +708,9 @@ defmodule Finch do
 
   def get_pool_status(finch_name, %Finch.Pool{} = pool) do
     case PoolManager.get_pool(finch_name, pool, auto_start?: false) do
-      {_pool, pool_mod} ->
-        pool_mod.get_pool_status(finch_name, pool)
+      {_pid, pool_mod} ->
+        pool_name = Finch.Pool.to_shp(pool)
+        pool_mod.get_pool_status(finch_name, pool_name)
 
       :not_found ->
         {:error, :not_found}
@@ -742,7 +738,7 @@ defmodule Finch do
   end
 
   def stop_pool(finch_name, %Finch.Pool{} = pool) do
-    case PoolManager.all_pool_instances(finch_name, pool) do
+    case PoolManager.prepare_for_stopping(finch_name, pool) do
       [] ->
         {:error, :not_found}
 
@@ -753,7 +749,6 @@ defmodule Finch do
           DynamicSupervisor.terminate_child(supervisor, pid)
         end)
 
-        PoolManager.maybe_remove_default_pool(finch_name, pool)
         :ok
     end
   end

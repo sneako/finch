@@ -145,14 +145,14 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl Finch.Pool
-  def get_pool_status(finch_name, pool) do
-    case Finch.PoolManager.get_pool_count(finch_name, pool) do
+  def get_pool_status(finch_name, pool_name) do
+    case Finch.PoolManager.get_pool_count(finch_name, pool_name) do
       nil ->
         {:error, :not_found}
 
       count ->
         1..count
-        |> Enum.map(&PoolMetrics.get_pool_status(finch_name, pool, &1))
+        |> Enum.map(&PoolMetrics.get_pool_status(finch_name, pool_name, &1))
         |> Enum.filter(&match?({:ok, _}, &1))
         |> Enum.map(&elem(&1, 1))
         |> case do
@@ -166,7 +166,7 @@ defmodule Finch.HTTP1.Pool do
   def init_pool({pool, pool_name, registry, pool_config, pool_idx}) do
     {:ok, metric_ref} =
       if pool_config.start_pool_metrics?,
-        do: PoolMetrics.init(registry, pool, pool_idx, pool_config.size),
+        do: PoolMetrics.init(registry, pool_name, pool_idx, pool_config.size),
         else: {:ok, nil}
 
     # Register our pool with our module name as the key. This allows the caller

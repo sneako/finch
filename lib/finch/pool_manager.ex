@@ -10,7 +10,8 @@ defmodule Finch.PoolManager do
           pools: %{Finch.Pool.t() => map()}
         }
 
-  @type pool_result() :: {pid(), module()} | :none | :not_found
+  @type pool_result() :: {pid(), module()} | :not_found
+  @type pool_name() :: Finch.Pool.shp()
 
   @mint_tls_opts [
     :cacertfile,
@@ -38,24 +39,6 @@ defmodule Finch.PoolManager do
     GenServer.start_link(__MODULE__, config, name: config.manager_name)
   end
 
-  @impl true
-  @spec init(config()) :: {:ok, config()}
-  def init(config) do
-    if config.default_pool_config.start_pool_metrics? do
-      :ets.new(default_pool_table(config.registry_name), [
-        :set,
-        :public,
-        :named_table
-      ])
-    end
-
-    Enum.each(config.pools, fn {pool, _} ->
-      do_start_pools(pool, config)
-    end)
-
-    {:ok, config}
-  end
-
   @spec get_pool(atom(), Finch.Pool.t(), Keyword.t()) :: pool_result()
   def get_pool(registry_name, %Finch.Pool{} = pool, opts \\ []) do
     case lookup_pool(registry_name, pool) do
@@ -71,7 +54,7 @@ defmodule Finch.PoolManager do
 
   @spec lookup_pool(atom(), Finch.Pool.t()) :: {pid(), module()} | :none
   defp lookup_pool(registry, pool) do
-    case all_pool_instances(registry, pool) do
+    case Registry.lookup(registry, Finch.Pool.to_shp(pool)) do
       [] ->
         :none
 
@@ -84,13 +67,55 @@ defmodule Finch.PoolManager do
     end
   end
 
-  @spec all_pool_instances(atom(), Finch.Pool.t()) :: [{pid(), module()}]
-  def all_pool_instances(registry, pool), do: Registry.lookup(registry, Finch.Pool.to_shp(pool))
-
   @spec start_pools(atom(), Finch.Pool.t()) :: {pid(), module()}
   defp start_pools(registry_name, pool) do
     {:ok, manager_name} = Registry.meta(registry_name, :manager_name)
     GenServer.call(manager_name, {:start_pools, pool})
+  end
+
+  def get_pool_count(finch_name, pool_name),
+    do: :persistent_term.get({__MODULE__, :pool_count, finch_name, pool_name}, nil)
+
+  defp put_pool_count(finch_name, pool_name, val),
+    do: :persistent_term.put({__MODULE__, :pool_count, finch_name, pool_name}, val)
+
+  @spec get_default_pools(atom()) :: [{pool_name(), module()}]
+  def get_default_pools(name) do
+    tname = default_pool_table(name)
+
+    case :ets.whereis(tname) do
+      :undefined -> []
+      tref -> :ets.tab2list(tref)
+    end
+  end
+
+  @spec prepare_for_stopping(atom(), Finch.Pool.t()) :: :ok
+  def prepare_for_stopping(registry, pool) do
+    tname = default_pool_table(registry)
+    pool_name = Finch.Pool.to_shp(pool)
+
+    case :ets.whereis(tname) do
+      :undefined -> :ok
+      tref -> true = :ets.delete(tref, pool_name)
+    end
+
+    Registry.lookup(registry, pool_name)
+  end
+
+  ## Callbacks
+
+  @impl true
+  @spec init(config()) :: {:ok, config()}
+  def init(config) do
+    if config.default_pool_config.start_pool_metrics? do
+      :ets.new(default_pool_table(config.registry_name), [:set, :public, :named_table])
+    end
+
+    Enum.each(config.pools, fn {pool, _} ->
+      do_start_pools(pool, config)
+    end)
+
+    {:ok, config}
   end
 
   @impl true
@@ -108,14 +133,15 @@ defmodule Finch.PoolManager do
 
   defp do_start_pools(pool, config) do
     pool_config = pool_config(config, pool)
+    pool_name = Finch.Pool.to_shp(pool)
 
     if pool_config.start_pool_metrics? do
-      maybe_track_default_pool(config, pool)
-      put_pool_count(config, pool, pool_config.count)
+      maybe_track_default_pool(config, pool, pool_name, pool_config.mod)
+      put_pool_count(config.registry_name, pool_name, pool_config.count)
     end
 
     Enum.map(1..pool_config.count, fn pool_idx ->
-      pool_args = pool_args(pool, config, pool_config, pool_idx)
+      pool_args = {pool, pool_name, config.registry_name, pool_config, pool_idx}
 
       {:ok, pid} =
         DynamicSupervisor.start_child(config.supervisor_name, {pool_config.mod, pool_args})
@@ -123,55 +149,6 @@ defmodule Finch.PoolManager do
       {pid, pool_config.mod}
     end)
     |> hd()
-  end
-
-  defp put_pool_count(%{registry_name: name}, %Finch.Pool{} = pool, val),
-    do: :persistent_term.put({__MODULE__, :pool_count, name, pool}, val)
-
-  @spec get_pool_count(atom(), Finch.Pool.t()) :: non_neg_integer() | nil
-  def get_pool_count(finch_name, pool),
-    do: :persistent_term.get({__MODULE__, :pool_count, finch_name, pool}, nil)
-
-  defp maybe_track_default_pool(%{pools: pools, registry_name: name}, pool) do
-    if Map.has_key?(pools, pool),
-      do: :ok,
-      else: add_default_pool(name, pool)
-  end
-
-  defp default_pool_table(name), do: :"#{name}.default_pool_table"
-
-  defp add_default_pool(name, pool) do
-    true =
-      name
-      |> default_pool_table()
-      |> :ets.insert({pool})
-
-    :ok
-  end
-
-  @spec get_default_pools(atom()) :: [Finch.Pool.t()]
-  def get_default_pools(name) do
-    tname = default_pool_table(name)
-
-    if :ets.whereis(tname) == :undefined do
-      []
-    else
-      tname
-      |> :ets.tab2list()
-      |> Enum.map(fn {pool} -> pool end)
-    end
-  end
-
-  @spec maybe_remove_default_pool(atom(), Finch.Pool.t()) :: :ok
-  def maybe_remove_default_pool(name, pool) do
-    tname = default_pool_table(name)
-
-    if :ets.whereis(tname) == :undefined do
-      :ok
-    else
-      true = :ets.delete(tname, pool)
-      :ok
-    end
   end
 
   defp pool_config(%{pools: config, default_pool_config: default}, pool) do
@@ -207,6 +184,16 @@ defmodule Finch.PoolManager do
 
   defp maybe_add_hostname(config, _), do: config
 
-  defp pool_args(pool, config, pool_config, pool_idx),
-    do: {pool, Finch.Pool.to_shp(pool), config.registry_name, pool_config, pool_idx}
+  defp maybe_track_default_pool(%{pools: pools, registry_name: name}, pool, pool_name, pool_mod) do
+    if not Map.has_key?(pools, pool) do
+      true =
+        name
+        |> default_pool_table()
+        |> :ets.insert({pool_name, pool_mod})
+    end
+
+    :ok
+  end
+
+  defp default_pool_table(name), do: :"#{name}.default_pool_table"
 end
