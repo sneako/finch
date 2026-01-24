@@ -171,7 +171,7 @@ defmodule Finch.PoolManager do
       true =
         config.registry_name
         |> default_pool_table()
-        |> :ets.insert({pool_name, {pool_config.mod, pool_config.count}})
+        |> :ets.insert({pool_name, pool_config.mod, pool_config.count})
     end
 
     :ok

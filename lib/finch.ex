@@ -694,7 +694,7 @@ defmodule Finch do
   def get_pool_status(finch_name, :default) do
     finch_name
     |> PoolManager.get_default_pools()
-    |> Enum.reduce(%{}, fn {pool_name, {pool_mod, pool_count}}, acc ->
+    |> Enum.reduce(%{}, fn {pool_name, pool_mod, pool_count}, acc ->
       case pool_mod.get_pool_status(finch_name, pool_name, pool_count) do
         {:ok, metrics} -> Map.put(acc, pool_name, metrics)
         {:error, :not_found} -> acc
