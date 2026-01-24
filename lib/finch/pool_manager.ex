@@ -51,12 +51,12 @@ defmodule Finch.PoolManager do
   def get_pool_status(registry_name, %Finch.Pool{} = pool) do
     case lookup_pool(registry_name, pool) do
       [] -> :not_found
-      [{_pid, {pool_mod, pool_count}} | _] -> {Finch.Pool.to_shp(pool), pool_mod, pool_count}
+      [{_pid, {pool_mod, pool_count}} | _] -> {Finch.Pool.to_name(pool), pool_mod, pool_count}
     end
   end
 
   defp lookup_pool(registry, pool) do
-    Registry.lookup(registry, Finch.Pool.to_shp(pool))
+    Registry.lookup(registry, Finch.Pool.to_name(pool))
   end
 
   @spec start_pools(atom(), Finch.Pool.t()) :: {pid(), module()}
@@ -78,7 +78,7 @@ defmodule Finch.PoolManager do
   @spec prepare_for_stopping(atom(), Finch.Pool.t()) :: [{pid(), {module(), pos_integer()}}]
   def prepare_for_stopping(registry, pool) do
     tname = default_pool_table(registry)
-    pool_name = Finch.Pool.to_shp(pool)
+    pool_name = Finch.Pool.to_name(pool)
 
     case :ets.whereis(tname) do
       :undefined -> :ok
@@ -119,7 +119,7 @@ defmodule Finch.PoolManager do
 
   defp do_start_pools(pool, config) do
     pool_config = pool_config(config, pool)
-    pool_name = Finch.Pool.to_shp(pool)
+    pool_name = Finch.Pool.to_name(pool)
 
     if pool_config.start_pool_metrics? do
       maybe_track_default_pool(config, pool, pool_name, pool_config)

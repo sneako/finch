@@ -52,7 +52,7 @@ defmodule Finch.Pool do
   end
 
   @doc false
-  def to_shp(%__MODULE__{scheme: s, host: h, port: p}), do: {s, h, p}
+  def to_name(%__MODULE__{scheme: s, host: h, port: p}), do: {s, h, p}
 
   @doc false
   defguard is_request_ref(ref) when tuple_size(ref) == 2 and is_atom(elem(ref, 0))
