@@ -104,9 +104,12 @@ defmodule Finch.Pool.Manager do
     end
   end
 
-  defp pool_config(%{pools: config, default_pool_config: default}, pool) do
-    config
-    |> Map.get(pool, default)
+  defp pool_config(%{pools: pools, default_pool_config: default}, %Finch.Pool{} = pool) do
+    # Fallback chain: exact match -> same host with :default tag -> default config
+    with nil <- Map.get(pools, pool),
+         nil <- Map.get(pools, %{pool | tag: :default}) do
+      default
+    end
     |> maybe_drop_tls_options(pool)
     |> maybe_add_hostname(pool)
   end

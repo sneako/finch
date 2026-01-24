@@ -1079,6 +1079,378 @@ defmodule FinchTest do
     end
   end
 
+  describe "pool_tag functionality" do
+    test "pool_tag option in build/5 defaults to :default", %{bypass: bypass} do
+      request = Finch.build(:get, endpoint(bypass))
+      assert request.pool_tag == :default
+    end
+
+    test "pool_tag option in build/5 can be set", %{bypass: bypass} do
+      request = Finch.build(:get, endpoint(bypass), [], nil, pool_tag: :api)
+      assert request.pool_tag == :api
+    end
+
+    test "tagged pools are configured with {url, tag} tuples", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           {endpoint(bypass), :api} => [count: 3, size: 3],
+           {endpoint(bypass), :web} => [count: 5, size: 5]
+         }}
+      )
+
+      expect_any(bypass)
+
+      # Make requests to trigger pool creation
+      api_request = Finch.build(:get, endpoint(bypass), [], nil, pool_tag: :api)
+      web_request = Finch.build(:get, endpoint(bypass), [], nil, pool_tag: :web)
+
+      {:ok, %Response{}} = Finch.request(api_request, finch_name)
+      {:ok, %Response{}} = Finch.request(web_request, finch_name)
+
+      api_pool = Finch.Pool.from_url(endpoint(bypass), tag: :api)
+      web_pool = Finch.Pool.from_url(endpoint(bypass), tag: :web)
+
+      assert get_pools(finch_name, api_pool) |> length() == 3
+      assert get_pools(finch_name, web_pool) |> length() == 5
+    end
+
+    test "pool config fallback: exact match -> default tag -> default config", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           {endpoint(bypass), :api} => [count: 3, size: 3],
+           endpoint(bypass) => [count: 5, size: 5],
+           default: [count: 7, size: 7]
+         }}
+      )
+
+      expect_any(bypass)
+
+      # Exact match for :api tag
+      api_request = Finch.build(:get, endpoint(bypass), [], nil, pool_tag: :api)
+      {:ok, %Response{}} = Finch.request(api_request, finch_name)
+      api_pool = Finch.Pool.from_url(endpoint(bypass), tag: :api)
+      assert get_pools(finch_name, api_pool) |> length() == 3
+
+      # Falls back to :default tag config
+      other_request = Finch.build(:get, endpoint(bypass), [], nil, pool_tag: :other)
+      {:ok, %Response{}} = Finch.request(other_request, finch_name)
+      default_tag_pool = Finch.Pool.from_url(endpoint(bypass), tag: :default)
+      assert get_pools(finch_name, default_tag_pool) |> length() == 5
+
+      # Falls back to default config for unconfigured host
+      other_bypass = Bypass.open()
+
+      Bypass.expect_once(other_bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      unconfigured_request = Finch.build(:get, endpoint(other_bypass), [], nil, pool_tag: :api)
+      {:ok, %Response{}} = Finch.request(unconfigured_request, finch_name)
+      unconfigured_pool = Finch.Pool.from_url(endpoint(other_bypass), tag: :api)
+      assert get_pools(finch_name, unconfigured_pool) |> length() == 7
+    end
+
+    test "get_pool_status/2 with {url, tag} tuple", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           {endpoint(bypass), :api} => [start_pool_metrics?: true, count: 2]
+         }}
+      )
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)
+
+      url = endpoint(bypass)
+      request = Finch.build(:get, url, [], nil, pool_tag: :api)
+      {:ok, %{status: 200}} = Finch.request(request, finch_name)
+
+      assert {:ok, _metrics} = Finch.get_pool_status(finch_name, {url, :api})
+      assert {:error, :not_found} = Finch.get_pool_status(finch_name, {url, :web})
+    end
+
+    test "stop_pool/2 with {url, tag} tuple", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           {endpoint(bypass), :api} => [count: 2],
+           {endpoint(bypass), :web} => [count: 2]
+         }}
+      )
+
+      Bypass.expect(bypass, fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)
+
+      url = endpoint(bypass)
+
+      api_request = Finch.build(:get, url, [], nil, pool_tag: :api)
+      web_request = Finch.build(:get, url, [], nil, pool_tag: :web)
+
+      {:ok, %{status: 200}} = Finch.request(api_request, finch_name)
+      {:ok, %{status: 200}} = Finch.request(web_request, finch_name)
+
+      assert Finch.stop_pool(finch_name, {url, :api}) == :ok
+      assert pool_stopped?(finch_name, {url, :api})
+
+      # Web pool should still exist
+      web_pool = Finch.Pool.from_url(endpoint(bypass), tag: :web)
+      assert get_pools(finch_name, web_pool) |> length() == 2
+
+      assert Finch.stop_pool(finch_name, {url, :web}) == :ok
+      assert pool_stopped?(finch_name, {url, :web})
+    end
+
+    @tag :tmp_dir
+    test "pool_tag works with unix sockets", %{finch_name: finch_name, tmp_dir: tmp_dir} do
+      socket_path = Path.relative_to_cwd("#{tmp_dir}/finch.sock")
+      {:ok, _} = MockSocketServer.start(address: {:local, socket_path})
+
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           {"http://localhost/", :api} => [count: 2]
+         }}
+      )
+
+      request =
+        Finch.build(:get, "http://localhost/", [], nil,
+          unix_socket: socket_path,
+          pool_tag: :api
+        )
+
+      assert {:ok, %Response{status: 200}} = Finch.request(request, finch_name)
+    end
+
+    @tag :tmp_dir
+    test "tagged Unix socket pools can be configured", %{finch_name: finch_name, tmp_dir: tmp_dir} do
+      api_socket_path = Path.relative_to_cwd("#{tmp_dir}/api.sock")
+      web_socket_path = Path.relative_to_cwd("#{tmp_dir}/web.sock")
+
+      {:ok, _} = MockSocketServer.start(address: {:local, api_socket_path})
+      {:ok, _} = MockSocketServer.start(address: {:local, web_socket_path})
+
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           {{:http, {:local, api_socket_path}}, :api} => [count: 3, size: 3],
+           {{:http, {:local, web_socket_path}}, :web} => [count: 5, size: 5]
+         }}
+      )
+
+      # Make requests to trigger pool creation
+      api_request =
+        Finch.build(:get, "http://localhost/", [], nil,
+          unix_socket: api_socket_path,
+          pool_tag: :api
+        )
+
+      web_request =
+        Finch.build(:get, "http://localhost/", [], nil,
+          unix_socket: web_socket_path,
+          pool_tag: :web
+        )
+
+      {:ok, %Response{status: 200}} = Finch.request(api_request, finch_name)
+      {:ok, %Response{status: 200}} = Finch.request(web_request, finch_name)
+
+      api_pool = Finch.Pool.new(:http, {:local, api_socket_path}, 0, tag: :api)
+      web_pool = Finch.Pool.new(:http, {:local, web_socket_path}, 0, tag: :web)
+
+      assert get_pools(finch_name, api_pool) |> length() == 3
+      assert get_pools(finch_name, web_pool) |> length() == 5
+    end
+
+    @tag :tmp_dir
+    test "get_pool_status/2 with tagged Unix socket", %{finch_name: finch_name, tmp_dir: tmp_dir} do
+      socket_path = Path.relative_to_cwd("#{tmp_dir}/finch.sock")
+      {:ok, _} = MockSocketServer.start(address: {:local, socket_path})
+
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           {{:http, {:local, socket_path}}, :api} => [start_pool_metrics?: true, count: 2]
+         }}
+      )
+
+      request =
+        Finch.build(:get, "http://localhost/", [], nil,
+          unix_socket: socket_path,
+          pool_tag: :api
+        )
+
+      {:ok, %{status: 200}} = Finch.request(request, finch_name)
+
+      assert {:ok, _metrics} =
+               Finch.get_pool_status(finch_name, {{:http, {:local, socket_path}}, :api})
+
+      assert {:error, :not_found} =
+               Finch.get_pool_status(finch_name, {{:http, {:local, socket_path}}, :web})
+    end
+
+    @tag :tmp_dir
+    test "stop_pool/2 with tagged Unix socket", %{finch_name: finch_name, tmp_dir: tmp_dir} do
+      api_socket_path = Path.relative_to_cwd("#{tmp_dir}/api.sock")
+      web_socket_path = Path.relative_to_cwd("#{tmp_dir}/web.sock")
+      default_socket_path = Path.relative_to_cwd("#{tmp_dir}/default.sock")
+
+      {:ok, _} = MockSocketServer.start(address: {:local, api_socket_path})
+      {:ok, _} = MockSocketServer.start(address: {:local, web_socket_path})
+      {:ok, _} = MockSocketServer.start(address: {:local, default_socket_path})
+
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           {{:http, {:local, api_socket_path}}, :api} => [count: 2],
+           {{:http, {:local, web_socket_path}}, :web} => [count: 2],
+           {:http, {:local, default_socket_path}} => [count: 2]
+         }}
+      )
+
+      api_request =
+        Finch.build(:get, "http://localhost/", [], nil,
+          unix_socket: api_socket_path,
+          pool_tag: :api
+        )
+
+      web_request =
+        Finch.build(:get, "http://localhost/", [], nil,
+          unix_socket: web_socket_path,
+          pool_tag: :web
+        )
+
+      default_tag_request =
+        Finch.build(:get, "http://localhost/", [], nil, unix_socket: default_socket_path)
+
+      assert {:ok, %{status: 200}} = Finch.request(api_request, finch_name)
+      assert {:ok, %{status: 200}} = Finch.request(web_request, finch_name)
+      assert {:ok, %{status: 200}} = Finch.request(default_tag_request, finch_name)
+
+      assert Finch.stop_pool(finch_name, {{:http, {:local, api_socket_path}}, :api}) == :ok
+      assert pool_stopped?(finch_name, {{:http, {:local, api_socket_path}}, :api})
+
+      # web pool should still exist
+      web_pool = Finch.Pool.new(:http, {:local, web_socket_path}, 0, tag: :web)
+      assert get_pools(finch_name, web_pool) |> length() == 2
+
+      assert Finch.stop_pool(finch_name, {{:http, {:local, web_socket_path}}, :web}) == :ok
+      assert pool_stopped?(finch_name, {{:http, {:local, web_socket_path}}, :web})
+
+      # default tag pool should still exist
+      default_pool = Finch.Pool.new(:http, {:local, default_socket_path}, 0)
+      assert get_pools(finch_name, default_pool) |> length() == 2
+
+      assert Finch.stop_pool(finch_name, {:http, {:local, default_socket_path}}) == :ok
+      assert pool_stopped?(finch_name, {:http, {:local, default_socket_path}})
+    end
+
+    test "default pool_tag is used when not specified", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           {endpoint(bypass), :default} => [count: 3, size: 3]
+         }}
+      )
+
+      expect_any(bypass)
+
+      # Request without pool_tag should use :default
+      request = Finch.build(:get, endpoint(bypass))
+      {:ok, %Response{}} = Finch.request(request, finch_name)
+
+      default_pool = Finch.Pool.from_url(endpoint(bypass), tag: :default)
+      assert get_pools(finch_name, default_pool) |> length() == 3
+    end
+
+    test "async_request/3 with pool_tag", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           {endpoint(bypass), :api} => [count: 1]
+         }}
+      )
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build(:get, endpoint(bypass), [], nil, pool_tag: :api)
+      request_ref = Finch.async_request(request, finch_name)
+
+      assert_receive {^request_ref, {:status, 200}}
+      assert_receive {^request_ref, {:headers, _headers}}
+      assert_receive {^request_ref, {:data, "OK"}}
+      assert_receive {^request_ref, :done}
+    end
+
+    test "stream/5 with pool_tag", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           {endpoint(bypass), :api} => [count: 1]
+         }}
+      )
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build(:get, endpoint(bypass), [], nil, pool_tag: :api)
+
+      acc = {nil, [], ""}
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {value, headers, body}
+        {:headers, value}, {status, headers, body} -> {status, headers ++ value, body}
+        {:data, value}, {status, headers, body} -> {status, headers, body <> value}
+      end
+
+      assert {:ok, {200, _headers, "OK"}} = Finch.stream(request, finch_name, acc, fun)
+    end
+
+    test "stream_while/5 with pool_tag", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           {endpoint(bypass), :api} => [count: 1]
+         }}
+      )
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build(:get, endpoint(bypass), [], nil, pool_tag: :api)
+
+      acc = {nil, [], ""}
+
+      fun = fn
+        {:status, value}, {_, headers, body} -> {:cont, {value, headers, body}}
+        {:headers, value}, {status, headers, body} -> {:cont, {status, headers ++ value, body}}
+        {:data, value}, {status, headers, body} -> {:cont, {status, headers, body <> value}}
+      end
+
+      assert {:ok, {200, _headers, "OK"}} = Finch.stream_while(request, finch_name, acc, fun)
+    end
+  end
+
   describe "get_pool_status/2" do
     test "fails if the pool doesn't exist", %{finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})

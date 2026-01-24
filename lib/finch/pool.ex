@@ -6,7 +6,7 @@ defmodule Finch.Pool do
   @type request_ref :: {pool_mod :: module(), cancel_ref :: term()}
 
   @typedoc false
-  @opaque name :: {scheme(), host(), :inet.port_number()}
+  @opaque name :: {scheme(), host(), :inet.port_number(), term()}
 
   @doc false
   @callback request(
@@ -35,28 +35,40 @@ defmodule Finch.Pool do
               {:ok, list(map)} | {:error, :not_found}
 
   @enforce_keys [:scheme, :host, :port]
-  defstruct [:scheme, :host, :port]
+  defstruct [:scheme, :host, :port, tag: :default]
 
   @type scheme :: :http | :https
   @type host :: String.t() | {:local, String.t()}
 
-  @type t :: %__MODULE__{scheme: scheme(), host: host(), port: :inet.port_number()}
+  @type t :: %__MODULE__{
+          scheme: scheme(),
+          host: host(),
+          port: :inet.port_number(),
+          tag: term()
+        }
+
+  @type pool_tag() :: term()
 
   @doc false
-  def new(scheme, host, port) do
-    %__MODULE__{scheme: scheme, host: host, port: port}
+  def new(scheme, host, port, opts \\ []) do
+    %__MODULE__{
+      scheme: scheme,
+      host: host,
+      port: port,
+      tag: Keyword.get(opts, :tag, :default)
+    }
   end
 
   @doc false
-  def from_url(url) when is_binary(url) do
+  def from_url(url, opts \\ []) when is_binary(url) do
     {scheme, host, port, _path, _query} = Finch.Request.parse_url(url)
-    new(scheme, host, port)
+    new(scheme, host, port, opts)
   end
 
   @doc false
   # This must only be called from the PoolManager,
   # so all name management belongs to a single place.
-  def to_name(%__MODULE__{scheme: s, host: h, port: p}), do: {s, h, p}
+  def to_name(%__MODULE__{scheme: s, host: h, port: p, tag: tag}), do: {s, h, p, tag}
 
   @doc false
   defguard is_request_ref(ref) when tuple_size(ref) == 2 and is_atom(elem(ref, 0))

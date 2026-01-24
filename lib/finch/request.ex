@@ -14,6 +14,7 @@ defmodule Finch.Request do
     :body,
     :query,
     :unix_socket,
+    pool_tag: :default,
     private: %{}
   ]
 
@@ -79,6 +80,7 @@ defmodule Finch.Request do
           body: body(),
           query: String.t() | nil,
           unix_socket: String.t() | nil,
+          pool_tag: Finch.Pool.pool_tag(),
           private: private_metadata()
         }
 
@@ -108,6 +110,7 @@ defmodule Finch.Request do
   @spec build(method(), url(), headers(), body(), build_opts()) :: t()
   def build(method, url, headers, body, opts) do
     unix_socket = Keyword.get(opts, :unix_socket)
+    pool_tag = Keyword.get(opts, :pool_tag, :default)
     {scheme, host, port, path, query} = parse_url(url)
 
     %Finch.Request{
@@ -119,7 +122,8 @@ defmodule Finch.Request do
       headers: headers,
       body: body,
       query: query,
-      unix_socket: unix_socket
+      unix_socket: unix_socket,
+      pool_tag: pool_tag
     }
   end
 
