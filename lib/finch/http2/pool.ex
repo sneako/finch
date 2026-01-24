@@ -84,20 +84,14 @@ defmodule Finch.HTTP2.Pool do
   end
 
   @impl Finch.Pool
-  def get_pool_status(finch_name, pool_name) do
-    case Finch.PoolManager.get_pool_count(finch_name, pool_name) do
-      nil ->
-        {:error, :not_found}
-
-      count ->
-        1..count
-        |> Enum.map(&PoolMetrics.get_pool_status(finch_name, pool_name, &1))
-        |> Enum.filter(&match?({:ok, _}, &1))
-        |> Enum.map(&elem(&1, 1))
-        |> case do
-          [] -> {:error, :not_found}
-          result -> {:ok, result}
-        end
+  def get_pool_status(finch_name, pool_name, count) do
+    for index <- 1..count,
+        {:ok, result} <- [PoolMetrics.get_pool_status(finch_name, pool_name, index)] do
+      result
+    end
+    |> case do
+      [] -> {:error, :not_found}
+      result -> {:ok, result}
     end
   end
 

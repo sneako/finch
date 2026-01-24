@@ -29,7 +29,7 @@ defmodule Finch.Pool do
   @callback cancel_async_request(request_ref()) :: :ok
 
   @doc false
-  @callback get_pool_status(finch_name :: atom(), %__MODULE__{}) ::
+  @callback get_pool_status(finch_name :: atom(), pool_name :: term(), pos_integer) ::
               {:ok, list(map)} | {:error, :not_found}
 
   @enforce_keys [:scheme, :host, :port]

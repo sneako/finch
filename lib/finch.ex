@@ -695,7 +695,7 @@ defmodule Finch do
     finch_name
     |> PoolManager.get_default_pools()
     |> Enum.reduce(%{}, fn {pool_name, pool_mod}, acc ->
-      case pool_mod.get_pool_status(finch_name, pool_name) do
+      case get_pool_name_status(finch_name, pool_name, pool_mod) do
         {:ok, metrics} -> Map.put(acc, pool_name, metrics)
         {:error, :not_found} -> acc
       end
@@ -708,17 +708,23 @@ defmodule Finch do
 
   def get_pool_status(finch_name, %Finch.Pool{} = pool) do
     case PoolManager.get_pool(finch_name, pool, auto_start?: false) do
-      {_pid, pool_mod} ->
-        pool_name = Finch.Pool.to_shp(pool)
-        pool_mod.get_pool_status(finch_name, pool_name)
-
-      :not_found ->
-        {:error, :not_found}
+      {_pid, pool_mod} -> get_pool_name_status(finch_name, Finch.Pool.to_shp(pool), pool_mod)
+      :not_found -> {:error, :not_found}
     end
   end
 
   def get_pool_status(finch_name, {scheme, host, port}) do
     get_pool_status(finch_name, Finch.Pool.new(scheme, host, port))
+  end
+
+  defp get_pool_name_status(finch_name, pool_name, pool_mod) do
+    case Finch.PoolManager.get_pool_count(finch_name, pool_name) do
+      nil ->
+        {:error, :not_found}
+
+      count ->
+        pool_mod.get_pool_status(finch_name, pool_name, count)
+    end
   end
 
   @doc """
