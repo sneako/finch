@@ -3,7 +3,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
   use Mimic
 
   alias Finch.HTTP1.PoolMetrics
-  alias Finch.PoolManager
+  alias Finch.Pool
 
   test "should not start if opt is false", %{bypass: bypass, finch_name: finch_name} do
     start_supervised!(
@@ -35,7 +35,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
 
     wait_connection_checkin()
     assert {:error, :not_found} = Finch.get_pool_status(finch_name, pool)
-    assert [] == PoolManager.get_default_pools(finch_name)
+    assert [] == Pool.Manager.get_default_pools(finch_name)
     assert {:error, :not_found} = Finch.get_pool_status(finch_name, :default)
   end
 
