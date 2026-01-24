@@ -694,8 +694,8 @@ defmodule Finch do
   def get_pool_status(finch_name, :default) do
     finch_name
     |> PoolManager.get_default_pools()
-    |> Enum.reduce(%{}, fn {pool_name, pool_mod}, acc ->
-      case get_pool_name_status(finch_name, pool_name, pool_mod) do
+    |> Enum.reduce(%{}, fn {pool_name, {pool_mod, pool_count}}, acc ->
+      case pool_mod.get_pool_status(finch_name, pool_name, pool_count) do
         {:ok, metrics} -> Map.put(acc, pool_name, metrics)
         {:error, :not_found} -> acc
       end
@@ -707,24 +707,17 @@ defmodule Finch do
   end
 
   def get_pool_status(finch_name, %Finch.Pool{} = pool) do
-    case PoolManager.get_pool(finch_name, pool, auto_start?: false) do
-      {_pid, pool_mod} -> get_pool_name_status(finch_name, Finch.Pool.to_shp(pool), pool_mod)
-      :not_found -> {:error, :not_found}
+    case PoolManager.get_pool_status(finch_name, pool) do
+      {pool_name, pool_mod, pool_count} ->
+        pool_mod.get_pool_status(finch_name, pool_name, pool_count)
+
+      :not_found ->
+        {:error, :not_found}
     end
   end
 
   def get_pool_status(finch_name, {scheme, host, port}) do
     get_pool_status(finch_name, Finch.Pool.new(scheme, host, port))
-  end
-
-  defp get_pool_name_status(finch_name, pool_name, pool_mod) do
-    case Finch.PoolManager.get_pool_count(finch_name, pool_name) do
-      nil ->
-        {:error, :not_found}
-
-      count ->
-        pool_mod.get_pool_status(finch_name, pool_name, count)
-    end
   end
 
   @doc """
@@ -751,7 +744,7 @@ defmodule Finch do
       children ->
         supervisor = pool_supervisor_name(finch_name)
 
-        Enum.each(children, fn {pid, _module} ->
+        Enum.each(children, fn {pid, _module_count} ->
           DynamicSupervisor.terminate_child(supervisor, pid)
         end)
 

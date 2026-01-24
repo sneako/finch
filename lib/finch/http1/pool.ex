@@ -165,7 +165,7 @@ defmodule Finch.HTTP1.Pool do
 
     # Register our pool with our module name as the key. This allows the caller
     # to determine the correct pool module to use to make the request
-    {:ok, _} = Registry.register(registry, pool_name, __MODULE__)
+    {:ok, _} = Registry.register(registry, pool_name, {__MODULE__, pool_config.count})
 
     acitivity_info =
       if pool_config.pool_max_idle_time != :infinity, do: init_activity_info(), else: nil
