@@ -29,10 +29,6 @@ defmodule Finch.Pool.Supervisor do
         end
       end)
 
-    Supervisor.init(specs,
-      max_restarts: 1_000_000,
-      auto_shutdown: :all_significant,
-      strategy: :one_for_one
-    )
+    Supervisor.init(specs, auto_shutdown: :all_significant, strategy: :one_for_one)
   end
 end
