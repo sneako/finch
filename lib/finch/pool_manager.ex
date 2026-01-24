@@ -10,8 +10,6 @@ defmodule Finch.PoolManager do
           pools: %{Finch.Pool.t() => map()}
         }
 
-  @type pool_name() :: Finch.Pool.shp()
-
   @mint_tls_opts [
     :cacertfile,
     :cacerts,
@@ -47,7 +45,7 @@ defmodule Finch.PoolManager do
   end
 
   @spec get_pool_status(atom(), Finch.Pool.t()) ::
-          {pool_name(), module(), pos_integer()} | :not_found
+          {Finch.Pool.name(), module(), pos_integer()} | :not_found
   def get_pool_status(registry_name, %Finch.Pool{} = pool) do
     case lookup_pool(registry_name, pool) do
       [] -> :not_found
@@ -65,7 +63,7 @@ defmodule Finch.PoolManager do
     GenServer.call(manager_name, {:start_pools, pool})
   end
 
-  @spec get_default_pools(atom()) :: [{pool_name(), module(), pos_integer()}]
+  @spec get_default_pools(atom()) :: [{Finch.Pool.name(), module(), pos_integer()}]
   def get_default_pools(name) do
     tname = default_pool_table(name)
 

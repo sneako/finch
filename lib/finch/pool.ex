@@ -4,7 +4,9 @@ defmodule Finch.Pool do
 
   @typedoc false
   @type request_ref :: {pool_mod :: module(), cancel_ref :: term()}
-  @type shp :: {scheme(), host(), :inet.port_number()}
+
+  @typedoc false
+  @opaque name :: {scheme(), host(), :inet.port_number()}
 
   @doc false
   @callback request(
@@ -52,6 +54,8 @@ defmodule Finch.Pool do
   end
 
   @doc false
+  # This must only be called from the PoolManager,
+  # so all name management belongs to a single place.
   def to_name(%__MODULE__{scheme: s, host: h, port: p}), do: {s, h, p}
 
   @doc false
