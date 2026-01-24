@@ -699,8 +699,7 @@ defmodule Finch do
           | {:ok, default_pool_metrics()}
           | {:error, :not_found}
   def get_pool_status(finch_name, url) when is_binary(url) do
-    {s, h, p, _, _} = Request.parse_url(url)
-    get_pool_status(finch_name, {s, h, p})
+    get_pool_status(finch_name, Finch.Pool.from_url(url))
   end
 
   def get_pool_status(finch_name, :default) do
@@ -733,16 +732,8 @@ defmodule Finch do
     end
   end
 
-  def get_pool_status(finch_name, {scheme, host, port} = _shp) do
-    pool = Finch.Pool.new(scheme, host, port)
-
-    case PoolManager.get_pool(finch_name, pool, auto_start?: false) do
-      {_pool, pool_mod} ->
-        pool_mod.get_pool_status(finch_name, pool)
-
-      :not_found ->
-        {:error, :not_found}
-    end
+  def get_pool_status(finch_name, {scheme, host, port}) do
+    get_pool_status(finch_name, Finch.Pool.new(scheme, host, port))
   end
 
   @doc """
@@ -758,8 +749,7 @@ defmodule Finch do
   """
   @spec stop_pool(name(), pool_identifier()) :: :ok | {:error, :not_found}
   def stop_pool(finch_name, url) when is_binary(url) do
-    {s, h, p, _, _} = Request.parse_url(url)
-    stop_pool(finch_name, {s, h, p})
+    stop_pool(finch_name, Finch.Pool.from_url(url))
   end
 
   def stop_pool(finch_name, %Finch.Pool{} = pool) do
@@ -780,24 +770,8 @@ defmodule Finch do
     end
   end
 
-  def stop_pool(finch_name, {scheme, host, port} = _shp) do
-    pool = Finch.Pool.new(scheme, host, port)
-
-    case PoolManager.all_pool_instances(finch_name, pool) do
-      [] ->
-        {:error, :not_found}
-
-      children ->
-        Enum.each(
-          children,
-          fn {pid, _module} ->
-            DynamicSupervisor.terminate_child(pool_supervisor_name(finch_name), pid)
-          end
-        )
-
-        PoolManager.maybe_remove_default_pool(finch_name, pool)
-        :ok
-    end
+  def stop_pool(finch_name, {scheme, host, port}) do
+    stop_pool(finch_name, Finch.Pool.new(scheme, host, port))
   end
 
   # Convert SHP tuple to Pool struct (used for config conversion)
