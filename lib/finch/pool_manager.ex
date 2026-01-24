@@ -57,7 +57,6 @@ defmodule Finch.PoolManager do
     Registry.lookup(registry, Finch.Pool.to_name(pool))
   end
 
-  @spec start_pools(atom(), Finch.Pool.t()) :: {pid(), module()}
   defp start_pools(registry_name, pool) do
     {:ok, manager_name} = Registry.meta(registry_name, :manager_name)
     GenServer.call(manager_name, {:start_pools, pool})
@@ -73,7 +72,7 @@ defmodule Finch.PoolManager do
     end
   end
 
-  @spec prepare_for_stopping(atom(), Finch.Pool.t()) :: [{pid(), {module(), pos_integer()}}]
+  @spec prepare_for_stopping(atom(), Finch.Pool.t()) :: [pid()]
   def prepare_for_stopping(registry, pool) do
     tname = default_pool_table(registry)
     pool_name = Finch.Pool.to_name(pool)
@@ -83,7 +82,7 @@ defmodule Finch.PoolManager do
       tref -> true = :ets.delete(tref, pool_name)
     end
 
-    Registry.lookup(registry, pool_name)
+    registry |> Registry.lookup(pool_name) |> Enum.map(&elem(&1, 0))
   end
 
   ## Callbacks

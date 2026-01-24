@@ -744,7 +744,7 @@ defmodule Finch do
       children ->
         supervisor = pool_supervisor_name(finch_name)
 
-        Enum.each(children, fn {pid, _module_count} ->
+        Enum.each(children, fn pid ->
           DynamicSupervisor.terminate_child(supervisor, pid)
         end)
 
