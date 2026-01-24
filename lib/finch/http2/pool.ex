@@ -224,7 +224,8 @@ defmodule Finch.HTTP2.Pool do
       backoff_base: @backoff_base,
       backoff_max: @backoff_max,
       connect_opts: pool_opts[:conn_opts] || [],
-      metrics_ref: metrics_ref
+      metrics_ref: metrics_ref,
+      registered: true
     }
 
     {:ok, :disconnected, data, {:next_event, :internal, {:connect, 0}}}
@@ -240,6 +241,9 @@ defmodule Finch.HTTP2.Pool do
   # When entering a disconnected state we need to fail all of the pending
   # requests
   def disconnected(:enter, _, data) do
+    Registry.unregister(data.finch_name, {data.scheme, data.host, data.port})
+    data = put_in(data.registered, false)
+
     :ok =
       Enum.each(data.requests, fn {_ref, request} ->
         send(
@@ -339,8 +343,15 @@ defmodule Finch.HTTP2.Pool do
   @doc false
   def connected(event, content, data)
 
-  def connected(:enter, _old_state, _data) do
+  def connected(:enter, _old_state, data) when data.registered do
     :keep_state_and_data
+  end
+
+  def connected(:enter, _old_state, data) do
+    {:ok, _} =
+      Registry.register(data.finch_name, {data.scheme, data.host, data.port}, __MODULE__)
+
+    {:keep_state, put_in(data.registered, true)}
   end
 
   # Issue request to the upstream server. We store a ref to the request so we
@@ -439,6 +450,9 @@ defmodule Finch.HTTP2.Pool do
   def connected_read_only(event, content, data)
 
   def connected_read_only(:enter, _old_state, data) do
+    Registry.unregister(data.finch_name, {data.scheme, data.host, data.port})
+    data = put_in(data.registered, false)
+
     data =
       Enum.reduce(data.requests, data, fn
         # request is awaiting a response and should stay in state
