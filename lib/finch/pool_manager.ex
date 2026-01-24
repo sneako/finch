@@ -207,23 +207,6 @@ defmodule Finch.PoolManager do
 
   defp maybe_add_hostname(config, _), do: config
 
-  defp pool_args(pool, config, %{mod: Finch.HTTP1.Pool} = pool_config, pool_idx),
-    do: {
-      pool,
-      config.registry_name,
-      pool_config.size,
-      pool_config,
-      pool_config.pool_max_idle_time,
-      pool_config.start_pool_metrics?,
-      pool_idx
-    }
-
-  defp pool_args(pool, config, %{mod: Finch.HTTP2.Pool} = pool_config, pool_idx),
-    do: {
-      pool,
-      config.registry_name,
-      pool_config,
-      pool_config.start_pool_metrics?,
-      pool_idx
-    }
+  defp pool_args(pool, config, pool_config, pool_idx),
+    do: {pool, config.registry_name, pool_config, pool_idx}
 end

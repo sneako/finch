@@ -1,6 +1,6 @@
 defmodule Finch.Pool do
-  @moduledoc "Pool identifier management"
   # Defines a behaviour that both http1 and http2 pools need to implement.
+  @moduledoc false
 
   @typedoc false
   @type request_ref :: {pool_mod :: module(), cancel_ref :: term()}
