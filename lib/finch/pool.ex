@@ -13,7 +13,7 @@ defmodule Finch.Pool do
               Finch.stream(acc),
               Finch.name(),
               list()
-            ) :: {:ok, acc} | {:error, term(), acc}
+            ) :: {:ok, acc} | {:error, Finch.error(), acc}
             when acc: term()
 
   @doc false

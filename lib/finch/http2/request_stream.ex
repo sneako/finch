@@ -50,7 +50,7 @@ defmodule Finch.HTTP2.RequestStream do
 
   def next_chunk(%__MODULE__{buffer: buffer} = request, window) do
     case buffer do
-      <<bytes_to_send::binary-size(window), rest::binary>> ->
+      <<bytes_to_send::binary-size(^window), rest::binary>> ->
         # when the buffer contains more bytes than a window, send as much of the
         # buffer as we can
         {put_in(request.buffer, rest), bytes_to_send}
@@ -72,7 +72,7 @@ defmodule Finch.HTTP2.RequestStream do
        next_continuation} ->
         fittable_size = window_size - (total_size - overload_message_size)
 
-        <<fittable_binary::binary-size(fittable_size), overload_binary::binary>> =
+        <<fittable_binary::binary-size(^fittable_size), overload_binary::binary>> =
           overload_message
 
         request = %{request | continuation: next_continuation, buffer: overload_binary}
