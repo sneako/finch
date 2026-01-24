@@ -91,6 +91,7 @@ defmodule Finch.Pool.Manager do
     |> DynamicSupervisor.start_child(
       {Finch.Pool.Supervisor, {name, {config.registry_name, pool, pool_config, track_default?}}}
     )
+    # In case of races, it will return it has already been started
     |> case do
       {:ok, _} -> :ok
       {:error, {:already_started, _}} -> :ok
