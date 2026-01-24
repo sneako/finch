@@ -208,5 +208,5 @@ defmodule Finch.PoolManager do
   defp maybe_add_hostname(config, _), do: config
 
   defp pool_args(pool, config, pool_config, pool_idx),
-    do: {pool, config.registry_name, pool_config, pool_idx}
+    do: {pool, Finch.Pool.to_shp(pool), config.registry_name, pool_config, pool_idx}
 end

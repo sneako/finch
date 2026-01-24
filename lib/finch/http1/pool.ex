@@ -20,7 +20,7 @@ defmodule Finch.HTTP1.Pool do
   alias Finch.HTTP1.PoolMetrics
 
   def child_spec(opts) do
-    {_pool, _registry_name, pool_config, _pool_idx} = opts
+    {_pool, _pool_name, _registry_name, pool_config, _pool_idx} = opts
 
     %{
       id: __MODULE__,
@@ -29,7 +29,7 @@ defmodule Finch.HTTP1.Pool do
     }
   end
 
-  def start_link({_pool, _registry_name, pool_config, _pool_idx} = arg) do
+  def start_link({_pool, _pool_name, _registry_name, pool_config, _pool_idx} = arg) do
     NimblePool.start_link(
       worker: {__MODULE__, arg},
       pool_size: pool_config.size,
@@ -163,7 +163,7 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
-  def init_pool({pool, registry, pool_config, pool_idx}) do
+  def init_pool({pool, pool_name, registry, pool_config, pool_idx}) do
     {:ok, metric_ref} =
       if pool_config.start_pool_metrics?,
         do: PoolMetrics.init(registry, pool, pool_idx, pool_config.size),
@@ -171,7 +171,7 @@ defmodule Finch.HTTP1.Pool do
 
     # Register our pool with our module name as the key. This allows the caller
     # to determine the correct pool module to use to make the request
-    {:ok, _} = Registry.register(registry, Finch.Pool.to_shp(pool), __MODULE__)
+    {:ok, _} = Registry.register(registry, pool_name, __MODULE__)
 
     acitivity_info =
       if pool_config.pool_max_idle_time != :infinity, do: init_activity_info(), else: nil

@@ -200,18 +200,18 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  def start_link({_pool, _registry, _pool_config, _pool_idx} = opts) do
+  def start_link({_pool, _pool_name, _registry, _pool_config, _pool_idx} = opts) do
     :gen_statem.start_link(__MODULE__, opts, [])
   end
 
   @impl true
-  def init({pool, registry, pool_config, pool_idx}) do
+  def init({pool, pool_name, registry, pool_config, pool_idx}) do
     {:ok, metrics_ref} =
       if pool_config.start_pool_metrics?,
         do: PoolMetrics.init(registry, pool, pool_idx),
         else: {:ok, nil}
 
-    {:ok, _} = Registry.register(registry, Finch.Pool.to_shp(pool), __MODULE__)
+    {:ok, _} = Registry.register(registry, pool_name, __MODULE__)
 
     data = %{
       conn: nil,

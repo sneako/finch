@@ -178,13 +178,6 @@ defmodule Finch do
     pools = Keyword.get(opts, :pools, []) |> pool_options!()
     {default_pool_config, pools} = Map.pop(pools, :default)
 
-    # Convert pools map keys from SHP tuples to Pool structs
-    pools =
-      Enum.into(pools, %{}, fn {shp, pool_config} ->
-        pool = shp_to_pool(shp)
-        {pool, pool_config}
-      end)
-
     config = %{
       registry_name: name,
       manager_name: manager_name(name),
@@ -238,19 +231,14 @@ defmodule Finch do
         {:ok, destination}
 
       {scheme, {:local, path}} when is_atom(scheme) and is_binary(path) ->
-        {:ok, {scheme, {:local, path}, 0}}
+        {:ok, Finch.Pool.new(scheme, {:local, path}, 0)}
 
       url when is_binary(url) ->
-        cast_binary_destination(url)
+        {:ok, Finch.Pool.from_url(url)}
 
       _ ->
         {:error, %ArgumentError{message: "invalid destination: #{inspect(destination)}"}}
     end
-  end
-
-  defp cast_binary_destination(url) when is_binary(url) do
-    {scheme, host, port, _path, _query} = Finch.Request.parse_url(url)
-    {:ok, {scheme, host, port}}
   end
 
   defp cast_pool_opts(opts) do
@@ -773,7 +761,4 @@ defmodule Finch do
   def stop_pool(finch_name, {scheme, host, port}) do
     stop_pool(finch_name, Finch.Pool.new(scheme, host, port))
   end
-
-  # Convert SHP tuple to Pool struct (used for config conversion)
-  defp shp_to_pool({scheme, host, port}), do: Finch.Pool.new(scheme, host, port)
 end
