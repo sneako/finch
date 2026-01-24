@@ -208,7 +208,7 @@ defmodule Finch.HTTP2.Pool do
         do: PoolMetrics.init(registry, pool, pool_idx),
         else: {:ok, nil}
 
-    {:ok, _} = Registry.register(registry, pool, __MODULE__)
+    {:ok, _} = Registry.register(registry, Finch.Pool.to_shp(pool), __MODULE__)
 
     data = %{
       conn: nil,

@@ -107,7 +107,7 @@ defmodule Finch.HTTP1.PoolTest do
     # after here the next idle termination will trigger in =~  ms
 
     pool_key = pool(bypass)
-    assert [{pool, _pool_mod}] = Registry.lookup(finch_name, pool_key)
+    assert [{pool, _pool_mod}] = Registry.lookup(finch_name, Finch.Pool.to_shp(pool_key))
 
     Process.monitor(pool)
 
@@ -172,7 +172,7 @@ defmodule Finch.HTTP1.PoolTest do
     assert_receive {^ref2, :done}, 500
 
     pool_key = pool(bypass)
-    assert [{pool, _pool_mod}] = Registry.lookup(finch_name, pool_key)
+    assert [{pool, _pool_mod}] = Registry.lookup(finch_name, Finch.Pool.to_shp(pool_key))
 
     Process.monitor(pool)
 

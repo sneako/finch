@@ -183,7 +183,7 @@ defmodule Finch.HTTP1.Pool do
 
     # Register our pool with our module name as the key. This allows the caller
     # to determine the correct pool module to use to make the request
-    {:ok, _} = Registry.register(registry, pool, __MODULE__)
+    {:ok, _} = Registry.register(registry, Finch.Pool.to_shp(pool), __MODULE__)
 
     acitivity_info =
       if opts[:pool_max_idle_time] != :infinity, do: init_activity_info(), else: nil

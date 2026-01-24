@@ -85,7 +85,7 @@ defmodule Finch.PoolManager do
   end
 
   @spec all_pool_instances(atom(), Finch.Pool.t()) :: [{pid(), module()}]
-  def all_pool_instances(registry, pool), do: Registry.lookup(registry, pool)
+  def all_pool_instances(registry, pool), do: Registry.lookup(registry, Finch.Pool.to_shp(pool))
 
   @spec start_pools(atom(), Finch.Pool.t()) :: {pid(), module()}
   defp start_pools(registry_name, pool) do
