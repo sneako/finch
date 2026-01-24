@@ -16,6 +16,9 @@ defmodule Finch.HTTP2.Pool do
   require Logger
 
   @default_receive_timeout 15_000
+  @backoff_base 500
+  @backoff_max 10_000
+  @backoff_max_failure_count ceil(:math.log2(@backoff_max / @backoff_base))
 
   @impl true
   def callback_mode(), do: [:state_functions, :state_enter]
@@ -218,8 +221,8 @@ defmodule Finch.HTTP2.Pool do
       requests: %{},
       refs: %{},
       requests_by_pid: %{},
-      backoff_base: 500,
-      backoff_max: 10_000,
+      backoff_base: @backoff_base,
+      backoff_max: @backoff_max,
       connect_opts: pool_config[:conn_opts] || [],
       metrics_ref: metrics_ref
     }
@@ -672,7 +675,7 @@ defmodule Finch.HTTP2.Pool do
   # our retried requests don't "harmonize" making it harder for the downstream
   # service to heal.
   defp backoff(base_backoff, max_backoff, failure_count) do
-    factor = :math.pow(2, failure_count)
+    factor = :math.pow(2, min(failure_count, @backoff_max_failure_count))
     max_sleep = trunc(min(max_backoff, base_backoff * factor))
     :rand.uniform(max_sleep)
   end
