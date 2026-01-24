@@ -223,7 +223,7 @@ defmodule Finch.HTTP2.Pool do
       requests_by_pid: %{},
       backoff_base: @backoff_base,
       backoff_max: @backoff_max,
-      connect_opts: pool_config[:conn_opts] || [],
+      connect_opts: pool_config.conn_opts,
       metrics_ref: metrics_ref
     }
 

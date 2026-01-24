@@ -746,12 +746,11 @@ defmodule Finch do
         {:error, :not_found}
 
       children ->
-        Enum.each(
-          children,
-          fn {pid, _module} ->
-            DynamicSupervisor.terminate_child(pool_supervisor_name(finch_name), pid)
-          end
-        )
+        supervisor = pool_supervisor_name(finch_name)
+
+        Enum.each(children, fn {pid, _module} ->
+          DynamicSupervisor.terminate_child(supervisor, pid)
+        end)
 
         PoolManager.maybe_remove_default_pool(finch_name, pool)
         :ok
