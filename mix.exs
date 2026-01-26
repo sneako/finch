@@ -39,7 +39,7 @@ defmodule Finch.MixProject do
       {:telemetry, "~> 0.4 or ~> 1.0"},
       {:mime, "~> 1.0 or ~> 2.0"},
       {:ex_doc, "~> 0.28", only: :dev, runtime: false},
-      {:credo, "~> 1.3", only: [:dev, :test]},
+      {:credo, github: "rrrene/credo", only: [:dev, :test]},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
       {:bypass, "~> 2.0", only: :test},
       {:cowboy, "~> 2.7", only: [:dev, :test]},
