@@ -20,33 +20,21 @@ defmodule Finch.HTTP1.Pool do
   alias Finch.HTTP1.PoolMetrics
 
   def child_spec(opts) do
-    {
-      _pool,
-      _registry_name,
-      _pool_size,
-      _conn_opts,
-      pool_max_idle_time,
-      _start_pool_metrics?,
-      _pool_idx
-    } = opts
+    {_pool, _pool_name, _registry_name, pool_config, _pool_idx} = opts
 
     %{
       id: __MODULE__,
       start: {__MODULE__, :start_link, [opts]},
-      restart: restart_option(pool_max_idle_time)
+      restart: restart_option(pool_config.pool_max_idle_time)
     }
   end
 
-  def start_link(
-        {pool, registry_name, pool_size, conn_opts, pool_max_idle_time, start_pool_metrics?,
-         pool_idx}
-      ) do
+  def start_link({_pool, _pool_name, _registry_name, pool_config, _pool_idx} = arg) do
     NimblePool.start_link(
-      worker:
-        {__MODULE__, {registry_name, pool, pool_idx, pool_size, start_pool_metrics?, conn_opts}},
-      pool_size: pool_size,
+      worker: {__MODULE__, arg},
+      pool_size: pool_config.size,
       lazy: true,
-      worker_idle_timeout: pool_idle_timeout(pool_max_idle_time)
+      worker_idle_timeout: pool_idle_timeout(pool_config.pool_max_idle_time)
     )
   end
 
@@ -157,43 +145,37 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl Finch.Pool
-  def get_pool_status(finch_name, pool) do
-    case Finch.PoolManager.get_pool_count(finch_name, pool) do
-      nil ->
-        {:error, :not_found}
-
-      count ->
-        1..count
-        |> Enum.map(&PoolMetrics.get_pool_status(finch_name, pool, &1))
-        |> Enum.filter(&match?({:ok, _}, &1))
-        |> Enum.map(&elem(&1, 1))
-        |> case do
-          [] -> {:error, :not_found}
-          result -> {:ok, result}
-        end
+  def get_pool_status(finch_name, pool_name, count) do
+    for index <- 1..count,
+        {:ok, result} <- [PoolMetrics.get_pool_status(finch_name, pool_name, index)] do
+      result
+    end
+    |> case do
+      [] -> {:error, :not_found}
+      result -> {:ok, result}
     end
   end
 
   @impl NimblePool
-  def init_pool({registry, pool, pool_idx, pool_size, start_pool_metrics?, opts}) do
+  def init_pool({pool, pool_name, registry, pool_config, pool_idx}) do
     {:ok, metric_ref} =
-      if start_pool_metrics?,
-        do: PoolMetrics.init(registry, pool, pool_idx, pool_size),
+      if pool_config.start_pool_metrics?,
+        do: PoolMetrics.init(registry, pool_name, pool_idx, pool_config.size),
         else: {:ok, nil}
 
     # Register our pool with our module name as the key. This allows the caller
     # to determine the correct pool module to use to make the request
-    {:ok, _} = Registry.register(registry, pool, __MODULE__)
+    {:ok, _} = Registry.register(registry, pool_name, __MODULE__)
 
     acitivity_info =
-      if opts[:pool_max_idle_time] != :infinity, do: init_activity_info(), else: nil
+      if pool_config.pool_max_idle_time != :infinity, do: init_activity_info(), else: nil
 
     state = %__MODULE__.State{
       registry: registry,
       pool: pool,
       pool_idx: pool_idx,
       metric_ref: metric_ref,
-      opts: opts,
+      opts: pool_config,
       activity_info: acitivity_info
     }
 

@@ -25,14 +25,16 @@ defmodule Finch.HTTP2.PoolMetrics do
     in_flight_requests: 2
   ]
 
-  def init(finch_name, pool, pool_idx) do
+  @doc false
+  def init(finch_name, pool_name, pool_idx) do
     ref = :atomics.new(length(@atomic_idx), [])
     :atomics.put(ref, @atomic_idx[:pool_idx], pool_idx)
 
-    :persistent_term.put({__MODULE__, finch_name, pool, pool_idx}, ref)
+    :persistent_term.put({__MODULE__, finch_name, pool_name, pool_idx}, ref)
     {:ok, ref}
   end
 
+  @doc false
   def maybe_add(nil, _metrics_list), do: :ok
 
   def maybe_add(ref, metrics_list) do
@@ -41,8 +43,9 @@ defmodule Finch.HTTP2.PoolMetrics do
     end)
   end
 
-  def get_pool_status(name, pool, pool_idx) do
-    {__MODULE__, name, pool, pool_idx}
+  @doc false
+  def get_pool_status(name, pool_name, pool_idx) do
+    {__MODULE__, name, pool_name, pool_idx}
     |> :persistent_term.get(nil)
     |> get_pool_status()
   end

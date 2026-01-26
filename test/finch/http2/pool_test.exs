@@ -34,9 +34,13 @@ defmodule Finch.HTTP2.PoolTest do
 
     Pool.start_link({
       pool,
+      :pool_name,
       :test,
-      [conn_opts: [transport_opts: [verify: :verify_none]]],
-      false,
+      %{
+        conn_opts: [transport_opts: [verify: :verify_none]],
+        start_pool_metrics?: false,
+        count: 1
+      },
       1
     })
   end

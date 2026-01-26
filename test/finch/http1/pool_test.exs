@@ -33,7 +33,7 @@ defmodule Finch.HTTP1.PoolTest do
        pools: %{
          default: [
            protocols: [:http1],
-           pool_max_idle_time: 5
+           pool_max_idle_time: 50
          ]
        }}
     )
@@ -46,14 +46,16 @@ defmodule Finch.HTTP1.PoolTest do
              Finch.build(:get, endpoint(bypass))
              |> Finch.request(IdleFinch)
 
-    [{_, pool, _, _}] = DynamicSupervisor.which_children(IdleFinch.PoolSupervisor)
+    [{_, supervisor, _, _}] = DynamicSupervisor.which_children(IdleFinch.PoolSupervisor)
+    [{_, pool, _, _}] = Supervisor.which_children(supervisor)
 
+    Process.monitor(supervisor)
     Process.monitor(pool)
 
     assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}
+    assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}
 
     assert [] = DynamicSupervisor.which_children(IdleFinch.PoolSupervisor)
-
     assert_receive :telemetry_sent
 
     :telemetry.detach(test_name)
@@ -90,7 +92,6 @@ defmodule Finch.HTTP1.PoolTest do
         |> Finch.request(finch_name)
 
       send(parent, {ref, :done})
-
       resp
     end
 
@@ -101,29 +102,25 @@ defmodule Finch.HTTP1.PoolTest do
     Task.async(fn -> delay_exec.(ref2, 10) end)
 
     assert_receive {^ref1, :done}, 150
-
     assert_receive {^ref2, :done}, 150
 
-    # after here the next idle termination will trigger in =~  ms
+    [{_, supervisor, _, _}] = DynamicSupervisor.which_children(:"#{finch_name}.PoolSupervisor")
+    Process.monitor(supervisor)
 
+    # after here the next idle termination will trigger in =~  ms
     pool_key = pool(bypass)
-    assert [{pool, _pool_mod}] = Registry.lookup(finch_name, pool_key)
+    assert [{pool, _pool_mod}] = Registry.lookup(finch_name, Finch.Pool.to_name(pool_key))
 
     Process.monitor(pool)
-
     refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
 
     ref3 = make_ref()
-
     Task.async(fn -> assert {:ok, %{status: 200}} = delay_exec.(ref3, 10) end)
-
     assert_receive {^ref3, :done}, 150
 
     refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
-
     assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
-
-    assert [] = DynamicSupervisor.which_children(:"#{finch_name}.PoolSupervisor")
+    assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}
   end
 
   # @tag capture_log: true
@@ -157,7 +154,6 @@ defmodule Finch.HTTP1.PoolTest do
         |> Finch.request(finch_name)
 
       send(parent, {ref, :done})
-
       resp
     end
 
@@ -171,23 +167,23 @@ defmodule Finch.HTTP1.PoolTest do
     assert_receive {^ref1, :done}, 500
     assert_receive {^ref2, :done}, 500
 
-    pool_key = pool(bypass)
-    assert [{pool, _pool_mod}] = Registry.lookup(finch_name, pool_key)
+    [{_, supervisor, _, _}] = DynamicSupervisor.which_children(:"#{finch_name}.PoolSupervisor")
+    Process.monitor(supervisor)
 
+    pool_key = pool(bypass)
+    assert [{pool, _pool_mod}] = Registry.lookup(finch_name, Finch.Pool.to_name(pool_key))
     Process.monitor(pool)
 
     ref2 = make_ref()
     Task.async(fn -> delay_exec.(ref2, 1000) end)
 
     assert_receive {^ref2, :start}
-
     refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 1000
 
     assert_receive {^ref2, :done}
-
     assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
 
-    assert [] = DynamicSupervisor.which_children(:"#{finch_name}.PoolSupervisor")
+    assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}, 200
   end
 
   describe "async_request" do

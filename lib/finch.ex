@@ -5,7 +5,7 @@ defmodule Finch do
              |> String.split("<!-- MDOC !-->")
              |> Enum.fetch!(1)
 
-  alias Finch.{PoolManager, Request, Response}
+  alias Finch.{Pool, Request, Response}
   require Finch.Pool
 
   use Supervisor
@@ -178,22 +178,15 @@ defmodule Finch do
     pools = Keyword.get(opts, :pools, []) |> pool_options!()
     {default_pool_config, pools} = Map.pop(pools, :default)
 
-    # Convert pools map keys from SHP tuples to Pool structs
-    pools =
-      Enum.into(pools, %{}, fn {shp, pool_config} ->
-        pool = shp_to_pool(shp)
-        {pool, pool_config}
-      end)
-
     config = %{
       registry_name: name,
-      manager_name: manager_name(name),
-      supervisor_name: pool_supervisor_name(name),
+      supervisor_name: concat_name(name, "PoolSupervisor"),
+      supervisor_registry_name: Pool.Manager.supervisor_registry_name(name),
       default_pool_config: default_pool_config,
       pools: pools
     }
 
-    Supervisor.start_link(__MODULE__, config, name: supervisor_name(name))
+    Supervisor.start_link(__MODULE__, config, name: concat_name(name, "Supervisor"))
   end
 
   def child_spec(opts) do
@@ -206,9 +199,10 @@ defmodule Finch do
   @impl true
   def init(config) do
     children = [
-      {Registry, [keys: :duplicate, name: config.registry_name, meta: [config: config]]},
+      {Registry, keys: :duplicate, name: config.registry_name, meta: [config: config]},
+      {Registry, keys: :unique, name: config.supervisor_registry_name},
       {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
-      {PoolManager, config}
+      {Pool.Manager, config}
     ]
 
     Supervisor.init(children, strategy: :one_for_all)
@@ -238,19 +232,14 @@ defmodule Finch do
         {:ok, destination}
 
       {scheme, {:local, path}} when is_atom(scheme) and is_binary(path) ->
-        {:ok, {scheme, {:local, path}, 0}}
+        {:ok, Finch.Pool.new(scheme, {:local, path}, 0)}
 
       url when is_binary(url) ->
-        cast_binary_destination(url)
+        {:ok, Finch.Pool.from_url(url)}
 
       _ ->
         {:error, %ArgumentError{message: "invalid destination: #{inspect(destination)}"}}
     end
-  end
-
-  defp cast_binary_destination(url) when is_binary(url) do
-    {scheme, host, port, _path, _query} = Finch.Request.parse_url(url)
-    {:ok, {scheme, host, port}}
   end
 
   defp cast_pool_opts(opts) do
@@ -321,9 +310,7 @@ defmodule Finch do
   defp to_native(:infinity), do: :infinity
   defp to_native(time), do: System.convert_time_unit(time, :millisecond, :native)
 
-  defp supervisor_name(name), do: :"#{name}.Supervisor"
-  defp manager_name(name), do: :"#{name}.PoolManager"
-  defp pool_supervisor_name(name), do: :"#{name}.PoolSupervisor"
+  defp concat_name(name, suffix), do: :"#{name}.#{suffix}"
 
   defmacrop request_span(request, name, do: block) do
     quote do
@@ -631,12 +618,12 @@ defmodule Finch do
   defp get_pool(%Request{scheme: scheme, unix_socket: unix_socket}, name)
        when is_binary(unix_socket) do
     pool = Finch.Pool.new(scheme, {:local, unix_socket}, 0)
-    PoolManager.get_pool(name, pool)
+    Pool.Manager.get_pool(name, pool)
   end
 
   defp get_pool(%Request{scheme: scheme, host: host, port: port}, name) do
     pool = Finch.Pool.new(scheme, host, port)
-    PoolManager.get_pool(name, pool)
+    Pool.Manager.get_pool(name, pool)
   end
 
   @doc """
@@ -699,22 +686,16 @@ defmodule Finch do
           | {:ok, default_pool_metrics()}
           | {:error, :not_found}
   def get_pool_status(finch_name, url) when is_binary(url) do
-    {s, h, p, _, _} = Request.parse_url(url)
-    get_pool_status(finch_name, {s, h, p})
+    get_pool_status(finch_name, Finch.Pool.from_url(url))
   end
 
   def get_pool_status(finch_name, :default) do
     finch_name
-    |> PoolManager.get_default_pools()
-    |> Enum.reduce(%{}, fn pool, acc ->
-      case get_pool_status(finch_name, pool) do
-        {:ok, metrics} ->
-          # Convert Pool struct to SHP tuple for backward compatibility in return value
-          pool_id = Finch.Pool.to_shp(pool)
-          Map.put(acc, pool_id, metrics)
-
-        {:error, :not_found} ->
-          acc
+    |> Pool.Manager.get_default_pools()
+    |> Enum.reduce(%{}, fn {_pid, {pool_name, pool_mod, pool_count}}, acc ->
+      case pool_mod.get_pool_status(finch_name, pool_name, pool_count) do
+        {:ok, metrics} -> Map.put(acc, pool_name, metrics)
+        {:error, :not_found} -> acc
       end
     end)
     |> case do
@@ -724,25 +705,17 @@ defmodule Finch do
   end
 
   def get_pool_status(finch_name, %Finch.Pool{} = pool) do
-    case PoolManager.get_pool(finch_name, pool, auto_start?: false) do
-      {_pool, pool_mod} ->
-        pool_mod.get_pool_status(finch_name, pool)
+    case Pool.Manager.get_pool_supervisor(finch_name, pool) do
+      {_pid, pool_name, pool_mod, pool_count} ->
+        pool_mod.get_pool_status(finch_name, pool_name, pool_count)
 
       :not_found ->
         {:error, :not_found}
     end
   end
 
-  def get_pool_status(finch_name, {scheme, host, port} = _shp) do
-    pool = Finch.Pool.new(scheme, host, port)
-
-    case PoolManager.get_pool(finch_name, pool, auto_start?: false) do
-      {_pool, pool_mod} ->
-        pool_mod.get_pool_status(finch_name, pool)
-
-      :not_found ->
-        {:error, :not_found}
-    end
+  def get_pool_status(finch_name, {scheme, host, port}) do
+    get_pool_status(finch_name, Finch.Pool.new(scheme, host, port))
   end
 
   @doc """
@@ -758,48 +731,17 @@ defmodule Finch do
   """
   @spec stop_pool(name(), pool_identifier()) :: :ok | {:error, :not_found}
   def stop_pool(finch_name, url) when is_binary(url) do
-    {s, h, p, _, _} = Request.parse_url(url)
-    stop_pool(finch_name, {s, h, p})
+    stop_pool(finch_name, Finch.Pool.from_url(url))
   end
 
   def stop_pool(finch_name, %Finch.Pool{} = pool) do
-    case PoolManager.all_pool_instances(finch_name, pool) do
-      [] ->
-        {:error, :not_found}
-
-      children ->
-        Enum.each(
-          children,
-          fn {pid, _module} ->
-            DynamicSupervisor.terminate_child(pool_supervisor_name(finch_name), pid)
-          end
-        )
-
-        PoolManager.maybe_remove_default_pool(finch_name, pool)
-        :ok
+    case Pool.Manager.get_pool_supervisor(finch_name, pool) do
+      :not_found -> {:error, :not_found}
+      {pid, _pool_name, _pool_mod, _pool_count} -> Supervisor.stop(pid)
     end
   end
 
-  def stop_pool(finch_name, {scheme, host, port} = _shp) do
-    pool = Finch.Pool.new(scheme, host, port)
-
-    case PoolManager.all_pool_instances(finch_name, pool) do
-      [] ->
-        {:error, :not_found}
-
-      children ->
-        Enum.each(
-          children,
-          fn {pid, _module} ->
-            DynamicSupervisor.terminate_child(pool_supervisor_name(finch_name), pid)
-          end
-        )
-
-        PoolManager.maybe_remove_default_pool(finch_name, pool)
-        :ok
-    end
+  def stop_pool(finch_name, {scheme, host, port}) do
+    stop_pool(finch_name, Finch.Pool.new(scheme, host, port))
   end
-
-  # Convert SHP tuple to Pool struct (used for config conversion)
-  defp shp_to_pool({scheme, host, port}), do: Finch.Pool.new(scheme, host, port)
 end

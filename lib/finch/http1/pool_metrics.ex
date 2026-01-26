@@ -12,8 +12,8 @@ defmodule Finch.HTTP1.PoolMetrics do
   Caveats:
 
     * A given number X of `available_connections` does not mean that currently
-    exists X connections to the server sitting on the pool. Because Finch uses 
-    a lazy strategy for workers initialization, every pool starts with it's 
+    exists X connections to the server sitting on the pool. Because Finch uses
+    a lazy strategy for workers initialization, every pool starts with it's
     size as available connections even if they are not started yet. In practice
     this means that `available_connections` may be connections sitting on the pool
     or available space on the pool for a new one if required.
@@ -34,12 +34,12 @@ defmodule Finch.HTTP1.PoolMetrics do
     in_use_connections: 3
   ]
 
-  def init(registry, pool, pool_idx, pool_size) do
+  def init(registry, pool_name, pool_idx, pool_size) do
     ref = :atomics.new(length(@atomic_idx), [])
     :atomics.add(ref, @atomic_idx[:pool_idx], pool_idx)
     :atomics.add(ref, @atomic_idx[:pool_size], pool_size)
 
-    :persistent_term.put({__MODULE__, registry, pool, pool_idx}, ref)
+    :persistent_term.put({__MODULE__, registry, pool_name, pool_idx}, ref)
     {:ok, ref}
   end
 
@@ -51,8 +51,8 @@ defmodule Finch.HTTP1.PoolMetrics do
     end)
   end
 
-  def get_pool_status(name, pool, pool_idx) do
-    {__MODULE__, name, pool, pool_idx}
+  def get_pool_status(name, pool_name, pool_idx) do
+    {__MODULE__, name, pool_name, pool_idx}
     |> :persistent_term.get(nil)
     |> get_pool_status()
   end

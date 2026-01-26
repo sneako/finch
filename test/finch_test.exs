@@ -1152,7 +1152,7 @@ defmodule FinchTest do
   end
 
   defp get_pools(name, pool) do
-    Registry.lookup(name, pool)
+    Registry.lookup(name, Finch.Pool.to_name(pool))
   end
 
   defp pool(%{port: port}), do: Finch.Pool.new(:http, "localhost", port)
