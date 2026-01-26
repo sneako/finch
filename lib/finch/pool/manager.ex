@@ -56,8 +56,8 @@ defmodule Finch.Pool.Manager do
       [] ->
         :not_found
 
-      [{pid, pool_mod} | _] ->
-        {pid, pool_mod}
+      pools ->
+        Enum.random(pools)
     end
   end
 
