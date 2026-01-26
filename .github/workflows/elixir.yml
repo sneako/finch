@@ -23,7 +23,7 @@ jobs:
               elixir: "1.20.0-rc.1"
               otp: "28.3.1"
               version-type: strict
-              lint: lint
+            lint: lint
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
