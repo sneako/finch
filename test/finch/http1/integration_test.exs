@@ -2,8 +2,6 @@ defmodule Finch.HTTP1.IntegrationTest do
   use ExUnit.Case, async: false
   import ExUnit.CaptureLog
 
-  require Logger
-
   alias Finch.HTTPS1Server
   alias Finch.TestHelper
 

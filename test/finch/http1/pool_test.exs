@@ -272,5 +272,4 @@ defmodule Finch.HTTP1.PoolTest do
   end
 
   defp pool(%{port: port}), do: Finch.Pool.new(:http, "localhost", port)
-  defp pool({scheme, {:local, unix_socket}}), do: Finch.Pool.new(scheme, {:local, unix_socket}, 0)
 end
