@@ -161,8 +161,11 @@ defmodule Finch do
 
     Pool configuration lookup follows a fallback chain:
     1. Exact match for the specific tag (if using `{url, tag}` or `{{scheme, {:local, path}}, tag}`)
-    2. Fallback to `:default` tag configuration for the same URL/socket
-    3. Fallback to the `:default` configuration
+    2. Fallback to the `:default` configuration
+
+    If a request specifies a specific `:pool_tag` that doesn't exist, it will use the
+    `:default` configuration rather than falling back to a `:default` tagged pool
+    for the same `{scheme, host, port}`.
 
   ### Pool Configuration Options
 

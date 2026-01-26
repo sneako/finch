@@ -1119,7 +1119,7 @@ defmodule FinchTest do
       assert get_pools(finch_name, web_pool) |> length() == 5
     end
 
-    test "pool config fallback: exact match -> default tag -> default config", %{
+    test "pool config fallback: exact match -> default config", %{
       bypass: bypass,
       finch_name: finch_name
     } do
@@ -1141,11 +1141,11 @@ defmodule FinchTest do
       api_pool = Finch.Pool.from_url(endpoint(bypass), tag: :api)
       assert get_pools(finch_name, api_pool) |> length() == 3
 
-      # Falls back to :default tag config
+      # When a specific pool_tag doesn't exist, use default config (don't fall back to :default tag)
       other_request = Finch.build(:get, endpoint(bypass), [], nil, pool_tag: :other)
       {:ok, %Response{}} = Finch.request(other_request, finch_name)
-      default_tag_pool = Finch.Pool.from_url(endpoint(bypass), tag: :default)
-      assert get_pools(finch_name, default_tag_pool) |> length() == 5
+      other_pool = Finch.Pool.from_url(endpoint(bypass), tag: :other)
+      assert get_pools(finch_name, other_pool) |> length() == 7
 
       # Falls back to default config for unconfigured host
       other_bypass = Bypass.open()

@@ -112,11 +112,12 @@ Finch.request(request, MyTaggedFinch)
 
 Pool configuration lookup follows a fallback chain:
 1. Exact match for the specific tag
-2. Fallback to `:default` tag configuration
-3. Fallback to the `:default` configuration
+2. Fallback to the `:default` configuration
 
-This allows you to have specific configurations for tagged pools while maintaining
-sensible defaults for untagged requests.
+If a request specifies a specific `:pool_tag` that doesn't exist, it will use the
+`:default` configuration rather than falling back to a `:default` tagged pool
+for the same `{scheme, host, port}`. This allows you to have specific configurations
+for tagged pools while maintaining sensible defaults for untagged requests.
 
 Note pools are not automatically terminated by default, if you need to
 terminate them after some idle time, use the `pool_max_idle_time` option (available only for HTTP1 pools).
