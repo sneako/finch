@@ -2,6 +2,42 @@ defmodule Finch.Pool.Manager do
   @moduledoc false
   use GenServer
 
+  @typedoc false
+  @type request_ref :: {pool_mod :: module(), cancel_ref :: term()}
+
+  @typedoc false
+  @opaque pool_name() ::
+            {Finch.Pool.scheme(), Finch.Pool.host(), :inet.port_number(), Finch.Pool.pool_tag()}
+
+  @doc false
+  @callback request(
+              pid(),
+              Finch.Request.t(),
+              acc,
+              Finch.stream(acc),
+              Finch.name(),
+              list()
+            ) :: {:ok, acc} | {:error, term(), acc}
+            when acc: term()
+
+  @doc false
+  @callback async_request(
+              pid(),
+              Finch.Request.t(),
+              Finch.name(),
+              list()
+            ) :: request_ref()
+
+  @doc false
+  @callback cancel_async_request(request_ref()) :: :ok
+
+  @doc false
+  @callback get_pool_status(finch_name :: atom(), pool_name(), pos_integer) ::
+              {:ok, list(map)} | {:error, :not_found}
+
+  @doc false
+  defguard is_request_ref(ref) when tuple_size(ref) == 2 and is_atom(elem(ref, 0))
+
   @type config() :: %{
           registry_name: atom(),
           supervisor_name: atom(),
@@ -62,7 +98,7 @@ defmodule Finch.Pool.Manager do
   end
 
   @spec get_pool_supervisor(Finch.name(), Finch.Pool.t()) ::
-          {pid(), Finch.Pool.name(), module(), pos_integer()} | :not_found
+          {pid(), pool_name(), module(), pos_integer()} | :not_found
   def get_pool_supervisor(finch_name, %Finch.Pool{} = pool) do
     pool_name = Finch.Pool.to_name(pool)
 
@@ -78,7 +114,7 @@ defmodule Finch.Pool.Manager do
     end
   end
 
-  @spec get_default_pools(atom()) :: [{pid(), {Finch.Pool.name(), module(), pos_integer()}}]
+  @spec get_default_pools(atom()) :: [{pid(), {pool_name(), module(), pos_integer()}}]
   def get_default_pools(registry_name) do
     Registry.lookup(registry_name, :default)
   end
@@ -104,11 +140,9 @@ defmodule Finch.Pool.Manager do
     end
   end
 
-  defp pool_config(%{pools: pools, default_pool_config: default}, %Finch.Pool{} = pool) do
-    case Map.get(pools, pool) do
-      nil -> default
-      config -> config
-    end
+  defp pool_config(%{pools: config, default_pool_config: default}, %Finch.Pool{} = pool) do
+    config
+    |> Map.get(pool, default)
     |> maybe_drop_tls_options(pool)
     |> maybe_add_hostname(pool)
   end

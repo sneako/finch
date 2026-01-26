@@ -70,18 +70,17 @@ Finch supports pool tagging, which allows you to create separate pools for the s
 configurations or want to isolate traffic for different purposes (e.g., API vs web requests,
 tenants, JWT tokens, etc).
 
-You can configure tagged pools using `{url, tag}` tuples for URLs or `{{scheme, {:local, path}}, tag}`
-tuples for Unix sockets:
+You can configure tagged pools using `Finch.Pool.new/2`:
 
 ```elixir
 children = [
   {Finch,
    name: MyTaggedFinch,
    pools: %{
-     {"https://api.example.com", :api} => [size: 50, count: 4],
-     {"https://api.example.com", :web} => [size: 20, count: 2],
-     {{:http, {:local, "/tmp/api.sock"}}, :api} => [size: 30, count: 2],
-     {{:http, {:local, "/tmp/api.sock"}}, :web} => [size: 10, count: 1],
+     Finch.Pool.new("https://api.example.com") => [size: 50, count: 4],
+     Finch.Pool.new("https://api.example.com", tag: :web) => [size: 20, count: 2],
+     Finch.Pool.new({:http, {:local, "/tmp/api.sock"}}, tag: :api) => [size: 30, count: 2],
+     Finch.Pool.new({:http, {:local, "/tmp/api.sock"}}, tag: :web) => [size: 10, count: 1],
      :default => [size: 10, count: 1]
    }}
 ]
@@ -110,14 +109,10 @@ request = Finch.build(:get, "http://localhost/", [], nil,
 Finch.request(request, MyTaggedFinch)
 ```
 
-Pool configuration lookup follows a fallback chain:
-1. Exact match for the specific tag
-2. Fallback to the `:default` configuration
-
-If a request specifies a specific `:pool_tag` that doesn't exist, it will use the
-`:default` configuration rather than falling back to a `:default` tagged pool
-for the same `{scheme, host, port}`. This allows you to have specific configurations
-for tagged pools while maintaining sensible defaults for untagged requests.
+When making a request with a specific `:pool_tag`, the tag must exist in your pool
+configuration. If it doesn't exist, the request will use the `:default` configuration.
+This allows you to have specific configurations for tagged pools while maintaining
+sensible defaults for untagged requests.
 
 Note pools are not automatically terminated by default, if you need to
 terminate them after some idle time, use the `pool_max_idle_time` option (available only for HTTP1 pools).

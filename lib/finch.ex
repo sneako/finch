@@ -6,7 +6,7 @@ defmodule Finch do
              |> Enum.fetch!(1)
 
   alias Finch.{Pool, Request, Response}
-  require Finch.Pool
+  require Finch.Pool.Manager
 
   use Supervisor
 
@@ -104,7 +104,7 @@ defmodule Finch do
   @typedoc """
   Pool metrics grouped by pool identifier when querying the `:default` configuration.
   """
-  @type default_pool_metrics() :: %{required(scheme_host_port()) => pool_metrics()}
+  @type default_pool_metrics() :: %{required(Finch.Pool.t()) => pool_metrics()}
 
   @type request_opt() ::
           {:pool_timeout, timeout()}
@@ -119,7 +119,7 @@ defmodule Finch do
   @typedoc """
   The reference used to identify a request sent using `async_request/3`.
   """
-  @opaque request_ref() :: Finch.Pool.request_ref()
+  @opaque request_ref() :: Finch.Pool.Manager.request_ref()
 
   @typedoc """
   The stream function given to `stream/5`.
@@ -148,24 +148,72 @@ defmodule Finch do
 
   ## Options
 
-    * `:name` - The name of your Finch instance. This field is required.
+    * `:name` - The name of your Finch instance. Required.
+    * `:pools` - A map of pool identifiers to configuration options. See the ":pools" subsection below.
 
-    * `:pools` - A map specifying the configuration for your pools. The keys should be URLs
-    provided as binaries, a tuple `{url, tag}` where `url` is a binary and `tag` is any term
-    (for tagged pools), a tuple `{scheme, {:local, unix_socket}}` where `unix_socket` is the path for
-    the socket, a tuple `{{scheme, {:local, unix_socket}}, tag}` for tagged Unix socket pools,
-    or the atom `:default` to provide a catch-all configuration to be used for any
-    unspecified URLs - meaning that new pools for unspecified URLs will be started using the `:default`
-    configuration. See "Pool Configuration Options" below for details on the possible map
-    values. Default value is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
+  ### :name
 
-    Pool configuration lookup follows a fallback chain:
-    1. Exact match for the specific tag (if using `{url, tag}` or `{{scheme, {:local, path}}, tag}`)
-    2. Fallback to the `:default` configuration
+  The name of your Finch instance. It is used to identify the instance when making requests
+  and when calling other functions like `Finch.add_pool/1` or `Finch.get_pool_status/2`.
 
-    If a request specifies a specific `:pool_tag` that doesn't exist, it will use the
-    `:default` configuration rather than falling back to a `:default` tagged pool
-    for the same `{scheme, host, port}`.
+  #### Examples
+
+      Finch.start_link(name: MyFinch)
+
+  ### :pools
+
+  A map where each key identifies a pool and each value is a keyword list of pool configuration
+  options (see "[Pool Configuration Options](#start_link/1-pool-configuration-options)" below).
+  Default is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
+
+  **Pool keys** may be:
+
+  * URL string – A binary URL. Pools created from URLs use the `:default` tag unless you
+    use a `t:Finch.Pool.t/0` struct as the key instead.
+  * `t:Finch.Pool.t/0` struct – Created with `Finch.Pool.new/2`. Use this when you need
+    tagged pools (e.g. to run multiple pools for the same host with different configs).
+  * `{scheme, {:local, path}}` – For Unix domain sockets. `scheme` is `:http` or `:https`,
+    `path` is the socket path.
+  * `:default` – Catch-all. Any request whose pool is not in the map will use this config
+    when its pool is started.
+
+  When making a request with a `:pool_tag` option, that tag must exist in your pool configuration.
+  If it does not, the request uses the `:default` configuration.
+
+  #### Examples
+
+      # URL keys (pool uses :default tag)
+      Finch.start_link(
+        name: MyFinch,
+        pools: %{
+          "https://api.example.com" => [size: 10, count: 2]
+        }
+      )
+
+      # Tagged pools via Finch.Pool.new/2
+      Finch.start_link(
+        name: MyFinch,
+        pools: %{
+          Finch.Pool.new("https://api.example.com", tag: :bulk) => [size: 100, count: 1],
+          Finch.Pool.new("https://api.example.com", tag: :realtime) => [size: 10, count: 2]
+        }
+      )
+
+      # Unix socket
+      Finch.start_link(
+        name: MyFinch,
+        pools: %{
+          {:http, {:local, "/tmp/socket"}} => [size: 5]
+        }
+      )
+
+      # Custom default configuration
+      Finch.start_link(
+        name: MyFinch,
+        pools: %{
+          :default => [size: 25, count: 2]
+        }
+      )
 
   ### Pool Configuration Options
 
@@ -229,18 +277,14 @@ defmodule Finch do
       :default ->
         {:ok, destination}
 
-      {{scheme, {:local, path}}, tag} when is_atom(scheme) and is_binary(path) ->
-        {:ok, Finch.Pool.new(scheme, {:local, path}, 0, tag: tag)}
+      %Finch.Pool{} = pool ->
+        {:ok, pool}
 
       {scheme, {:local, path}} when is_atom(scheme) and is_binary(path) ->
-        {:ok, Finch.Pool.new(scheme, {:local, path}, 0)}
-
-      # {url, tag} tuple for tagged pools
-      {url, tag} when is_binary(url) ->
-        {:ok, Finch.Pool.from_url(url, tag: tag)}
+        {:ok, Finch.Pool.new({scheme, {:local, path}})}
 
       url when is_binary(url) ->
-        {:ok, Finch.Pool.from_url(url)}
+        {:ok, Finch.Pool.new(url)}
 
       _ ->
         {:error, %ArgumentError{message: "invalid destination: #{inspect(destination)}"}}
@@ -606,19 +650,19 @@ defmodule Finch do
   Cancels a request sent with `async_request/3`.
   """
   @spec cancel_async_request(request_ref()) :: :ok
-  def cancel_async_request(request_ref) when Finch.Pool.is_request_ref(request_ref) do
+  def cancel_async_request(request_ref) when Finch.Pool.Manager.is_request_ref(request_ref) do
     {pool_mod, _cancel_ref} = request_ref
     pool_mod.cancel_async_request(request_ref)
   end
 
   defp get_pool(%Request{scheme: scheme, unix_socket: unix_socket, pool_tag: tag}, name)
        when is_binary(unix_socket) do
-    pool = Finch.Pool.new(scheme, {:local, unix_socket}, 0, tag: tag)
+    pool = Finch.Pool.new({scheme, {:local, unix_socket}}, tag: tag)
     Pool.Manager.get_pool(name, pool)
   end
 
   defp get_pool(%Request{scheme: scheme, host: host, port: port, pool_tag: tag}, name) do
-    pool = Finch.Pool.new(scheme, host, port, tag: tag)
+    pool = Finch.Pool.from_name({scheme, host, port, tag})
     Pool.Manager.get_pool(name, pool)
   end
 
@@ -667,7 +711,7 @@ defmodule Finch do
       iex> Finch.get_pool_status(MyFinch, :default)
       {:ok,
        %{
-         {:https, "httpbin.org", 443} => [
+         %Finch.Pool{host: "httpbin.com", port: 443, scheme: :https, tag: :default} => [
            %Finch.HTTP1.PoolMetrics{
              pool_index: 1,
              pool_size: 50,
@@ -681,19 +725,14 @@ defmodule Finch do
           {:ok, pool_metrics()}
           | {:ok, default_pool_metrics()}
           | {:error, :not_found}
+
   def get_pool_status(finch_name, :default) do
     finch_name
     |> Pool.Manager.get_default_pools()
     |> Enum.reduce(%{}, fn {_pid, {pool_name, pool_mod, pool_count}}, acc ->
       case pool_mod.get_pool_status(finch_name, pool_name, pool_count) do
         {:ok, metrics} ->
-          # Extract {scheme, host, port} from pool_name {scheme, host, port, tag} for backward compatibility
-          pool_id =
-            case pool_name do
-              {s, h, p, _tag} -> {s, h, p}
-              other -> other
-            end
-
+          pool_id = Pool.from_name(pool_name)
           Map.put(acc, pool_id, metrics)
 
         {:error, :not_found} ->
@@ -716,30 +755,13 @@ defmodule Finch do
     end
   end
 
-  def get_pool_status(finch_name, {scheme, {:local, path}})
-      when is_atom(scheme) and is_binary(path) do
-    pool = Finch.Pool.new(scheme, {:local, path}, 0)
-    get_pool_status(finch_name, pool)
-  end
-
-  def get_pool_status(finch_name, {{scheme, {:local, path}}, tag})
-      when is_atom(scheme) and is_binary(path) do
-    pool = Finch.Pool.new(scheme, {:local, path}, 0, tag: tag)
-    get_pool_status(finch_name, pool)
-  end
-
   def get_pool_status(finch_name, {scheme, host, port}) do
-    pool = Finch.Pool.new(scheme, host, port)
+    pool = Finch.Pool.from_name({scheme, host, port, :default})
     get_pool_status(finch_name, pool)
   end
 
-  def get_pool_status(finch_name, {url, tag}) when is_binary(url) do
-    pool = Finch.Pool.from_url(url, tag: tag)
-    get_pool_status(finch_name, pool)
-  end
-
-  def get_pool_status(finch_name, url) when is_binary(url) do
-    pool = Finch.Pool.from_url(url)
+  def get_pool_status(finch_name, url_or_scheme) do
+    pool = Finch.Pool.new(url_or_scheme)
     get_pool_status(finch_name, pool)
   end
 
@@ -762,30 +784,13 @@ defmodule Finch do
     end
   end
 
-  def stop_pool(finch_name, {scheme, {:local, path}})
-      when is_atom(scheme) and is_binary(path) do
-    pool = Finch.Pool.new(scheme, {:local, path}, 0)
-    stop_pool(finch_name, pool)
-  end
-
-  def stop_pool(finch_name, {{scheme, {:local, path}}, tag})
-      when is_atom(scheme) and is_binary(path) do
-    pool = Finch.Pool.new(scheme, {:local, path}, 0, tag: tag)
-    stop_pool(finch_name, pool)
-  end
-
   def stop_pool(finch_name, {scheme, host, port}) do
-    pool = Finch.Pool.new(scheme, host, port)
+    pool = Finch.Pool.from_name({scheme, host, port, :default})
     stop_pool(finch_name, pool)
   end
 
-  def stop_pool(finch_name, {url, tag}) when is_binary(url) do
-    pool = Finch.Pool.from_url(url, tag: tag)
-    stop_pool(finch_name, pool)
-  end
-
-  def stop_pool(finch_name, url) when is_binary(url) do
-    pool = Finch.Pool.from_url(url)
+  def stop_pool(finch_name, url_or_scheme) do
+    pool = Finch.Pool.new(url_or_scheme)
     stop_pool(finch_name, pool)
   end
 end
