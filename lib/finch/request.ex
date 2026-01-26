@@ -60,6 +60,13 @@ defmodule Finch.Request do
   """
   @type body() :: iodata() | {:stream, Enumerable.t()} | nil
 
+  @type build_opt() :: {:unix_socket, String.t()}
+
+  @typedoc """
+  Options used by `build/5`.
+  """
+  @type build_opts() :: [build_opt()]
+
   @type private_metadata() :: %{optional(atom()) => term()}
 
   @type t :: %__MODULE__{
@@ -98,6 +105,7 @@ defmodule Finch.Request do
   def request_path(%{path: path, query: query}), do: "#{path}?#{query}"
 
   @doc false
+  @spec build(method(), url(), headers(), body(), build_opts()) :: t()
   def build(method, url, headers, body, opts) do
     unix_socket = Keyword.get(opts, :unix_socket)
     {scheme, host, port, path, query} = parse_url(url)

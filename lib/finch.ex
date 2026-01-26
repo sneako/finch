@@ -330,8 +330,19 @@ defmodule Finch do
   It is possible to send the request body in a streaming fashion. In order to do so, the
   `body` parameter needs to take form of a tuple `{:stream, body_stream}`, where `body_stream`
   is a `Stream`.
+
+  ## Options
+
+    * `:unix_socket` - Path to a Unix domain socket to connect to instead of the URL
+      host/port. The URL scheme still determines whether HTTP or HTTPS is used.
   """
-  @spec build(Request.method(), Request.url(), Request.headers(), Request.body(), Keyword.t()) ::
+  @spec build(
+          Request.method(),
+          Request.url(),
+          Request.headers(),
+          Request.body(),
+          Request.build_opts()
+        ) ::
           Request.t()
   defdelegate build(method, url, headers \\ [], body \\ nil, opts \\ []), to: Request
 
