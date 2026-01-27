@@ -61,14 +61,20 @@ defmodule Finch.Pool.Manager do
     end
   end
 
-  @spec get_pool_supervisor(atom(), Finch.Pool.t()) ::
+  @spec get_pool_supervisor(Finch.name(), Finch.Pool.t()) ::
           {pid(), Finch.Pool.name(), module(), pos_integer()} | :not_found
-  def get_pool_supervisor(registry_name, %Finch.Pool{} = pool) do
+  def get_pool_supervisor(finch_name, %Finch.Pool{} = pool) do
     pool_name = Finch.Pool.to_name(pool)
 
-    case Registry.lookup(supervisor_registry_name(registry_name), pool_name) do
-      [] -> :not_found
-      [{pid, {pool_mod, pool_count}}] -> {pid, pool_name, pool_mod, pool_count}
+    # Checks if a finch instance exists by verifying the registry config exists.
+    # This prevents atom creation when checking non-existent instances.
+    if Process.whereis(finch_name) do
+      case Registry.lookup(supervisor_registry_name(finch_name), pool_name) do
+        [] -> :not_found
+        [{pid, {pool_mod, pool_count}}] -> {pid, pool_name, pool_mod, pool_count}
+      end
+    else
+      :not_found
     end
   end
 
