@@ -1,5 +1,27 @@
 # Changelog
 
+## main
+
+### Added
+
+- Add pool tagging support for connection pool isolation #345
+- Add dynamic pool creation with `Finch.add_pool/1` #345
+- Encapsulate pool identity using a Pool struct #338
+- Add Elixir 1.20 support #346
+
+### Changed
+
+- Pool metrics now return `Finch.Pool.t()` structs as keys
+
+### Removed
+
+- Remove deprecated `Finch.request/6` function #348
+- Remove deprecated pool configuration options #348
+
+### Fixed
+
+- Do not exceed max failure count to stop overflows #343
+
 ## v0.21.0 (2026-01-22)
 
 ### Enhancements
