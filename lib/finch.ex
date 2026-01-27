@@ -154,7 +154,7 @@ defmodule Finch do
   ### :name
 
   The name of your Finch instance. It is used to identify the instance when making requests
-  and when calling other functions like `Finch.add_pool/1` or `Finch.get_pool_status/2`.
+  and when calling other functions like `Finch.add_pool/3` or `Finch.get_pool_status/2`.
 
   #### Examples
 
@@ -233,6 +233,51 @@ defmodule Finch do
     }
 
     Supervisor.start_link(__MODULE__, config, name: concat_name(name, "Supervisor"))
+  end
+
+  @doc """
+  Starts a pool dynamically for the given Finch instance.
+
+  ## Options
+
+    * `:name` - The name of your Finch instance. This field is required.
+    * `:key` - A `Finch.Pool.t()` struct identifying the pool to start. This field is required.
+    * Pool configuration options - See `Finch.add_pool/3` for available options
+      such as `:size`, `:count`, `:protocols`, etc.
+
+  ## Examples
+
+      # Start a tagged pool
+      Finch.add_pool(
+        MyFinch,
+        Finch.Pool.new("http://foo.com", tag: :hello),
+        size: 30,
+        count: 2
+      )
+
+      # Start a pool without a tag (uses :default tag)
+      Finch.add_pool(
+        MyFinch,
+        Finch.Pool.new("http://foo.com"),
+        size: 50,
+        count: 1
+      )
+  """
+  @spec add_pool(name(), Finch.Pool.t(), keyword()) :: :ok
+  def add_pool(name, key, opts) do
+    unless is_struct(key, Finch.Pool) do
+      raise ArgumentError, "expected :key to be a Finch.Pool.t() struct, got: #{inspect(key)}"
+    end
+
+    pool_opts = Keyword.delete(Keyword.delete(opts, :name), :key)
+
+    case cast_pool_opts(pool_opts) do
+      {:ok, validated_opts} ->
+        Finch.Pool.Manager.start_pool_dynamic(name, key, validated_opts)
+
+      {:error, %NimbleOptions.ValidationError{} = error} ->
+        raise ArgumentError, Exception.message(error)
+    end
   end
 
   def child_spec(opts) do

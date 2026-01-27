@@ -33,6 +33,13 @@ defmodule Finch.Pool do
           tag: pool_tag()
         }
 
+  @typedoc """
+  The tag used to identify a pool.
+
+  While any `term()` is supported, the tag becomes part of the registry key used
+  for pool lookups. Simple terms like atoms or strings are recommended for best
+  performance.
+  """
   @type pool_tag() :: term()
 
   @doc """
@@ -59,7 +66,7 @@ defmodule Finch.Pool do
       # Tagged Unix socket pool
       pool = Finch.Pool.new({:http, {:local, "/tmp/socket"}}, tag: :api)
   """
-  def new(input), do: new(input, [])
+  def new(input, opts \\ [])
 
   def new(url, opts) when is_binary(url) do
     {scheme, host, port, _path, _query} = Finch.Request.parse_url(url)

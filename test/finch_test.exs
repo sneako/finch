@@ -1463,6 +1463,82 @@ defmodule FinchTest do
     end
   end
 
+  describe "dynamic pool creation" do
+    test "dynamic pool creation with start_link/1", %{bypass: bypass, finch_name: finch_name} do
+      # Start Finch without the pool configured
+      start_supervised!({Finch, name: finch_name})
+
+      expect_any(bypass)
+
+      # Dynamically start a tagged pool
+      :ok =
+        Finch.add_pool(
+          finch_name,
+          Finch.Pool.new(endpoint(bypass), tag: :hello),
+          size: 30,
+          count: 2
+        )
+
+      # Make a request using the dynamically created pool
+      request = Finch.build(:get, endpoint(bypass), [], nil, pool_tag: :hello)
+      {:ok, %Response{}} = Finch.request(request, finch_name)
+
+      # Verify the pool was created with the correct configuration
+      pool = Finch.Pool.new(endpoint(bypass), tag: :hello)
+      assert get_pools(finch_name, pool) |> length() == 2
+    end
+
+    test "dynamic pool creation without tag uses default", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      expect_any(bypass)
+
+      # Dynamically start a pool without a tag (uses :default)
+      :ok =
+        Finch.add_pool(
+          finch_name,
+          Finch.Pool.new(endpoint(bypass)),
+          size: 50,
+          count: 1
+        )
+
+      # Make a request without specifying pool_tag (uses :default)
+      request = Finch.build(:get, endpoint(bypass))
+      {:ok, %Response{}} = Finch.request(request, finch_name)
+
+      # Verify the pool was created
+      pool = Finch.Pool.new(endpoint(bypass))
+      assert get_pools(finch_name, pool) |> length() == 1
+    end
+
+    test "dynamic pool creation validates options", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      assert_raise ArgumentError, fn ->
+        Finch.add_pool(
+          finch_name,
+          Finch.Pool.new("http://example.com"),
+          invalid_option: :value
+        )
+      end
+    end
+
+    test "dynamic pool creation validates key type", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      assert_raise ArgumentError, fn ->
+        Finch.add_pool(
+          finch_name,
+          "http://example.com",
+          size: 30
+        )
+      end
+    end
+  end
+
   describe "get_pool_status/2" do
     test "fails if the pool doesn't exist", %{finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
