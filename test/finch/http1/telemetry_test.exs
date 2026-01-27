@@ -144,42 +144,6 @@ defmodule Finch.HTTP1.TelemetryTest do
     :telemetry.detach(to_string(finch_name))
   end
 
-  test "reports max_idle_time_exceeded", %{bypass: bypass, finch_name: finch_name} do
-    parent = self()
-    ref = make_ref()
-
-    handler = fn event, measurements, meta, _config ->
-      case event do
-        [:finch, :max_idle_time_exceeded] ->
-          assert is_integer(measurements.idle_time)
-          assert is_atom(meta.scheme)
-          assert is_binary(meta.host)
-          assert is_integer(meta.port)
-          send(parent, {ref, :max_idle_time_exceeded})
-
-        _ ->
-          flunk("Unknown event")
-      end
-    end
-
-    :telemetry.attach_many(
-      to_string(finch_name),
-      [
-        [:finch, :max_idle_time_exceeded]
-      ],
-      handler,
-      nil
-    )
-
-    request = Finch.build(:get, endpoint(bypass))
-    assert {:ok, %{status: 200}} = Finch.request(request, finch_name)
-    Process.sleep(15)
-    assert {:ok, %{status: 200}} = Finch.request(request, finch_name)
-    assert_receive {^ref, :max_idle_time_exceeded}
-
-    :telemetry.detach(to_string(finch_name))
-  end
-
   test "reports request spans", %{bypass: bypass, finch_name: finch_name} do
     parent = self()
     ref = make_ref()

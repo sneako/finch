@@ -1,26 +1,12 @@
 defmodule FinchTest do
   use FinchCase, async: true
 
-  import ExUnit.CaptureIO
-
   alias Finch.Response
   alias Finch.MockSocketServer
 
   describe "start_link/1" do
     test "raises if :name is not provided" do
       assert_raise(ArgumentError, ~r/must supply a name/, fn -> Finch.start_link([]) end)
-    end
-
-    test "max_idle_time is deprecated", %{finch_name: finch_name} do
-      msg =
-        capture_io(:stderr, fn ->
-          start_supervised!({Finch, name: finch_name, pools: %{default: [max_idle_time: 1_000]}})
-        end)
-
-      assert String.contains?(
-               msg,
-               ":max_idle_time option is deprecated. Use :conn_max_idle_time instead."
-             )
     end
 
     test "multiple instances can be started under a single supervisor without additional configuration",

@@ -16,10 +16,6 @@ defmodule Finch do
   @default_connect_timeout 5_000
 
   @pool_config_schema [
-    protocol: [
-      type: {:in, [:http2, :http1]},
-      deprecated: "Use `:protocols` instead."
-    ],
     protocols: [
       type: {:list, {:in, [:http1, :http2]}},
       doc: """
@@ -52,14 +48,6 @@ defmodule Finch do
       count for HTTP1 only if you are experiencing high checkout times.
       """,
       default: @default_pool_count
-    ],
-    max_idle_time: [
-      type: :timeout,
-      doc: """
-      The maximum number of milliseconds an HTTP1 connection is allowed to be idle \
-      before being closed during a checkout attempt.
-      """,
-      deprecated: "Use :conn_max_idle_time instead."
     ],
     conn_opts: [
       type: :keyword_list,
@@ -279,21 +267,11 @@ defmodule Finch do
       |> Keyword.put(:protocols, valid[:protocols])
       |> Keyword.put(:client_settings, client_settings)
 
-    # TODO: Remove :protocol on v0.18
     mod =
-      case valid[:protocol] do
-        :http1 ->
-          Finch.HTTP1.Pool
-
-        :http2 ->
-          Finch.HTTP2.Pool
-
-        nil ->
-          if :http1 in valid[:protocols] do
-            Finch.HTTP1.Pool
-          else
-            Finch.HTTP2.Pool
-          end
+      if :http1 in valid[:protocols] do
+        Finch.HTTP1.Pool
+      else
+        Finch.HTTP2.Pool
       end
 
     %{
@@ -301,7 +279,7 @@ defmodule Finch do
       size: valid[:size],
       count: valid[:count],
       conn_opts: conn_opts,
-      conn_max_idle_time: to_native(valid[:max_idle_time] || valid[:conn_max_idle_time]),
+      conn_max_idle_time: to_native(valid[:conn_max_idle_time]),
       pool_max_idle_time: valid[:pool_max_idle_time],
       start_pool_metrics?: valid[:start_pool_metrics?]
     }
@@ -534,19 +512,6 @@ defmodule Finch do
           {:error, error}
       end
     end
-  end
-
-  # Catch-all for backwards compatibility below
-  def request(name, method, url) do
-    request(name, method, url, [])
-  end
-
-  @doc false
-  def request(name, method, url, headers, body \\ nil, opts \\ []) do
-    IO.warn("Finch.request/6 is deprecated, use Finch.build/5 + Finch.request/3 instead")
-
-    build(method, url, headers, body)
-    |> request(name, opts)
   end
 
   @doc """
