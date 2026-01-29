@@ -45,7 +45,7 @@ defmodule Finch.HTTP1.PoolMetricsTest do
        name: finch_name, pools: %{default: [protocols: [:http1], start_pool_metrics?: true]}}
     )
 
-    pool = pool_from_bypass(bypass)
+    pool = Finch.Pool.from_name(pool_from_bypass(bypass))
 
     Bypass.expect_once(bypass, "GET", "/", fn conn ->
       Plug.Conn.send_resp(conn, 200, "OK")

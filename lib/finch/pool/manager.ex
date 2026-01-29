@@ -2,6 +2,42 @@ defmodule Finch.Pool.Manager do
   @moduledoc false
   use GenServer
 
+  @typedoc false
+  @type request_ref :: {pool_mod :: module(), cancel_ref :: term()}
+
+  @typedoc false
+  @opaque pool_name() ::
+            {Finch.Pool.scheme(), Finch.Pool.host(), :inet.port_number(), Finch.Pool.pool_tag()}
+
+  @doc false
+  @callback request(
+              pid(),
+              Finch.Request.t(),
+              acc,
+              Finch.stream(acc),
+              Finch.name(),
+              list()
+            ) :: {:ok, acc} | {:error, term(), acc}
+            when acc: term()
+
+  @doc false
+  @callback async_request(
+              pid(),
+              Finch.Request.t(),
+              Finch.name(),
+              list()
+            ) :: request_ref()
+
+  @doc false
+  @callback cancel_async_request(request_ref()) :: :ok
+
+  @doc false
+  @callback get_pool_status(finch_name :: atom(), pool_name(), pos_integer) ::
+              {:ok, list(map)} | {:error, :not_found}
+
+  @doc false
+  defguard is_request_ref(ref) when tuple_size(ref) == 2 and is_atom(elem(ref, 0))
+
   @type config() :: %{
           registry_name: atom(),
           supervisor_name: atom(),
@@ -61,20 +97,51 @@ defmodule Finch.Pool.Manager do
     end
   end
 
-  @spec get_pool_supervisor(atom(), Finch.Pool.t()) ::
-          {pid(), Finch.Pool.name(), module(), pos_integer()} | :not_found
-  def get_pool_supervisor(registry_name, %Finch.Pool{} = pool) do
+  @spec get_pool_supervisor(Finch.name(), Finch.Pool.t()) ::
+          {pid(), pool_name(), module(), pos_integer()} | :not_found
+  def get_pool_supervisor(finch_name, %Finch.Pool{} = pool) do
     pool_name = Finch.Pool.to_name(pool)
 
-    case Registry.lookup(supervisor_registry_name(registry_name), pool_name) do
-      [] -> :not_found
-      [{pid, {pool_mod, pool_count}}] -> {pid, pool_name, pool_mod, pool_count}
+    # Checks if a finch instance exists by verifying the registry config exists.
+    # This prevents atom creation when checking non-existent instances.
+    if Process.whereis(finch_name) do
+      case Registry.lookup(supervisor_registry_name(finch_name), pool_name) do
+        [] -> :not_found
+        [{pid, {pool_mod, pool_count}}] -> {pid, pool_name, pool_mod, pool_count}
+      end
+    else
+      :not_found
     end
   end
 
-  @spec get_default_pools(atom()) :: [{pid(), {Finch.Pool.name(), module(), pos_integer()}}]
+  @spec get_default_pools(atom()) :: [{pid(), {pool_name(), module(), pos_integer()}}]
   def get_default_pools(registry_name) do
     Registry.lookup(registry_name, :default)
+  end
+
+  @spec start_pool_dynamic(Finch.name(), Finch.Pool.t(), map()) :: :ok
+  def start_pool_dynamic(registry_name, pool, pool_config) do
+    {:ok, config} = Registry.meta(registry_name, :config)
+    pool_name = Finch.Pool.to_name(pool)
+    # Look up before sanitizing so we avoid unnecessary work if the pool already exists
+    if Registry.lookup(config.supervisor_registry_name, pool_name) != [] do
+      :ok
+    else
+      data = {pool_config.mod, pool_config.count}
+      name = {:via, Registry, {config.supervisor_registry_name, pool_name, data}}
+      pool_config = sanitize_pool_config(pool_config, pool)
+      track_default? = pool_config.start_pool_metrics? and not Map.has_key?(config.pools, pool)
+
+      config.supervisor_name
+      |> DynamicSupervisor.start_child(
+        {Finch.Pool.Supervisor, {name, {config.registry_name, pool, pool_config, track_default?}}}
+      )
+      # In case of races, it will return it has already been started
+      |> case do
+        {:ok, _} -> :ok
+        {:error, {:already_started, _}} -> :ok
+      end
+    end
   end
 
   ## Callbacks
@@ -98,9 +165,14 @@ defmodule Finch.Pool.Manager do
     end
   end
 
-  defp pool_config(%{pools: config, default_pool_config: default}, pool) do
+  defp pool_config(%{pools: config, default_pool_config: default}, %Finch.Pool{} = pool) do
     config
     |> Map.get(pool, default)
+    |> sanitize_pool_config(pool)
+  end
+
+  defp sanitize_pool_config(pool_config, pool) do
+    pool_config
     |> maybe_drop_tls_options(pool)
     |> maybe_add_hostname(pool)
   end

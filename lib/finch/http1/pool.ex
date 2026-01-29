@@ -1,7 +1,7 @@
 defmodule Finch.HTTP1.Pool do
   @moduledoc false
   @behaviour NimblePool
-  @behaviour Finch.Pool
+  @behaviour Finch.Pool.Manager
 
   defmodule State do
     @moduledoc false
@@ -38,7 +38,7 @@ defmodule Finch.HTTP1.Pool do
     )
   end
 
-  @impl Finch.Pool
+  @impl Finch.Pool.Manager
   def request(pool, req, acc, fun, name, opts) do
     pool_timeout = Keyword.get(opts, :pool_timeout, 5_000)
     receive_timeout = Keyword.get(opts, :receive_timeout, 15_000)
@@ -95,7 +95,7 @@ defmodule Finch.HTTP1.Pool do
     end
   end
 
-  @impl Finch.Pool
+  @impl Finch.Pool.Manager
   def async_request(pool, req, name, opts) do
     owner = self()
 
@@ -137,14 +137,14 @@ defmodule Finch.HTTP1.Pool do
     end
   end
 
-  @impl Finch.Pool
+  @impl Finch.Pool.Manager
   def cancel_async_request({_, pid} = _request_ref) do
     Process.unlink(pid)
     Process.exit(pid, :shutdown)
     :ok
   end
 
-  @impl Finch.Pool
+  @impl Finch.Pool.Manager
   def get_pool_status(finch_name, pool_name, count) do
     for index <- 1..count,
         {:ok, result} <- [PoolMetrics.get_pool_status(finch_name, pool_name, index)] do
