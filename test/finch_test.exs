@@ -80,7 +80,9 @@ defmodule FinchTest do
          %{bypass: bypass, finch_name: finch_name} do
       other_bypass = Bypass.open()
       default_bypass = Bypass.open()
-      unix_socket = {:local, "/my/unix/socket"}
+      unix_socket_path = "/my/unix/socket"
+      http_unix_pool = Finch.Pool.new("http+unix://#{unix_socket_path}")
+      https_unix_pool = Finch.Pool.new("https+unix://#{unix_socket_path}")
 
       start_supervised!(
         {Finch,
@@ -88,15 +90,15 @@ defmodule FinchTest do
          pools: %{
            endpoint(bypass, "/some-path") => [count: 5, size: 5],
            endpoint(other_bypass, "/some-other-path") => [count: 10, size: 10],
-           {:http, unix_socket} => [count: 5, size: 5],
-           {:https, unix_socket} => [count: 10, size: 10]
+           http_unix_pool => [count: 5, size: 5],
+           https_unix_pool => [count: 10, size: 10]
          }}
       )
 
       assert get_pools(finch_name, pool(bypass)) |> length() == 5
       assert get_pools(finch_name, pool(other_bypass)) |> length() == 10
-      assert get_pools(finch_name, pool({:http, unix_socket})) |> length() == 5
-      assert get_pools(finch_name, pool({:https, unix_socket})) |> length() == 10
+      assert get_pools(finch_name, http_unix_pool) |> length() == 5
+      assert get_pools(finch_name, https_unix_pool) |> length() == 10
 
       # no pool has been started for this unconfigured shp
       assert get_pools(finch_name, pool(default_bypass)) |> length() == 0
@@ -432,21 +434,17 @@ defmodule FinchTest do
                |> Finch.request(finch_name)
     end
 
-    @tag :tmp_dir
     @tag :capture_log
-    test "successful get request to a unix socket with tls", %{
-      finch_name: finch_name,
-      tmp_dir: tmp_dir
-    } do
-      # erlang doesn't like long socket paths, we can trick it by using a shorter relative path.
-      socket_path = Path.relative_to_cwd("#{tmp_dir}/finch.sock")
+    test "successful get request to a unix socket with tls", %{finch_name: finch_name} do
+      # Use short absolute path (Unix socket path length limit)
+      socket_path = "/tmp/finch-tls-#{System.unique_integer([:positive])}.sock"
       {:ok, _} = MockSocketServer.start(address: {:local, socket_path}, transport: :ssl)
 
       start_supervised!(
         {Finch,
          name: finch_name,
          pools: %{
-           {:https, {:local, socket_path}} => [
+           Finch.Pool.new("https+unix://#{socket_path}") => [
              conn_opts: [transport_opts: [verify: :verify_none]]
            ]
          }}
@@ -455,6 +453,66 @@ defmodule FinchTest do
       assert {:ok, %Response{status: 200}} =
                Finch.build(:get, "https://localhost/", [], nil, unix_socket: socket_path)
                |> Finch.request(finch_name)
+    end
+
+    @tag :tmp_dir
+    test "Finch.Pool.new/1 parses http+unix:// URLs", %{tmp_dir: tmp_dir} do
+      socket_path = Path.expand("#{tmp_dir}/api.sock")
+      pool = Finch.Pool.new("http+unix://#{socket_path}")
+
+      assert pool.scheme == :http
+      assert pool.host == {:local, socket_path}
+      assert pool.port == 0
+      assert pool.tag == :default
+    end
+
+    @tag :tmp_dir
+    test "Finch.Pool.new/1 parses https+unix:// URLs", %{tmp_dir: tmp_dir} do
+      socket_path = Path.expand("#{tmp_dir}/api.sock")
+      pool = Finch.Pool.new("https+unix://#{socket_path}")
+
+      assert pool.scheme == :https
+      assert pool.host == {:local, socket_path}
+      assert pool.port == 0
+      assert pool.tag == :default
+    end
+
+    # Path.join(@tmp_dir, "s.sock") can exceed Unix socket path length limit on some systems.
+    test "pool configuration with http+unix:// URL", %{} do
+      socket_path = "/tmp/finch-url-#{System.unique_integer([:positive])}.sock"
+      {:ok, _} = MockSocketServer.start(address: {:local, socket_path})
+
+      start_supervised!({
+        Finch,
+        name: __MODULE__.UnixUrlFinch,
+        pools: %{
+          Finch.Pool.new("http+unix://#{socket_path}") => [count: 1, size: 1]
+        }
+      })
+
+      req =
+        Finch.build(:get, "http://localhost/", [], nil, unix_socket: socket_path)
+
+      assert {:ok, %{status: 200}} = Finch.request(req, __MODULE__.UnixUrlFinch)
+    end
+
+    @tag :tmp_dir
+    test "tagged pool with http+unix:// URL", %{tmp_dir: tmp_dir} do
+      socket_path = Path.expand("#{tmp_dir}/finch.sock")
+      pool = Finch.Pool.new("http+unix://#{socket_path}", tag: :api)
+
+      assert pool.tag == :api
+      assert pool.host == {:local, socket_path}
+    end
+
+    @tag :tmp_dir
+    test "tagged pool with https+unix:// URL", %{tmp_dir: tmp_dir} do
+      socket_path = Path.expand("#{tmp_dir}/finch.sock")
+      pool = Finch.Pool.new("https+unix://#{socket_path}", tag: :secure)
+
+      assert pool.scheme == :https
+      assert pool.tag == :secure
+      assert pool.host == {:local, socket_path}
     end
 
     test "properly handles connection: close", %{bypass: bypass, finch_name: finch_name} do
@@ -1251,8 +1309,8 @@ defmodule FinchTest do
         {Finch,
          name: finch_name,
          pools: %{
-           Finch.Pool.new({:http, {:local, api_socket_path}}, tag: :api) => [count: 3, size: 3],
-           Finch.Pool.new({:http, {:local, web_socket_path}}, tag: :web) => [count: 5, size: 5]
+           Finch.Pool.new("http+unix://#{api_socket_path}", tag: :api) => [count: 3, size: 3],
+           Finch.Pool.new("http+unix://#{web_socket_path}", tag: :web) => [count: 5, size: 5]
          }}
       )
 
@@ -1272,8 +1330,8 @@ defmodule FinchTest do
       {:ok, %Response{status: 200}} = Finch.request(api_request, finch_name)
       {:ok, %Response{status: 200}} = Finch.request(web_request, finch_name)
 
-      api_pool = Finch.Pool.new({:http, {:local, api_socket_path}}, tag: :api)
-      web_pool = Finch.Pool.new({:http, {:local, web_socket_path}}, tag: :web)
+      api_pool = Finch.Pool.new("http+unix://#{api_socket_path}", tag: :api)
+      web_pool = Finch.Pool.new("http+unix://#{web_socket_path}", tag: :web)
 
       assert get_pools(finch_name, api_pool) |> length() == 3
       assert get_pools(finch_name, web_pool) |> length() == 5
@@ -1288,7 +1346,7 @@ defmodule FinchTest do
         {Finch,
          name: finch_name,
          pools: %{
-           Finch.Pool.new({:http, {:local, socket_path}}, tag: :api) => [
+           Finch.Pool.new("http+unix://#{socket_path}", tag: :api) => [
              start_pool_metrics?: true,
              count: 2
            ]
@@ -1303,8 +1361,8 @@ defmodule FinchTest do
 
       {:ok, %{status: 200}} = Finch.request(request, finch_name)
 
-      api_pool = Finch.Pool.new({:http, {:local, socket_path}}, tag: :api)
-      web_pool = Finch.Pool.new({:http, {:local, socket_path}}, tag: :web)
+      api_pool = Finch.Pool.new("http+unix://#{socket_path}", tag: :api)
+      web_pool = Finch.Pool.new("http+unix://#{socket_path}", tag: :web)
 
       assert {:ok, _metrics} = Finch.get_pool_status(finch_name, api_pool)
       assert {:error, :not_found} = Finch.get_pool_status(finch_name, web_pool)
@@ -1324,9 +1382,9 @@ defmodule FinchTest do
         {Finch,
          name: finch_name,
          pools: %{
-           Finch.Pool.new({:http, {:local, api_socket_path}}, tag: :api) => [count: 2],
-           Finch.Pool.new({:http, {:local, web_socket_path}}, tag: :web) => [count: 2],
-           {:http, {:local, default_socket_path}} => [count: 2]
+           Finch.Pool.new("http+unix://#{api_socket_path}", tag: :api) => [count: 2],
+           Finch.Pool.new("http+unix://#{web_socket_path}", tag: :web) => [count: 2],
+           Finch.Pool.new("http+unix://#{default_socket_path}") => [count: 2]
          }}
       )
 
@@ -1349,8 +1407,8 @@ defmodule FinchTest do
       assert {:ok, %{status: 200}} = Finch.request(web_request, finch_name)
       assert {:ok, %{status: 200}} = Finch.request(default_tag_request, finch_name)
 
-      api_pool = Finch.Pool.new({:http, {:local, api_socket_path}}, tag: :api)
-      web_pool = Finch.Pool.new({:http, {:local, web_socket_path}}, tag: :web)
+      api_pool = Finch.Pool.new("http+unix://#{api_socket_path}", tag: :api)
+      web_pool = Finch.Pool.new("http+unix://#{web_socket_path}", tag: :web)
 
       assert Finch.stop_pool(finch_name, api_pool) == :ok
       assert pool_stopped?(finch_name, api_pool)
@@ -1362,11 +1420,11 @@ defmodule FinchTest do
       assert pool_stopped?(finch_name, web_pool)
 
       # default tag pool should still exist
-      default_pool = Finch.Pool.new({:http, {:local, default_socket_path}})
+      default_pool = Finch.Pool.new("http+unix://#{default_socket_path}")
       assert get_pools(finch_name, default_pool) |> length() == 2
 
-      assert Finch.stop_pool(finch_name, {:http, {:local, default_socket_path}}) == :ok
-      assert pool_stopped?(finch_name, {:http, {:local, default_socket_path}})
+      assert Finch.stop_pool(finch_name, default_pool) == :ok
+      assert pool_stopped?(finch_name, default_pool)
     end
 
     test "default pool_tag is used when not specified", %{bypass: bypass, finch_name: finch_name} do
@@ -1602,7 +1660,6 @@ defmodule FinchTest do
   end
 
   defp pool(%{port: port}), do: Finch.Pool.from_name({:http, "localhost", port, :default})
-  defp pool({scheme, {:local, unix_socket}}), do: Finch.Pool.new({scheme, {:local, unix_socket}})
 
   defp expect_any(bypass) do
     Bypass.expect(bypass, fn conn -> Plug.Conn.send_resp(conn, 200, "OK") end)

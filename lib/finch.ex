@@ -172,8 +172,8 @@ defmodule Finch do
     use a `t:Finch.Pool.t/0` struct as the key instead.
   * `t:Finch.Pool.t/0` struct – Created with `Finch.Pool.new/2`. Use this when you need
     tagged pools (e.g. to run multiple pools for the same host with different configs).
-  * `{scheme, {:local, path}}` – For Unix domain sockets. `scheme` is `:http` or `:https`,
-    `path` is the socket path.
+  * URL string with `http+unix://` or `https+unix://` – For Unix domain sockets (e.g.
+    `"http+unix:///tmp/socket"`). Prefer this over the deprecated tuple form.
   * `:default` – Catch-all. Any request whose pool is not in the map will use this config
     when its pool is started.
 
@@ -203,7 +203,7 @@ defmodule Finch do
       Finch.start_link(
         name: MyFinch,
         pools: %{
-          {:http, {:local, "/tmp/socket"}} => [size: 5]
+          "http+unix:///tmp/socket" => [size: 5]
         }
       )
 
@@ -326,6 +326,17 @@ defmodule Finch do
         {:ok, pool}
 
       {scheme, {:local, path}} when is_atom(scheme) and is_binary(path) ->
+        ## TODO remove as it is deprecated
+        IO.warn("""
+        Using {scheme, {:local, path}} as a pool key is deprecated. Use "#{scheme}+unix://#{path}" instead.
+
+        For example:
+
+            pools: %{
+                "#{scheme}+unix://#{path}" => ...
+            }
+        """)
+
         {:ok, Finch.Pool.new({scheme, {:local, path}})}
 
       url when is_binary(url) ->
@@ -702,7 +713,7 @@ defmodule Finch do
 
   defp get_pool(%Request{scheme: scheme, unix_socket: unix_socket, pool_tag: tag}, name)
        when is_binary(unix_socket) do
-    pool = Finch.Pool.new({scheme, {:local, unix_socket}}, tag: tag)
+    pool = Finch.Pool.from_name({scheme, {:local, unix_socket}, 0, tag})
     Pool.Manager.get_pool(name, pool)
   end
 

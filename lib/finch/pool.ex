@@ -14,10 +14,10 @@ defmodule Finch.Pool do
       pool = Finch.Pool.new("https://api.example.com", tag: :api)
 
       # Create a pool for a Unix socket
-      pool = Finch.Pool.new({:http, {:local, "/tmp/socket"}})
+      pool = Finch.Pool.new("http+unix:///tmp/socket")
 
       # Create a tagged pool for a Unix socket
-      pool = Finch.Pool.new({:http, {:local, "/tmp/socket"}}, tag: :api)
+      pool = Finch.Pool.new("http+unix:///tmp/socket", tag: :api)
   """
 
   @enforce_keys [:scheme, :host, :port]
@@ -43,11 +43,9 @@ defmodule Finch.Pool do
   @type pool_tag() :: term()
 
   @doc """
-  Creates a new pool struct.
+  Creates a new pool struct from a URL.
 
-  The first argument can be:
-  - A URL string (binary)
-  - A `{scheme, {:local, path}}` tuple for Unix sockets
+  Supports `http://`, `https://`, `http+unix://`, and `https+unix://` schemes.
 
   The second argument is an optional keyword list with:
   - `:tag` - The tag for the pool (defaults to `:default`)
@@ -57,21 +55,17 @@ defmodule Finch.Pool do
       # From URL
       pool = Finch.Pool.new("https://api.example.com")
 
-      # Tagged pool from URL
-      pool = Finch.Pool.new("https://api.example.com", tag: :api)
+      # Unix socket pool using URL
+      pool = Finch.Pool.new("http+unix:///tmp/socket")
 
-      # Unix socket pool
-      pool = Finch.Pool.new({:http, {:local, "/tmp/socket"}})
-
-      # Tagged Unix socket pool
-      pool = Finch.Pool.new({:http, {:local, "/tmp/socket"}}, tag: :api)
+      # Tagged pool
+      pool = Finch.Pool.new("http+unix:///tmp/socket", tag: :api)
   """
   def new(input, opts \\ [])
 
   def new(url, opts) when is_binary(url) do
-    {scheme, host, port, _path, _query} = Finch.Request.parse_url(url)
     tag = Keyword.get(opts, :tag, :default)
-    %__MODULE__{scheme: scheme, host: host, port: port, tag: tag}
+    parse_new(url, tag)
   end
 
   def new({scheme, {:local, path}}, opts) when is_atom(scheme) and is_binary(path) do
@@ -81,12 +75,36 @@ defmodule Finch.Pool do
 
   def new(invalid, _) do
     raise ArgumentError,
-          "expected Finch.Pool.new/2 to receive a URL string or {scheme, {:local, path}} tuple as first argument, got: #{inspect(invalid)}"
+          "expected Finch.Pool.new/2 to receive a URL string, got: #{inspect(invalid)}"
+  end
+
+  defp parse_new(url, tag) do
+    parsed = URI.parse(url)
+
+    normalized_path = parsed.path || "/"
+
+    case parsed.scheme do
+      "https" ->
+        %__MODULE__{scheme: :https, host: parsed.host, port: parsed.port, tag: tag}
+
+      "http" ->
+        %__MODULE__{scheme: :http, host: parsed.host, port: parsed.port, tag: tag}
+
+      "https+unix" ->
+        %__MODULE__{scheme: :https, host: {:local, normalized_path}, port: 0, tag: tag}
+
+      "http+unix" ->
+        %__MODULE__{scheme: :http, host: {:local, normalized_path}, port: 0, tag: tag}
+
+      nil ->
+        raise ArgumentError, "scheme is required for url: #{URI.to_string(parsed)}"
+
+      scheme ->
+        raise ArgumentError, "invalid scheme \"#{scheme}\" for url: #{URI.to_string(parsed)}"
+    end
   end
 
   @doc false
-  # Converts a pool name tuple {scheme, host, port, tag} back to a Pool struct.
-  # This is the inverse of to_name/1.
   def from_name({scheme, host, port}) do
     %__MODULE__{scheme: scheme, host: host, port: port}
   end
