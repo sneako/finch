@@ -4,6 +4,7 @@
 
 ### Added
 
+- Add `http+unix://` and `https+unix://` URL scheme support for cleaner Unix socket pool configuration #351
 - Add pool tagging support for connection pool isolation #345
 - Add dynamic pool creation with `Finch.add_pool/1` #345
 - Encapsulate pool identity using a Pool struct #338
@@ -12,6 +13,10 @@
 ### Changed
 
 - Pool metrics now return `Finch.Pool.t()` structs as keys
+
+### Deprecated
+
+- Deprecate `{scheme, {:local, path}}` tuple form in `:pools`, use URL strings (e.g. `"http+unix:///path"`) instead #349
 
 ### Removed
 
