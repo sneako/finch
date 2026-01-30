@@ -173,7 +173,7 @@ defmodule Finch do
   * `t:Finch.Pool.t/0` struct – Created with `Finch.Pool.new/2`. Use this when you need
     tagged pools (e.g. to run multiple pools for the same host with different configs).
   * URL string with `http+unix://` or `https+unix://` – For Unix domain sockets (e.g.
-    `"http+unix:///tmp/socket"`). Prefer this over the deprecated tuple form.
+    `"http+unix:///tmp/socket"`)
   * `:default` – Catch-all. Any request whose pool is not in the map will use this config
     when its pool is started.
 
@@ -326,14 +326,14 @@ defmodule Finch do
         {:ok, pool}
 
       {scheme, {:local, path}} when is_atom(scheme) and is_binary(path) ->
-        ## TODO remove as it is deprecated
+        ## TODO: Remove in Finch v1.0
         IO.warn("""
         Using {scheme, {:local, path}} as a pool key is deprecated. Use "#{scheme}+unix://#{path}" instead.
 
         For example:
 
             pools: %{
-                "#{scheme}+unix://#{path}" => ...
+              "#{scheme}+unix://#{path}" => ...
             }
         """)
 

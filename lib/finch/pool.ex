@@ -81,8 +81,6 @@ defmodule Finch.Pool do
   defp parse_new(url, tag) do
     parsed = URI.parse(url)
 
-    normalized_path = parsed.path || "/"
-
     case parsed.scheme do
       "https" ->
         %__MODULE__{scheme: :https, host: parsed.host, port: parsed.port, tag: tag}
@@ -91,10 +89,10 @@ defmodule Finch.Pool do
         %__MODULE__{scheme: :http, host: parsed.host, port: parsed.port, tag: tag}
 
       "https+unix" ->
-        %__MODULE__{scheme: :https, host: {:local, normalized_path}, port: 0, tag: tag}
+        %__MODULE__{scheme: :https, host: {:local, parsed.path}, port: 0, tag: tag}
 
       "http+unix" ->
-        %__MODULE__{scheme: :http, host: {:local, normalized_path}, port: 0, tag: tag}
+        %__MODULE__{scheme: :http, host: {:local, parsed.path}, port: 0, tag: tag}
 
       nil ->
         raise ArgumentError, "scheme is required for url: #{URI.to_string(parsed)}"

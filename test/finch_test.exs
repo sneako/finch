@@ -460,10 +460,12 @@ defmodule FinchTest do
       socket_path = Path.expand("#{tmp_dir}/api.sock")
       pool = Finch.Pool.new("http+unix://#{socket_path}")
 
-      assert pool.scheme == :http
-      assert pool.host == {:local, socket_path}
-      assert pool.port == 0
-      assert pool.tag == :default
+      assert pool == %Finch.Pool{
+               scheme: :http,
+               host: {:local, socket_path},
+               port: 0,
+               tag: :default
+             }
     end
 
     @tag :tmp_dir
@@ -477,14 +479,14 @@ defmodule FinchTest do
       assert pool.tag == :default
     end
 
-    # Path.join(@tmp_dir, "s.sock") can exceed Unix socket path length limit on some systems.
-    test "pool configuration with http+unix:// URL", %{} do
+    test "pool configuration with http+unix:// URL", %{test: test} do
+      # Use short path as some unix systems have path limit
       socket_path = "/tmp/finch-url-#{System.unique_integer([:positive])}.sock"
       {:ok, _} = MockSocketServer.start(address: {:local, socket_path})
 
       start_supervised!({
         Finch,
-        name: __MODULE__.UnixUrlFinch,
+        name: test,
         pools: %{
           Finch.Pool.new("http+unix://#{socket_path}") => [count: 1, size: 1]
         }
@@ -493,7 +495,7 @@ defmodule FinchTest do
       req =
         Finch.build(:get, "http://localhost/", [], nil, unix_socket: socket_path)
 
-      assert {:ok, %{status: 200}} = Finch.request(req, __MODULE__.UnixUrlFinch)
+      assert {:ok, %{status: 200}} = Finch.request(req, test)
     end
 
     @tag :tmp_dir
