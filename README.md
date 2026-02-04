@@ -79,8 +79,8 @@ children = [
    pools: %{
      Finch.Pool.new("https://api.example.com") => [size: 50, count: 4],
      Finch.Pool.new("https://api.example.com", tag: :web) => [size: 20, count: 2],
-     Finch.Pool.new({:http, {:local, "/tmp/api.sock"}}, tag: :api) => [size: 30, count: 2],
-     Finch.Pool.new({:http, {:local, "/tmp/api.sock"}}, tag: :web) => [size: 10, count: 1],
+     Finch.Pool.new("http+unix:///tmp/api.sock", tag: :api) => [size: 30, count: 2],
+     Finch.Pool.new("http+unix:///tmp/api.sock", tag: :web) => [size: 10, count: 1],
      :default => [size: 10, count: 1]
    }}
 ]
@@ -102,10 +102,15 @@ request = Finch.build(:get, "https://api.example.com/users")
 Finch.request(request, MyTaggedFinch)
 
 # Tagged Unix socket pool
-request = Finch.build(:get, "http://localhost/", [], nil,
-  unix_socket: "/tmp/api.sock",
-  pool_tag: :api
-)
+request =
+  Finch.build(
+    :get,
+    "http://localhost/",
+    [],
+    nil,
+    unix_socket: "/tmp/api.sock",
+    pool_tag: :api
+  )
 Finch.request(request, MyTaggedFinch)
 ```
 
@@ -116,6 +121,36 @@ sensible defaults for untagged requests.
 
 Note pools are not automatically terminated by default, if you need to
 terminate them after some idle time, use the `pool_max_idle_time` option (available only for HTTP1 pools).
+
+### User-managed pools
+
+You can start pools under your own supervision tree using `Finch.Pool.child_spec/1`. The Finch
+instance must be started first. User-managed pools integrate with `Finch.request/2`,
+`Finch.stop_pool/2`, `Finch.get_pool_status/2`, and `Finch.find_pool/2`:
+
+```elixir
+children = [
+  {Finch, name: MyFinch},
+  {Finch.Pool, finch: MyFinch, pool: Finch.Pool.new("https://api.internal", tag: :api), size: 10},
+  {Finch.Pool, finch: MyFinch, pool: Finch.Pool.new("https://node-2.internal", tag: :node2), size: 10}
+]
+Supervisor.start_link(children, strategy: :one_for_one)
+```
+
+To add pools dynamically under Finch's internal supervisor, use `Finch.start_pool/3`:
+
+```elixir
+Finch.start_pool(MyFinch, Finch.Pool.new("https://api.example.com", tag: :api), size: 10)
+```
+
+Use `Finch.find_pool/2` to check if a pool exists:
+
+```elixir
+case Finch.find_pool(MyFinch, Finch.Pool.new("https://api.internal", tag: :api)) do
+  {:ok, _pid} -> # Pool exists
+  :error -> # Pool not found
+end
+```
 
 ## Telemetry
 

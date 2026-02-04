@@ -6,7 +6,9 @@
 
 - Add `http+unix://` and `https+unix://` URL scheme support for cleaner Unix socket pool configuration #351
 - Add pool tagging support for connection pool isolation #345
-- Add dynamic pool creation with `Finch.add_pool/1` #345
+- Add `Finch.find_pool/2` to look up a pool by configuration and return its pid
+- Add `Finch.start_pool/3` to start a pool under Finch's internal supervision tree
+- Add `Finch.Pool.child_spec/1` for user-managed pools under your own supervision tree
 - Encapsulate pool identity using a Pool struct #338
 - Add Elixir 1.20 support #346
 

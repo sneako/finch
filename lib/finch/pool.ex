@@ -18,6 +18,11 @@ defmodule Finch.Pool do
 
       # Create a tagged pool for a Unix socket
       pool = Finch.Pool.new("http+unix:///tmp/socket", tag: :api)
+
+  ## User-managed pools
+
+  Use `child_spec/1` to start pools under your own supervision tree. The Finch
+  instance must be started before the pool. See `child_spec/1` for options and examples.
   """
 
   @enforce_keys [:scheme, :host, :port]
@@ -115,4 +120,43 @@ defmodule Finch.Pool do
   # This must only be called from the PoolManager,
   # so all name management belongs to a single place.
   def to_name(%__MODULE__{scheme: s, host: h, port: p, tag: tag}), do: {s, h, p, tag}
+
+  @doc """
+  Returns a child specification for starting a pool under your own supervision tree.
+
+  This allows you to manage the lifecycle of pools independently from Finch's
+  internal DynamicSupervisor. The pools integrate fully with Finch's APIs.
+
+  ## Options
+
+    * `:finch` - Required. The name of your Finch instance.
+    * `:pool` - Required. A `Finch.Pool.t()` struct identifying the pool.
+    * All pool configuration options from `Finch.start_link/1` are supported:
+      `:size`, `:count`, `:protocols`, `:conn_opts`, etc.
+
+  ## Example
+
+      children = [
+        {Finch, name: MyFinch},
+        {Finch.Pool, finch: MyFinch, pool: Finch.Pool.new("https://api.internal", tag: :api), size: 10}
+      ]
+      Supervisor.start_link(children, strategy: :one_for_one)
+
+  ## Notes
+
+    * The Finch instance must be started before the user-managed pool
+    * `Finch.stop_pool/2` works on user-managed pools
+    * `Finch.get_pool_status/2` works if `start_pool_metrics?: true`
+  """
+  def child_spec(opts) do
+    finch_name = Keyword.fetch!(opts, :finch)
+    pool = Keyword.fetch!(opts, :pool)
+
+    unless is_struct(pool, __MODULE__) do
+      raise ArgumentError, "expected :pool to be a Finch.Pool.t() struct, got: #{inspect(pool)}"
+    end
+
+    pool_opts = opts |> Keyword.delete(:finch) |> Keyword.delete(:pool)
+    Finch.Pool.Manager.pool_child_spec(finch_name, pool, pool_opts)
+  end
 end
