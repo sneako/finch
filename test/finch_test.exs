@@ -1578,7 +1578,49 @@ defmodule FinchTest do
     end
   end
 
+  describe "find_pool/2" do
+    test "returns {:ok, pid} for existing pools", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+      expect_any(bypass)
+
+      _ = Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+
+      pool = Finch.Pool.new(endpoint(bypass))
+      assert {:ok, pid} = Finch.find_pool(finch_name, pool)
+      assert is_pid(pid)
+    end
+
+    test "returns :error for non-existent pools", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      pool = Finch.Pool.new("http://nonexistent.example.com", tag: :api)
+      assert Finch.find_pool(finch_name, pool) == :error
+    end
+  end
+
   describe "dynamic pool creation" do
+    test "start_pool/3 starts a pool under Finch's tree", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+      expect_any(bypass)
+
+      :ok =
+        Finch.start_pool(
+          finch_name,
+          Finch.Pool.new(endpoint(bypass), tag: :hello),
+          size: 30,
+          count: 2
+        )
+
+      request = Finch.build(:get, endpoint(bypass), [], nil, pool_tag: :hello)
+      {:ok, %Response{}} = Finch.request(request, finch_name)
+
+      pool = Finch.Pool.new(endpoint(bypass), tag: :hello)
+      assert get_pools(finch_name, pool) |> length() == 2
+    end
+
     test "dynamic pool creation with start_link/1", %{bypass: bypass, finch_name: finch_name} do
       # Start Finch without the pool configured
       start_supervised!({Finch, name: finch_name})
@@ -1587,7 +1629,7 @@ defmodule FinchTest do
 
       # Dynamically start a tagged pool
       :ok =
-        Finch.add_pool(
+        Finch.start_pool(
           finch_name,
           Finch.Pool.new(endpoint(bypass), tag: :hello),
           size: 30,
@@ -1613,7 +1655,7 @@ defmodule FinchTest do
 
       # Dynamically start a pool without a tag (uses :default)
       :ok =
-        Finch.add_pool(
+        Finch.start_pool(
           finch_name,
           Finch.Pool.new(endpoint(bypass)),
           size: 50,
@@ -1633,7 +1675,7 @@ defmodule FinchTest do
       start_supervised!({Finch, name: finch_name})
 
       assert_raise ArgumentError, fn ->
-        Finch.add_pool(
+        Finch.start_pool(
           finch_name,
           Finch.Pool.new("http://example.com"),
           invalid_option: :value
@@ -1645,12 +1687,125 @@ defmodule FinchTest do
       start_supervised!({Finch, name: finch_name})
 
       assert_raise ArgumentError, fn ->
-        Finch.add_pool(
+        Finch.start_pool(
           finch_name,
           "http://example.com",
           size: 30
         )
       end
+    end
+  end
+
+  describe "user-managed pools (Finch.Pool.child_spec/1)" do
+    test "{Finch.Pool, ...} can be added to a supervision tree", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      # Finch must be started first so the registry exists when building the pool child_spec
+      start_supervised!({Finch, name: finch_name})
+
+      start_supervised!(
+        {Finch.Pool,
+         finch: finch_name,
+         pool: Finch.Pool.new(endpoint(bypass), tag: :usermanaged),
+         size: 5,
+         count: 2}
+      )
+
+      pool = Finch.Pool.new(endpoint(bypass), tag: :usermanaged)
+      assert {:ok, _pid} = Finch.find_pool(finch_name, pool)
+      assert get_pools(finch_name, pool) |> length() == 2
+    end
+
+    test "user-managed pool can be used for requests", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      start_supervised!(
+        {Finch.Pool,
+         finch: finch_name, pool: Finch.Pool.new(endpoint(bypass), tag: :usermanaged), size: 5}
+      )
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build(:get, endpoint(bypass), [], nil, pool_tag: :usermanaged)
+      assert {:ok, %Response{status: 200, body: "OK"}} = Finch.request(request, finch_name)
+    end
+
+    test "stop_pool/2 works on user-managed pools", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      start_supervised!(
+        {Finch.Pool,
+         finch: finch_name, pool: Finch.Pool.new(endpoint(bypass), tag: :usermanaged), size: 5}
+      )
+
+      expect_any(bypass)
+
+      pool = Finch.Pool.new(endpoint(bypass), tag: :usermanaged)
+
+      _ =
+        Finch.build(:get, endpoint(bypass), [], nil, pool_tag: :usermanaged)
+        |> Finch.request(finch_name)
+
+      assert Finch.stop_pool(finch_name, pool) == :ok
+
+      assert eventually(
+               fn -> Finch.find_pool(finch_name, pool) == :error end,
+               100,
+               50
+             )
+    end
+
+    test "get_pool_status/2 works with user-managed pool when metrics enabled", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      start_supervised!(
+        {Finch.Pool,
+         finch: finch_name,
+         pool: Finch.Pool.new(endpoint(bypass), tag: :usermanaged),
+         size: 5,
+         start_pool_metrics?: true}
+      )
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request = Finch.build(:get, endpoint(bypass), [], nil, pool_tag: :usermanaged)
+      {:ok, _} = Finch.request(request, finch_name)
+
+      pool = Finch.Pool.new(endpoint(bypass), tag: :usermanaged)
+      assert {:ok, _metrics} = Finch.get_pool_status(finch_name, pool)
+    end
+
+    test "pool workers are cleaned up from registry when supervisor terminates", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      start_supervised(
+        {Finch.Pool,
+         finch: finch_name, pool: Finch.Pool.new(endpoint(bypass), tag: :usermanaged), size: 2}
+      )
+
+      pool = Finch.Pool.new(endpoint(bypass), tag: :usermanaged)
+      assert {:ok, _pid} = Finch.find_pool(finch_name, pool)
+
+      # Stop the pool by stopping the pool supervisor (id is from child_spec)
+      pool_name = Finch.Pool.to_name(pool)
+      stop_supervised({Finch.Pool.Supervisor, pool_name})
+
+      assert eventually(
+               fn -> Finch.find_pool(finch_name, pool) == :error end,
+               100,
+               50
+             )
     end
   end
 
