@@ -118,8 +118,29 @@ defmodule Finch do
 
   @typedoc """
   The reference used to identify a request sent using `async_request/3`.
+
+  Use the `is_request_ref/1` guard when matching on async response messages in
+  `c:GenServer.handle_info/2` or similar callbacks to ensure your code keeps
+  working if the internal structure of the reference changes.
   """
   @opaque request_ref() :: Finch.Pool.Manager.request_ref()
+
+  @doc """
+  A guard that returns true if `ref` is a valid request reference from `async_request/3`.
+
+  Use this guard when matching on async response messages in `c:GenServer.handle_info/2`
+  so your code remains valid if the internal structure of the reference changes.
+
+  ## Example
+
+      require Finch
+
+      def handle_info({ref, response}, state) when Finch.is_request_ref(ref) do
+        # handle async response from Finch.async_request/3
+      end
+
+  """
+  defguard is_request_ref(ref) when Finch.Pool.Manager.is_request_ref(ref)
 
   @typedoc """
   The stream function given to `stream/5`.

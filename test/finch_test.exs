@@ -1095,6 +1095,61 @@ defmodule FinchTest do
     end
   end
 
+  describe "is_request_ref/1" do
+    test "guard matches valid request ref from async_request", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      require Finch
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request_ref =
+        Finch.build(:get, endpoint(bypass))
+        |> Finch.async_request(finch_name)
+
+      # Consume async response so Bypass expectation is satisfied
+      assert_receive {^request_ref, {:status, 200}}
+      assert_receive {^request_ref, {:headers, _}}
+      assert_receive {^request_ref, {:data, "OK"}}
+      assert_receive {^request_ref, :done}
+
+      # Test that the guard matches this ref in a handle_info-style receive
+      parent = self()
+
+      pid =
+        spawn(fn ->
+          receive do
+            {ref, _} when Finch.is_request_ref(ref) -> send(parent, :matched)
+            _ -> send(parent, :unmatched)
+          end
+        end)
+
+      send(pid, {request_ref, :done})
+      assert_receive :matched
+    end
+
+    test "guard does not match invalid values" do
+      require Finch
+
+      parent = self()
+
+      pid =
+        spawn(fn ->
+          receive do
+            {ref, _} when Finch.is_request_ref(ref) -> send(parent, :matched)
+            _ -> send(parent, :unmatched)
+          end
+        end)
+
+      send(pid, {:not_a_ref, :done})
+      assert_receive :unmatched
+    end
+  end
+
   describe "async_request/3 with HTTP/1" do
     test "sends response messages to calling process", %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
