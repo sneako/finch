@@ -267,5 +267,5 @@ defmodule Finch.HTTP1.PoolTest do
     end
   end
 
-  defp pool(%{port: port}), do: Finch.Pool.new(:http, "localhost", port)
+  defp pool(%{port: port}), do: Finch.Pool.from_name({:http, "localhost", port, :default})
 end
