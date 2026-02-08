@@ -1682,18 +1682,6 @@ defmodule FinchTest do
         )
       end
     end
-
-    test "dynamic pool creation validates key type", %{finch_name: finch_name} do
-      start_supervised!({Finch, name: finch_name})
-
-      assert_raise ArgumentError, fn ->
-        Finch.start_pool(
-          finch_name,
-          "http://example.com",
-          size: 30
-        )
-      end
-    end
   end
 
   describe "user-managed pools (Finch.Pool.child_spec/1)" do

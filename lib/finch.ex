@@ -313,10 +313,6 @@ defmodule Finch do
     end
   end
 
-  def start_pool(_name, key, _opts) do
-    raise ArgumentError, "expected pool to be a Finch.Pool.t() struct, got: #{inspect(key)}"
-  end
-
   def child_spec(opts) do
     %{
       id: finch_name!(opts),
