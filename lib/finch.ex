@@ -247,7 +247,7 @@ defmodule Finch do
 
     config = %{
       registry_name: name,
-      supervisor_name: concat_name(name, "PoolSupervisor"),
+      supervisor_name: Pool.Manager.supervisor_name(name),
       supervisor_registry_name: Pool.Manager.supervisor_registry_name(name),
       default_pool_config: default_pool_config,
       pools: pools
@@ -297,19 +297,25 @@ defmodule Finch do
   def start_pool(name, pool, opts \\ [])
 
   def start_pool(name, %Finch.Pool{} = pool, opts) do
-    {:ok, config} = Registry.meta(name, :config)
-    pool_name = Finch.Pool.to_name(pool)
-
     # Avoid building the child_spec (cast_pool_opts, sanitize, etc.) if the pool already exists
-    if Registry.lookup(config.supervisor_registry_name, pool_name) != [] do
-      :ok
-    else
-      spec = Finch.Pool.child_spec([finch: name, pool: pool] ++ opts)
+    if Process.whereis(name) do
+      supervisor_registry_name = Pool.Manager.supervisor_registry_name(name)
 
-      case DynamicSupervisor.start_child(config.supervisor_name, spec) do
-        {:ok, _pid} -> :ok
-        {:error, {:already_started, _pid}} -> :ok
+      case Pool.Manager.get_pool(supervisor_registry_name, pool, false) do
+        :not_found ->
+          spec = Finch.Pool.child_spec([finch: name, pool: pool] ++ opts)
+          supervisor_name = Pool.Manager.supervisor_name(name)
+
+          case DynamicSupervisor.start_child(supervisor_name, spec) do
+            {:ok, _pid} -> :ok
+            {:error, {:already_started, _pid}} -> :ok
+          end
+
+        _ ->
+          :ok
       end
+    else
+      raise ArgumentError, "Finch instance #{inspect(name)} is not running"
     end
   end
 

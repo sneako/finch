@@ -67,6 +67,9 @@ defmodule Finch.Pool.Manager do
 
   @default_conn_hostname "localhost"
 
+  @spec supervisor_name(atom()) :: atom()
+  def supervisor_name(name), do: :"#{name}.PoolSupervisor"
+
   @spec supervisor_registry_name(atom()) :: atom()
   def supervisor_registry_name(name), do: :"#{name}.SupervisorRegistry"
 
@@ -120,24 +123,16 @@ defmodule Finch.Pool.Manager do
   end
 
   @doc false
-  @spec pool_child_spec(Finch.name(), Finch.Pool.t(), keyword()) :: Supervisor.child_spec()
+  @spec pool_child_spec(Finch.name(), Finch.Pool.t(), map()) :: Supervisor.child_spec()
   def pool_child_spec(finch_name, pool, opts) do
     {:ok, config} = Registry.meta(finch_name, :config)
     pool_name = Finch.Pool.to_name(pool)
-
-    pool_config =
-      case Finch.cast_pool_opts(opts) do
-        {:ok, validated} -> sanitize_pool_config(validated, pool)
-        {:error, error} -> raise ArgumentError, Exception.message(error)
-      end
-
-    track_default? = pool_config.start_pool_metrics? and not Map.has_key?(config.pools, pool)
-
+    pool_config = sanitize_pool_config(opts, pool)
     data = {pool_config.mod, pool_config.count}
     name = {:via, Registry, {config.supervisor_registry_name, pool_name, data}}
 
     Supervisor.child_spec(
-      {Finch.Pool.Supervisor, {name, {config.registry_name, pool, pool_config, track_default?}}},
+      {Finch.Pool.Supervisor, {name, {config.registry_name, pool, pool_config, false}}},
       id: {Finch.Pool.Supervisor, pool_name}
     )
   end

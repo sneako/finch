@@ -156,7 +156,17 @@ defmodule Finch.Pool do
       raise ArgumentError, "expected :pool to be a Finch.Pool.t() struct, got: #{inspect(pool)}"
     end
 
-    pool_opts = opts |> Keyword.delete(:finch) |> Keyword.delete(:pool)
-    Finch.Pool.Manager.pool_child_spec(finch_name, pool, pool_opts)
+    # pool_opts = opts |> Keyword.drop([:finch, :pool])
+
+    opts
+    |> Keyword.drop([:finch, :pool])
+    |> Finch.cast_pool_opts()
+    |> case do
+      {:ok, validated_config} ->
+        Finch.Pool.Manager.pool_child_spec(finch_name, pool, validated_config)
+
+      {:error, error} ->
+        raise ArgumentError, Exception.message(error)
+    end
   end
 end

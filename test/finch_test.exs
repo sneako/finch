@@ -1682,6 +1682,18 @@ defmodule FinchTest do
         )
       end
     end
+
+    test "start_pool/3 raises when Finch instance is not running" do
+      unstarted_name = :"UnstartedFinch_#{System.unique_integer([:positive])}"
+
+      assert_raise ArgumentError, ~r/is not running/, fn ->
+        Finch.start_pool(
+          unstarted_name,
+          Finch.Pool.new("http://example.com"),
+          size: 10
+        )
+      end
+    end
   end
 
   describe "user-managed pools (Finch.Pool.child_spec/1)" do
