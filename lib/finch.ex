@@ -175,7 +175,7 @@ defmodule Finch do
   ### :name
 
   The name of your Finch instance. It is used to identify the instance when making requests
-  and when calling other functions like `Finch.add_pool/3` or `Finch.get_pool_status/2`.
+  and when calling other functions like `Finch.start_pool/3` or `Finch.get_pool_status/2`.
 
   #### Examples
 
@@ -247,7 +247,7 @@ defmodule Finch do
 
     config = %{
       registry_name: name,
-      supervisor_name: concat_name(name, "PoolSupervisor"),
+      supervisor_name: Pool.Manager.supervisor_name(name),
       supervisor_registry_name: Pool.Manager.supervisor_registry_name(name),
       default_pool_config: default_pool_config,
       pools: pools
@@ -257,47 +257,65 @@ defmodule Finch do
   end
 
   @doc """
-  Starts a pool dynamically for the given Finch instance.
+  Finds a pool by its configuration and returns the pool pid.
+
+  Returns `{:ok, pid}` if the pool exists, `:error` otherwise.
+
+  This is useful for checking if a pool is available before making requests,
+  or for advanced use cases where you need direct access to the pool process.
+
+  ## Example
+
+      case Finch.find_pool(MyFinch, Finch.Pool.new("https://api.internal", tag: :api)) do
+        {:ok, pid} -> # Pool exists
+        :error -> # Pool not found
+      end
+  """
+  @spec find_pool(name(), Finch.Pool.t()) :: {:ok, pid()} | :error
+  def find_pool(name, %Finch.Pool{} = pool) do
+    case Pool.Manager.get_pool(name, pool, _start_pool? = false) do
+      {pid, _mod} -> {:ok, pid}
+      :not_found -> :error
+    end
+  end
+
+  @doc """
+  Starts a pool dynamically under Finch's internal supervision tree.
+
+  Returns `:ok` if the pool was started or already exists.
 
   ## Options
 
-    * `:name` - The name of your Finch instance. This field is required.
-    * `:key` - A `Finch.Pool.t()` struct identifying the pool to start. This field is required.
-    * Pool configuration options - See `Finch.add_pool/3` for available options
-      such as `:size`, `:count`, `:protocols`, etc.
+  Same pool configuration options as `Finch.start_link/1`:
+  `:size`, `:count`, `:protocols`, `:conn_opts`, etc.
 
-  ## Examples
+  ## Example
 
-      # Start a tagged pool
-      Finch.add_pool(
-        MyFinch,
-        Finch.Pool.new("http://foo.com", tag: :hello),
-        size: 30,
-        count: 2
-      )
-
-      # Start a pool without a tag (uses :default tag)
-      Finch.add_pool(
-        MyFinch,
-        Finch.Pool.new("http://foo.com"),
-        size: 50,
-        count: 1
-      )
+      Finch.start_pool(MyFinch, Finch.Pool.new("https://api.example.com", tag: :api), size: 10)
   """
-  @spec add_pool(name(), Finch.Pool.t(), keyword()) :: :ok
-  def add_pool(name, key, opts) do
-    unless is_struct(key, Finch.Pool) do
-      raise ArgumentError, "expected :key to be a Finch.Pool.t() struct, got: #{inspect(key)}"
-    end
+  @spec start_pool(name(), Finch.Pool.t(), keyword()) :: :ok
+  def start_pool(name, pool, opts \\ [])
 
-    pool_opts = Keyword.delete(Keyword.delete(opts, :name), :key)
+  def start_pool(name, %Finch.Pool{} = pool, opts) do
+    # Avoid building the child_spec (cast_pool_opts, sanitize, etc.) if the pool already exists
+    if Process.whereis(name) do
+      supervisor_registry_name = Pool.Manager.supervisor_registry_name(name)
 
-    case cast_pool_opts(pool_opts) do
-      {:ok, validated_opts} ->
-        Finch.Pool.Manager.start_pool_dynamic(name, key, validated_opts)
+      case Pool.Manager.get_pool(supervisor_registry_name, pool, false) do
+        :not_found ->
+          spec = Finch.Pool.child_spec([finch: name, pool: pool] ++ opts)
+          supervisor_name = Pool.Manager.supervisor_name(name)
 
-      {:error, %NimbleOptions.ValidationError{} = error} ->
-        raise ArgumentError, Exception.message(error)
+          case DynamicSupervisor.start_child(supervisor_name, spec) do
+            {:ok, _pid} -> :ok
+            {:error, {:already_started, _pid}} -> :ok
+          end
+
+        _ ->
+          :ok
+      end
+    else
+      raise ArgumentError, "Finch instance #{inspect(name)} is not running"
     end
   end
 
@@ -368,7 +386,8 @@ defmodule Finch do
     end
   end
 
-  defp cast_pool_opts(opts) do
+  @doc false
+  def cast_pool_opts(opts) do
     with {:ok, valid} <- NimbleOptions.validate(opts, @pool_config_schema) do
       {:ok, valid_opts_to_map(valid)}
     end

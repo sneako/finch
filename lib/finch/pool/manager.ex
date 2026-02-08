@@ -67,6 +67,9 @@ defmodule Finch.Pool.Manager do
 
   @default_conn_hostname "localhost"
 
+  @spec supervisor_name(atom()) :: atom()
+  def supervisor_name(name), do: :"#{name}.PoolSupervisor"
+
   @spec supervisor_registry_name(atom()) :: atom()
   def supervisor_registry_name(name), do: :"#{name}.SupervisorRegistry"
 
@@ -119,29 +122,19 @@ defmodule Finch.Pool.Manager do
     Registry.lookup(registry_name, :default)
   end
 
-  @spec start_pool_dynamic(Finch.name(), Finch.Pool.t(), map()) :: :ok
-  def start_pool_dynamic(registry_name, pool, pool_config) do
-    {:ok, config} = Registry.meta(registry_name, :config)
+  @doc false
+  @spec pool_child_spec(Finch.name(), Finch.Pool.t(), map()) :: Supervisor.child_spec()
+  def pool_child_spec(finch_name, pool, opts) do
+    {:ok, config} = Registry.meta(finch_name, :config)
     pool_name = Finch.Pool.to_name(pool)
-    # Look up before sanitizing so we avoid unnecessary work if the pool already exists
-    if Registry.lookup(config.supervisor_registry_name, pool_name) != [] do
-      :ok
-    else
-      data = {pool_config.mod, pool_config.count}
-      name = {:via, Registry, {config.supervisor_registry_name, pool_name, data}}
-      pool_config = sanitize_pool_config(pool_config, pool)
-      track_default? = pool_config.start_pool_metrics? and not Map.has_key?(config.pools, pool)
+    pool_config = sanitize_pool_config(opts, pool)
+    data = {pool_config.mod, pool_config.count}
+    name = {:via, Registry, {config.supervisor_registry_name, pool_name, data}}
 
-      config.supervisor_name
-      |> DynamicSupervisor.start_child(
-        {Finch.Pool.Supervisor, {name, {config.registry_name, pool, pool_config, track_default?}}}
-      )
-      # In case of races, it will return it has already been started
-      |> case do
-        {:ok, _} -> :ok
-        {:error, {:already_started, _}} -> :ok
-      end
-    end
+    Supervisor.child_spec(
+      {Finch.Pool.Supervisor, {name, {config.registry_name, pool, pool_config, false}}},
+      id: {Finch.Pool.Supervisor, pool_name}
+    )
   end
 
   ## Callbacks
