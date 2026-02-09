@@ -156,8 +156,6 @@ defmodule Finch.Pool do
       raise ArgumentError, "expected :pool to be a Finch.Pool.t() struct, got: #{inspect(pool)}"
     end
 
-    # pool_opts = opts |> Keyword.drop([:finch, :pool])
-
     opts
     |> Keyword.drop([:finch, :pool])
     |> Finch.cast_pool_opts()
