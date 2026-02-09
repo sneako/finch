@@ -6,7 +6,7 @@ defmodule Finch do
              |> Enum.fetch!(1)
 
   alias Finch.{Pool, Request, Response}
-  require Finch.Pool
+  require Finch.Pool.Manager
 
   use Supervisor
 
@@ -104,7 +104,7 @@ defmodule Finch do
   @typedoc """
   Pool metrics grouped by pool identifier when querying the `:default` configuration.
   """
-  @type default_pool_metrics() :: %{required(scheme_host_port()) => pool_metrics()}
+  @type default_pool_metrics() :: %{required(Finch.Pool.t()) => pool_metrics()}
 
   @type request_opt() ::
           {:pool_timeout, timeout()}
@@ -123,7 +123,7 @@ defmodule Finch do
   `c:GenServer.handle_info/2` or similar callbacks to ensure your code keeps
   working if the internal structure of the reference changes.
   """
-  @opaque request_ref() :: Finch.Pool.request_ref()
+  @opaque request_ref() :: Finch.Pool.Manager.request_ref()
 
   @doc """
   A guard that returns true if `ref` is a valid request reference from `async_request/3`.
@@ -140,7 +140,7 @@ defmodule Finch do
       end
 
   """
-  defguard is_request_ref(ref) when Finch.Pool.is_request_ref(ref)
+  defguard is_request_ref(ref) when Finch.Pool.Manager.is_request_ref(ref)
 
   @typedoc """
   The stream function given to `stream/5`.
@@ -169,14 +169,72 @@ defmodule Finch do
 
   ## Options
 
-    * `:name` - The name of your Finch instance. This field is required.
+    * `:name` - The name of your Finch instance. Required.
+    * `:pools` - A map of pool identifiers to configuration options. See the ":pools" subsection below.
 
-    * `:pools` - A map specifying the configuration for your pools. The keys should be URLs
-    provided as binaries, a tuple `{scheme, {:local, unix_socket}}` where `unix_socket` is the path for
-    the socket, or the atom `:default` to provide a catch-all configuration to be used for any
-    unspecified URLs - meaning that new pools for unspecified URLs will be started using the `:default`
-    configuration. See "Pool Configuration Options" below for details on the possible map
-    values. Default value is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
+  ### :name
+
+  The name of your Finch instance. It is used to identify the instance when making requests
+  and when calling other functions like `Finch.start_pool/3` or `Finch.get_pool_status/2`.
+
+  #### Examples
+
+      Finch.start_link(name: MyFinch)
+
+  ### :pools
+
+  A map where each key identifies a pool and each value is a keyword list of pool configuration
+  options (see "[Pool Configuration Options](#start_link/1-pool-configuration-options)" below).
+  Default is `%{default: [size: #{@default_pool_size}, count: #{@default_pool_count}]}`.
+
+  **Pool keys** may be:
+
+  * URL string – A binary URL. Pools created from URLs use the `:default` tag unless you
+    use a `t:Finch.Pool.t/0` struct as the key instead.
+  * `t:Finch.Pool.t/0` struct – Created with `Finch.Pool.new/2`. Use this when you need
+    tagged pools (e.g. to run multiple pools for the same host with different configs).
+  * URL string with `http+unix://` or `https+unix://` – For Unix domain sockets (e.g.
+    `"http+unix:///tmp/socket"`)
+  * `:default` – Catch-all. Any request whose pool is not in the map will use this config
+    when its pool is started.
+
+  When making a request with a `:pool_tag` option, that tag must exist in your pool configuration.
+  If it does not, the request uses the `:default` configuration.
+
+  #### Examples
+
+      # URL keys (pool uses :default tag)
+      Finch.start_link(
+        name: MyFinch,
+        pools: %{
+          "https://api.example.com" => [size: 10, count: 2]
+        }
+      )
+
+      # Tagged pools via Finch.Pool.new/2
+      Finch.start_link(
+        name: MyFinch,
+        pools: %{
+          Finch.Pool.new("https://api.example.com", tag: :bulk) => [size: 100, count: 1],
+          Finch.Pool.new("https://api.example.com", tag: :realtime) => [size: 10, count: 2]
+        }
+      )
+
+      # Unix socket
+      Finch.start_link(
+        name: MyFinch,
+        pools: %{
+          "http+unix:///tmp/socket" => [size: 5]
+        }
+      )
+
+      # Custom default configuration
+      Finch.start_link(
+        name: MyFinch,
+        pools: %{
+          :default => [size: 25, count: 2]
+        }
+      )
 
   ### Pool Configuration Options
 
@@ -189,13 +247,76 @@ defmodule Finch do
 
     config = %{
       registry_name: name,
-      supervisor_name: concat_name(name, "PoolSupervisor"),
+      supervisor_name: Pool.Manager.supervisor_name(name),
       supervisor_registry_name: Pool.Manager.supervisor_registry_name(name),
       default_pool_config: default_pool_config,
       pools: pools
     }
 
     Supervisor.start_link(__MODULE__, config, name: concat_name(name, "Supervisor"))
+  end
+
+  @doc """
+  Finds a pool by its configuration and returns the pool pid.
+
+  Returns `{:ok, pid}` if the pool exists, `:error` otherwise.
+
+  This is useful for checking if a pool is available before making requests,
+  or for advanced use cases where you need direct access to the pool process.
+
+  ## Example
+
+      case Finch.find_pool(MyFinch, Finch.Pool.new("https://api.internal", tag: :api)) do
+        {:ok, pid} -> # Pool exists
+        :error -> # Pool not found
+      end
+  """
+  @spec find_pool(name(), Finch.Pool.t()) :: {:ok, pid()} | :error
+  def find_pool(name, %Finch.Pool{} = pool) do
+    case Pool.Manager.get_pool(name, pool, _start_pool? = false) do
+      {pid, _mod} -> {:ok, pid}
+      :not_found -> :error
+    end
+  end
+
+  @doc """
+  Starts a pool dynamically under Finch's internal supervision tree.
+
+  Returns `:ok` if the pool was started or already exists.
+
+  ## Options
+
+  Same pool configuration options as `Finch.start_link/1`:
+  `:size`, `:count`, `:protocols`, `:conn_opts`, etc.
+
+  ## Example
+
+      Finch.start_pool(MyFinch, Finch.Pool.new("https://api.example.com", tag: :api), size: 10)
+  """
+  @spec start_pool(name(), Finch.Pool.t(), keyword()) :: :ok
+  def start_pool(name, pool, opts \\ [])
+
+  def start_pool(name, %Finch.Pool{} = pool, opts) do
+    # Avoid building the child_spec (cast_pool_opts, sanitize, etc.) if the pool already exists
+    if Process.whereis(name) do
+      supervisor_registry_name = Pool.Manager.supervisor_registry_name(name)
+
+      case Pool.Manager.get_pool(supervisor_registry_name, pool, false) do
+        :not_found ->
+          spec = Finch.Pool.child_spec([finch: name, pool: pool] ++ opts)
+          supervisor_name = Pool.Manager.supervisor_name(name)
+
+          case DynamicSupervisor.start_child(supervisor_name, spec) do
+            {:ok, _pid} -> :ok
+            {:error, {:already_started, _pid}} -> :ok
+          end
+
+        _ ->
+          :ok
+      end
+    else
+      raise ArgumentError, "Finch instance #{inspect(name)} is not running"
+    end
   end
 
   def child_spec(opts) do
@@ -240,18 +361,33 @@ defmodule Finch do
       :default ->
         {:ok, destination}
 
+      %Finch.Pool{} = pool ->
+        {:ok, pool}
+
       {scheme, {:local, path}} when is_atom(scheme) and is_binary(path) ->
-        {:ok, Finch.Pool.new(scheme, {:local, path}, 0)}
+        ## TODO: Remove in Finch v1.0
+        IO.warn("""
+        Using {scheme, {:local, path}} as a pool key is deprecated. Use "#{scheme}+unix://#{path}" instead.
+
+        For example:
+
+            pools: %{
+              "#{scheme}+unix://#{path}" => ...
+            }
+        """)
+
+        {:ok, Finch.Pool.new({scheme, {:local, path}})}
 
       url when is_binary(url) ->
-        {:ok, Finch.Pool.from_url(url)}
+        {:ok, Finch.Pool.new(url)}
 
       _ ->
         {:error, %ArgumentError{message: "invalid destination: #{inspect(destination)}"}}
     end
   end
 
-  defp cast_pool_opts(opts) do
+  @doc false
+  def cast_pool_opts(opts) do
     with {:ok, valid} <- NimbleOptions.validate(opts, @pool_config_schema) do
       {:ok, valid_opts_to_map(valid)}
     end
@@ -334,6 +470,9 @@ defmodule Finch do
 
     * `:unix_socket` - Path to a Unix domain socket to connect to instead of the URL
       host/port. The URL scheme still determines whether HTTP or HTTPS is used.
+
+    * `:pool_tag` - The tag to use when selecting which pool to use for this request.
+      Defaults to `:default`.
   """
   @spec build(
           Request.method(),
@@ -607,19 +746,19 @@ defmodule Finch do
   Cancels a request sent with `async_request/3`.
   """
   @spec cancel_async_request(request_ref()) :: :ok
-  def cancel_async_request(request_ref) when Finch.Pool.is_request_ref(request_ref) do
+  def cancel_async_request(request_ref) when Finch.Pool.Manager.is_request_ref(request_ref) do
     {pool_mod, _cancel_ref} = request_ref
     pool_mod.cancel_async_request(request_ref)
   end
 
-  defp get_pool(%Request{scheme: scheme, unix_socket: unix_socket}, name)
+  defp get_pool(%Request{scheme: scheme, unix_socket: unix_socket, pool_tag: tag}, name)
        when is_binary(unix_socket) do
-    pool = Finch.Pool.new(scheme, {:local, unix_socket}, 0)
+    pool = Finch.Pool.from_name({scheme, {:local, unix_socket}, 0, tag})
     Pool.Manager.get_pool(name, pool)
   end
 
-  defp get_pool(%Request{scheme: scheme, host: host, port: port}, name) do
-    pool = Finch.Pool.new(scheme, host, port)
+  defp get_pool(%Request{scheme: scheme, host: host, port: port, pool_tag: tag}, name) do
+    pool = Finch.Pool.from_name({scheme, host, port, tag})
     Pool.Manager.get_pool(name, pool)
   end
 
@@ -668,7 +807,7 @@ defmodule Finch do
       iex> Finch.get_pool_status(MyFinch, :default)
       {:ok,
        %{
-         {:https, "httpbin.org", 443} => [
+         %Finch.Pool{host: "httpbin.com", port: 443, scheme: :https, tag: :default} => [
            %Finch.HTTP1.PoolMetrics{
              pool_index: 1,
              pool_size: 50,
@@ -682,17 +821,18 @@ defmodule Finch do
           {:ok, pool_metrics()}
           | {:ok, default_pool_metrics()}
           | {:error, :not_found}
-  def get_pool_status(finch_name, url) when is_binary(url) do
-    get_pool_status(finch_name, Finch.Pool.from_url(url))
-  end
 
   def get_pool_status(finch_name, :default) do
     finch_name
     |> Pool.Manager.get_default_pools()
     |> Enum.reduce(%{}, fn {_pid, {pool_name, pool_mod, pool_count}}, acc ->
       case pool_mod.get_pool_status(finch_name, pool_name, pool_count) do
-        {:ok, metrics} -> Map.put(acc, pool_name, metrics)
-        {:error, :not_found} -> acc
+        {:ok, metrics} ->
+          pool_id = Pool.from_name(pool_name)
+          Map.put(acc, pool_id, metrics)
+
+        {:error, :not_found} ->
+          acc
       end
     end)
     |> case do
@@ -712,7 +852,13 @@ defmodule Finch do
   end
 
   def get_pool_status(finch_name, {scheme, host, port}) do
-    get_pool_status(finch_name, Finch.Pool.new(scheme, host, port))
+    pool = Finch.Pool.from_name({scheme, host, port, :default})
+    get_pool_status(finch_name, pool)
+  end
+
+  def get_pool_status(finch_name, url_or_scheme) do
+    pool = Finch.Pool.new(url_or_scheme)
+    get_pool_status(finch_name, pool)
   end
 
   @doc """
@@ -727,10 +873,6 @@ defmodule Finch do
   place while this function is being invoked.
   """
   @spec stop_pool(name(), pool_identifier()) :: :ok | {:error, :not_found}
-  def stop_pool(finch_name, url) when is_binary(url) do
-    stop_pool(finch_name, Finch.Pool.from_url(url))
-  end
-
   def stop_pool(finch_name, %Finch.Pool{} = pool) do
     case Pool.Manager.get_pool_supervisor(finch_name, pool) do
       :not_found -> {:error, :not_found}
@@ -739,6 +881,12 @@ defmodule Finch do
   end
 
   def stop_pool(finch_name, {scheme, host, port}) do
-    stop_pool(finch_name, Finch.Pool.new(scheme, host, port))
+    pool = Finch.Pool.from_name({scheme, host, port, :default})
+    stop_pool(finch_name, pool)
+  end
+
+  def stop_pool(finch_name, url_or_scheme) do
+    pool = Finch.Pool.new(url_or_scheme)
+    stop_pool(finch_name, pool)
   end
 end

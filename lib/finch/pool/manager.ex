@@ -2,6 +2,42 @@ defmodule Finch.Pool.Manager do
   @moduledoc false
   use GenServer
 
+  @typedoc false
+  @type request_ref :: {pool_mod :: module(), cancel_ref :: term()}
+
+  @typedoc false
+  @opaque pool_name() ::
+            {Finch.Pool.scheme(), Finch.Pool.host(), :inet.port_number(), Finch.Pool.pool_tag()}
+
+  @doc false
+  @callback request(
+              pid(),
+              Finch.Request.t(),
+              acc,
+              Finch.stream(acc),
+              Finch.name(),
+              list()
+            ) :: {:ok, acc} | {:error, term(), acc}
+            when acc: term()
+
+  @doc false
+  @callback async_request(
+              pid(),
+              Finch.Request.t(),
+              Finch.name(),
+              list()
+            ) :: request_ref()
+
+  @doc false
+  @callback cancel_async_request(request_ref()) :: :ok
+
+  @doc false
+  @callback get_pool_status(finch_name :: atom(), pool_name(), pos_integer) ::
+              {:ok, list(map)} | {:error, :not_found}
+
+  @doc false
+  defguard is_request_ref(ref) when tuple_size(ref) == 2 and is_atom(elem(ref, 0))
+
   @type config() :: %{
           registry_name: atom(),
           supervisor_name: atom(),
@@ -30,6 +66,9 @@ defmodule Finch.Pool.Manager do
   ]
 
   @default_conn_hostname "localhost"
+
+  @spec supervisor_name(atom()) :: atom()
+  def supervisor_name(name), do: :"#{name}.PoolSupervisor"
 
   @spec supervisor_registry_name(atom()) :: atom()
   def supervisor_registry_name(name), do: :"#{name}.SupervisorRegistry"
@@ -61,20 +100,41 @@ defmodule Finch.Pool.Manager do
     end
   end
 
-  @spec get_pool_supervisor(atom(), Finch.Pool.t()) ::
-          {pid(), Finch.Pool.name(), module(), pos_integer()} | :not_found
-  def get_pool_supervisor(registry_name, %Finch.Pool{} = pool) do
+  @spec get_pool_supervisor(Finch.name(), Finch.Pool.t()) ::
+          {pid(), pool_name(), module(), pos_integer()} | :not_found
+  def get_pool_supervisor(finch_name, %Finch.Pool{} = pool) do
     pool_name = Finch.Pool.to_name(pool)
 
-    case Registry.lookup(supervisor_registry_name(registry_name), pool_name) do
-      [] -> :not_found
-      [{pid, {pool_mod, pool_count}}] -> {pid, pool_name, pool_mod, pool_count}
+    # Checks if a finch instance exists by verifying the registry config exists.
+    # This prevents atom creation when checking non-existent instances.
+    if Process.whereis(finch_name) do
+      case Registry.lookup(supervisor_registry_name(finch_name), pool_name) do
+        [] -> :not_found
+        [{pid, {pool_mod, pool_count}}] -> {pid, pool_name, pool_mod, pool_count}
+      end
+    else
+      :not_found
     end
   end
 
-  @spec get_default_pools(atom()) :: [{pid(), {Finch.Pool.name(), module(), pos_integer()}}]
+  @spec get_default_pools(atom()) :: [{pid(), {pool_name(), module(), pos_integer()}}]
   def get_default_pools(registry_name) do
     Registry.lookup(registry_name, :default)
+  end
+
+  @doc false
+  @spec pool_child_spec(Finch.name(), Finch.Pool.t(), map()) :: Supervisor.child_spec()
+  def pool_child_spec(finch_name, pool, opts) do
+    {:ok, config} = Registry.meta(finch_name, :config)
+    pool_name = Finch.Pool.to_name(pool)
+    pool_config = sanitize_pool_config(opts, pool)
+    data = {pool_config.mod, pool_config.count}
+    name = {:via, Registry, {config.supervisor_registry_name, pool_name, data}}
+
+    Supervisor.child_spec(
+      {Finch.Pool.Supervisor, {name, {config.registry_name, pool, pool_config, false}}},
+      id: {Finch.Pool.Supervisor, pool_name}
+    )
   end
 
   ## Callbacks
@@ -98,9 +158,14 @@ defmodule Finch.Pool.Manager do
     end
   end
 
-  defp pool_config(%{pools: config, default_pool_config: default}, pool) do
+  defp pool_config(%{pools: config, default_pool_config: default}, %Finch.Pool{} = pool) do
     config
     |> Map.get(pool, default)
+    |> sanitize_pool_config(pool)
+  end
+
+  defp sanitize_pool_config(pool_config, pool) do
+    pool_config
     |> maybe_drop_tls_options(pool)
     |> maybe_add_hostname(pool)
   end

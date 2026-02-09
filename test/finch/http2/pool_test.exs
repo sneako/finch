@@ -30,7 +30,7 @@ defmodule Finch.HTTP2.PoolTest do
   end
 
   def start_pool(port) do
-    pool = Finch.Pool.new(:https, "localhost", port)
+    pool = Finch.Pool.from_name({:https, "localhost", port, :default})
 
     Pool.start_link({
       pool,

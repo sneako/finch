@@ -1,5 +1,34 @@
 # Changelog
 
+## main
+
+### Added
+
+- Add `http+unix://` and `https+unix://` URL scheme support for cleaner Unix socket pool configuration #351
+- Add pool tagging support for connection pool isolation #345
+- Add `Finch.find_pool/2` to look up a pool by configuration and return its pid
+- Add `Finch.start_pool/3` to start a pool under Finch's internal supervision tree
+- Add `Finch.Pool.child_spec/1` for user-managed pools under your own supervision tree
+- Encapsulate pool identity using a Pool struct #338
+- Add Elixir 1.20 support #346
+
+### Changed
+
+- Pool metrics now return `Finch.Pool.t()` structs as keys
+
+### Deprecated
+
+- Deprecate `{scheme, {:local, path}}` tuple form in `:pools`, use URL strings (e.g. `"http+unix:///path"`) instead #349
+
+### Removed
+
+- Remove deprecated `Finch.request/6` function #348
+- Remove deprecated pool configuration options #348
+
+### Fixed
+
+- Do not exceed max failure count to stop overflows #343
+
 ## v0.21.0 (2026-01-22)
 
 ### Enhancements
