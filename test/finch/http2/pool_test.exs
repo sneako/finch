@@ -29,20 +29,18 @@ defmodule Finch.HTTP2.PoolTest do
     {:ok, request: request}
   end
 
-  def start_pool(port) do
-    pool = Finch.Pool.from_name({:https, "localhost", port, :default})
-
-    Pool.start_link({
-      pool,
-      :pool_name,
-      :test,
+  def start_pool(port, pool_opts \\ []) do
+    defaults =
       %{
         conn_opts: [transport_opts: [verify: :verify_none]],
         start_pool_metrics?: false,
         count: 1
-      },
-      1
-    })
+      }
+
+    pool = Finch.Pool.from_name({:https, "localhost", port, :default})
+    pool_opts = Map.new(pool_opts)
+    config = Map.merge(defaults, pool_opts)
+    Pool.start_link({pool, :pool_name, :test, config, 1})
   end
 
   describe "requests" do
@@ -173,6 +171,37 @@ defmodule Finch.HTTP2.PoolTest do
 
       assert {:error, %Mint.HTTPError{reason: :too_many_concurrent_requests}, _acc} =
                request(pool, req, [])
+    end
+
+    test "with wait_for_server_settings: true, request fails with :connection_not_ready until SETTINGS applied then succeeds",
+         %{request: req} do
+      us = self()
+      server_opts = [defer_settings: true, server_settings: [max_concurrent_streams: 1]]
+      pool_opts = [wait_for_server_settings?: true]
+
+      # Server defers sending SETTINGS so the client stays in :handshaking until we send them.
+      {:ok, pool} =
+        start_server_and_connect_with(server_opts, fn port ->
+          start_pool(port, pool_opts)
+        end)
+
+      # First request: server has not sent SETTINGS yet, so we get only the error (no request is sent).
+      assert {:error, %Finch.Error{reason: :connection_not_ready}, _acc} = request(pool, req, [])
+
+      # Now send server SETTINGS; the client will receive and apply them.
+      server_send_settings()
+
+      # Second request must succeed.
+      spawn(fn -> send(us, {:result, request(pool, req, [])}) end)
+      assert_recv_frames([headers(stream_id: stream_id)])
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
+        data(stream_id: stream_id, data: "ok", flags: set_flags(:data, [:end_stream]))
+      ])
+
+      assert_receive {:result, {:ok, {200, [], "ok"}}}
     end
 
     test "request timeout with timeout of 0", %{request: req} do
@@ -522,5 +551,10 @@ defmodule Finch.HTTP2.PoolTest do
   defp server_socket() do
     server = Process.get(@pdict_key)
     MockHTTP2Server.get_socket(server)
+  end
+
+  defp server_send_settings() do
+    server = Process.get(@pdict_key)
+    :ok = MockHTTP2Server.send_server_settings(server)
   end
 end
