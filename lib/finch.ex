@@ -80,6 +80,16 @@ defmodule Finch do
       type: :boolean,
       doc: "When true, pool metrics will be collected and available through `get_pool_status/2`",
       default: false
+    ],
+    wait_for_server_settings?: [
+      type: :boolean,
+      doc: """
+      Only relevant when `protocols` includes `:http2`. When true, the pool does not send any \
+      request until the server's SETTINGS frame has been received and applied. If a request \
+      arrives before that, it fails with `Finch.Error` reason `:connection_not_ready` (callers \
+      should retry). When false, behaviour is unchanged and requests may be sent before SETTINGS.
+      """,
+      default: false
     ]
   ]
 
@@ -438,7 +448,8 @@ defmodule Finch do
       conn_opts: conn_opts,
       conn_max_idle_time: to_native(valid[:conn_max_idle_time]),
       pool_max_idle_time: valid[:pool_max_idle_time],
-      start_pool_metrics?: valid[:start_pool_metrics?]
+      start_pool_metrics?: valid[:start_pool_metrics?],
+      wait_for_server_settings?: valid[:wait_for_server_settings?]
     }
   end
 

@@ -218,7 +218,8 @@ defmodule Finch.HTTP2.Pool do
       backoff_base: @backoff_base,
       backoff_max: @backoff_max,
       connect_opts: pool_config.conn_opts,
-      metrics_ref: metrics_ref
+      metrics_ref: metrics_ref,
+      wait_for_server_settings?: Map.get(pool_config, :wait_for_server_settings?, false)
     }
 
     {:ok, :disconnected, data, {:next_event, :internal, {:connect, 0}}}
@@ -275,7 +276,8 @@ defmodule Finch.HTTP2.Pool do
         Telemetry.stop(:connect, start, metadata)
         SSL.maybe_log_secrets(data.pool.scheme, data.connect_opts, conn)
         data = %{data | conn: conn}
-        {:next_state, :connected, data}
+        next = if data.wait_for_server_settings?, do: :connecting, else: :connected
+        {:next_state, next, data}
 
       {:error, error} ->
         metadata = Map.put(metadata, :error, error)
@@ -328,6 +330,53 @@ defmodule Finch.HTTP2.Pool do
   # our current state.
   def disconnected(:info, _message, _data) do
     :keep_state_and_data
+  end
+
+  @doc false
+  # In connecting we have not received server SETTINGS yet; reject requests.
+  def connecting(event, content, data)
+
+  def connecting(:enter, _old_state, _data), do: :keep_state_and_data
+
+  def connecting({:call, from}, {:request, _, _, _}, _data),
+    do: {:keep_state_and_data, {:reply, from, {:error, Error.exception(:connection_not_ready)}}}
+
+  def connecting({:call, from}, {:cancel, _request_ref}, _data),
+    do: {:keep_state_and_data, {:reply, from, :ok}}
+
+  def connecting({:timeout, _}, _content, _data), do: :keep_state_and_data
+
+  def connecting(:cast, {:async_request, pid, request_ref, _, _}, _data) do
+    send(pid, {request_ref, {:error, Error.exception(:connection_not_ready)}})
+    :keep_state_and_data
+  end
+
+  def connecting(:info, {:DOWN, _, :process, _pid, _}, data), do: {:keep_state, data}
+
+  def connecting(:info, message, data) do
+    case HTTP2.stream(data.conn, message) do
+      {:ok, conn, _responses} ->
+        data = put_in(data.conn, conn)
+
+        if HTTP2.open?(data.conn) do
+          {:next_state, :connected, data}
+        else
+          {:keep_state, data}
+        end
+
+      {:error, conn, error, _responses} ->
+        Logger.error([
+          "Received error from server #{data.pool.scheme}:#{data.pool.host}:#{data.pool.port}: ",
+          Exception.message(error)
+        ])
+
+        data = put_in(data.conn, conn)
+        {:next_state, :disconnected, data}
+
+      :unknown ->
+        Logger.warning(["Received unknown message: ", inspect(message)])
+        :keep_state_and_data
+    end
   end
 
   @doc false

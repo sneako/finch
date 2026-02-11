@@ -3,7 +3,7 @@ defmodule Finch.MockHTTP2Server do
   import ExUnit.Assertions
   alias Mint.HTTP2.Frame
 
-  defstruct [:socket, :encode_table, :decode_table]
+  defstruct [:socket, :encode_table, :decode_table, :pending_settings]
 
   @fixtures_dir Path.expand("../fixtures", __DIR__)
 
@@ -21,11 +21,12 @@ defmodule Finch.MockHTTP2Server do
   def start_and_connect_with(options, fun) when is_list(options) and is_function(fun, 1) do
     parent = self()
     server_settings = Keyword.get(options, :server_settings, [])
+    defer_settings? = Keyword.get(options, :defer_settings, false)
 
     {:ok, listen_socket} = :ssl.listen(0, @ssl_opts)
     {:ok, {_address, port}} = :ssl.sockname(listen_socket)
 
-    task = Task.async(fn -> accept(listen_socket, parent, server_settings) end)
+    task = Task.async(fn -> accept(listen_socket, parent, server_settings, defer_settings?) end)
 
     result = fun.(port)
 
@@ -35,7 +36,8 @@ defmodule Finch.MockHTTP2Server do
     server = %__MODULE__{
       socket: server_socket,
       encode_table: HPAX.new(4096),
-      decode_table: HPAX.new(4096)
+      decode_table: HPAX.new(4096),
+      pending_settings: if(defer_settings?, do: server_settings, else: nil)
     }
 
     {result, server}
@@ -106,11 +108,15 @@ defmodule Finch.MockHTTP2Server do
     server.socket
   end
 
-  defp accept(listen_socket, parent, server_settings) do
+  defp accept(listen_socket, parent, server_settings, defer_settings?) do
     {:ok, socket} = :ssl.transport_accept(listen_socket)
     {:ok, socket} = :ssl.handshake(socket)
 
-    :ok = perform_http2_handshake(socket, server_settings)
+    if defer_settings? do
+      :ok = perform_http2_handshake_deferred(socket)
+    else
+      :ok = perform_http2_handshake(socket, server_settings)
+    end
 
     # We transfer ownership of the socket to the parent so that this task can die.
     :ok = :ssl.controlling_process(socket, parent)
@@ -118,6 +124,41 @@ defmodule Finch.MockHTTP2Server do
   end
 
   connection_preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+
+  defp perform_http2_handshake_deferred(socket) do
+    import Mint.HTTP2.Frame, only: [settings: 1]
+
+    no_flags = Frame.set_flags(:settings, [])
+
+    # Receive connection preface (and possibly client SETTINGS in same packet).
+    {:ok, data} = :ssl.recv(socket, 0, 5_000)
+    assert String.starts_with?(data, unquote(connection_preface))
+
+    rest =
+      binary_part(
+        data,
+        byte_size(unquote(connection_preface)),
+        byte_size(data) - byte_size(unquote(connection_preface))
+      )
+
+    # Receive and decode the client SETTINGS frame (may need more data).
+    {frame, _rest} = recv_settings_frame(socket, rest)
+    assert settings(flags: ^no_flags, params: _params) = frame
+
+    # We do not send our SETTINGS yet; the test will call send_server_settings/1 later.
+    :ok
+  end
+
+  defp recv_settings_frame(socket, buffer) do
+    case Frame.decode_next(buffer) do
+      {:ok, frame, rest} ->
+        {frame, rest}
+
+      :more ->
+        {:ok, more} = :ssl.recv(socket, 0, 5_000)
+        recv_settings_frame(socket, buffer <> more)
+    end
+  end
 
   defp perform_http2_handshake(socket, server_settings) do
     import Mint.HTTP2.Frame, only: [settings: 1]
@@ -141,6 +182,29 @@ defmodule Finch.MockHTTP2Server do
     assert settings(flags: ^ack_flags, params: []) = frame
 
     # We send the SETTINGS ack back.
+    :ok = :ssl.send(socket, Frame.encode(settings(flags: ack_flags, params: [])))
+
+    :ok
+  end
+
+  @doc """
+  Send the server SETTINGS frame that was deferred during handshake.
+  Receives the client's SETTINGS ack and sends our ack. Only valid when
+  the server was started with `defer_settings: true`.
+  """
+  @spec send_server_settings(%__MODULE__{}) :: :ok
+  def send_server_settings(%__MODULE__{socket: socket, pending_settings: settings})
+      when is_list(settings) do
+    import Mint.HTTP2.Frame, only: [settings: 1]
+
+    ack_flags = Frame.set_flags(:settings, [:ack])
+
+    :ok = :ssl.send(socket, Frame.encode(settings(params: settings)))
+
+    assert_receive {:ssl, ^socket, data}, 1_000
+    assert {:ok, frame, ""} = Frame.decode_next(data)
+    assert settings(flags: ^ack_flags, params: []) = frame
+
     :ok = :ssl.send(socket, Frame.encode(settings(flags: ack_flags, params: [])))
 
     :ok
