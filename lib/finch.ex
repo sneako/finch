@@ -81,15 +81,35 @@ defmodule Finch do
       doc: "When true, pool metrics will be collected and available through `get_pool_status/2`",
       default: false
     ],
-    wait_for_server_settings?: [
-      type: :boolean,
-      doc: """
-      Only relevant when `protocols` includes `:http2`. When true, the pool does not send any \
-      request until the server's SETTINGS frame has been received and applied. If a request \
-      arrives before that, it fails with `Finch.Error` reason `:connection_not_ready` (callers \
-      should retry). When false, behaviour is unchanged and requests may be sent before SETTINGS.
-      """,
-      default: false
+    http2: [
+      type: :keyword_list,
+      doc: "HTTP/2-specific options. Only relevant when `protocols` includes `:http2`.",
+      default: [
+        wait_for_server_settings?: false,
+        ping_interval: :infinity
+      ],
+      keys: [
+        wait_for_server_settings?: [
+          type: :boolean,
+          doc: """
+          When true, the pool does not send any request until the server's SETTINGS frame \
+          has been received and applied. If a request arrives before that, it fails with \
+          `Finch.Error` reason `:connection_not_ready` (callers should retry). When false, \
+          behaviour is unchanged and requests may be sent before SETTINGS.
+          """,
+          default: false
+        ],
+        ping_interval: [
+          type: :timeout,
+          default: :infinity,
+          doc: """
+          Interval in milliseconds between HTTP/2 PING frames sent to keep the connection \
+          alive. The timer resets on any connection activity, so PINGs are only sent after \
+          the connection has been idle for this duration. When set to `:infinity` (default), \
+          no PINGs are sent.
+          """
+        ]
+      ]
     ]
   ]
 
@@ -449,7 +469,8 @@ defmodule Finch do
       conn_max_idle_time: to_native(valid[:conn_max_idle_time]),
       pool_max_idle_time: valid[:pool_max_idle_time],
       start_pool_metrics?: valid[:start_pool_metrics?],
-      wait_for_server_settings?: valid[:wait_for_server_settings?]
+      wait_for_server_settings?: valid[:http2][:wait_for_server_settings?],
+      ping_interval: valid[:http2][:ping_interval]
     }
   end
 
@@ -858,6 +879,37 @@ defmodule Finch do
     case Pool.Manager.get_pool_supervisor(finch_name, pool) do
       {_pid, pool_name, pool_mod, pool_count} ->
         pool_mod.get_pool_status(finch_name, pool_name, pool_count)
+
+      :not_found ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Sends an HTTP/2 PING frame and waits for PONG.
+
+  Returns `{:ok, rtt_ms}` where `rtt_ms` is the round-trip time in native time units,
+  or `{:error, reason}` if the ping fails.
+
+  This is only supported for HTTP/2 pools. Returns `{:error, :not_http2}` for
+  HTTP/1 pools.
+
+  ## Examples
+
+      {:ok, rtt} = Finch.ping(MyFinch, "https://example.com")
+      IO.puts("RTT: \#{rtt}ms")
+
+  """
+  @spec ping(name(), pool_identifier()) :: {:ok, integer()} | {:error, term()}
+  def ping(name, pool_identifier) do
+    pool = resolve_pool(pool_identifier)
+
+    case Pool.Manager.get_pool(name, pool) do
+      {pid, Finch.HTTP2.Pool} ->
+        Finch.HTTP2.Pool.ping(pid)
+
+      {_pid, _mod} ->
+        {:error, :not_http2}
 
       :not_found ->
         {:error, :not_found}
