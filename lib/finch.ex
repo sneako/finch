@@ -164,6 +164,12 @@ defmodule Finch do
            acc ->
              {:cont, acc} | {:halt, acc})
 
+  @typedoc """
+  The request body function used with `{:stream, req_body_fun}` in `build/5`.
+  """
+  @type req_body_fun(acc) ::
+          (acc -> {:cont, iodata(), acc} | {:cont, acc} | {:halt, acc})
+
   @doc """
   Start an instance of Finch.
 
@@ -460,11 +466,21 @@ defmodule Finch do
   end
 
   @doc """
-  Builds an HTTP request to be sent with `request/3` or `stream/4`.
+  Builds an HTTP request to be sent with `request/3`, `async_request/3`, `stream/5`,
+  or `stream_while/5`.
 
-  It is possible to send the request body in a streaming fashion. In order to do so, the
-  `body` parameter needs to take form of a tuple `{:stream, body_stream}`, where `body_stream`
-  is a `Stream`.
+  Request `body` can be one of:
+
+    * `nil` - no body is sent with the request.
+
+    * `iodata` - the body to send for the request.
+
+    * `{:stream, enumerable}` - stream request body chunks emitted by an `Enumerable`.
+
+    * `{:stream, req_body_fun}` - stream request body chunks emitted by `req_body_fun`.
+      Can only be used with `Finch.stream_while/5` on HTTP/1 pools.
+
+      See `Finch.stream_while/5` for more information.
 
   ## Options
 
@@ -487,12 +503,20 @@ defmodule Finch do
   @doc """
   Streams an HTTP request and returns the accumulator.
 
-  A function of arity 2 is expected as argument. The first argument
-  is a tuple, as listed below, and the second argument is the
-  accumulator. The function must return a potentially updated
-  accumulator.
+  `resp_fun` receives a response entry and the accumulator `acc`, and must return
+  the updated accumulator.
 
-  See also `stream_while/5`.
+  Response entries are:
+
+    * `{:status, status}` - the HTTP response status
+
+    * `{:headers, headers}` - the HTTP response headers
+
+    * `{:data, data}` - the HTTP response body chunk
+
+    * `{:trailers, trailers}` - the HTTP response trailers
+
+  See also `request/3`, `stream_while/5`.
 
   > ### HTTP2 streaming and back-pressure {: .warning}
   >
@@ -502,13 +526,6 @@ defmodule Finch do
   > not use streaming over HTTP2 for non-terminating responses or
   > when streaming large responses which you do not intend to keep
   > in memory.
-
-  ## Stream commands
-
-    * `{:status, status}` - the http response status
-    * `{:headers, headers}` - the http response headers
-    * `{:data, data}` - a streaming section of the http response body
-    * `{:trailers, trailers}` - the http response trailers
 
   ## Options
 
@@ -538,6 +555,8 @@ defmodule Finch do
           {:ok, acc} | {:error, Exception.t(), acc}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
+    validate_no_req_body_fun!(req, "Finch.stream/5")
+
     fun = fn entry, acc ->
       {:cont, fun.(entry, acc)}
     end
@@ -546,18 +565,40 @@ defmodule Finch do
   end
 
   @doc """
-  Streams an HTTP request until it finishes or `fun` returns `{:halt, acc}`.
+  Streams an HTTP request until it finishes or is cancelled.
 
-  A function of arity 2 is expected as argument. The first argument
-  is a tuple, as listed below, and the second argument is the
-  accumulator.
+  ## Request body streaming
 
-  The function must return:
+  When the request body is set to `{:stream, req_body_fun}` (see `build/5`), `req_body_fun`
+  receives the accumulator `acc` and must return one of:
 
-    * `{:cont, acc}` to continue streaming
-    * `{:halt, acc}` to halt streaming
+    * `{:cont, chunk, acc}` - emit request body `chunk` and continue streaming
 
-  See also `stream/5`.
+    * `{:cont, acc}` - request body is done, `acc` is passed to `resp_fun`
+
+    * `{:halt, acc}` - cancel the request and close the connection
+
+  `{:stream, req_body_fun}` is currently only supported on HTTP/1 pools.
+
+  ## Response streaming
+
+  `resp_fun` receives a response entry and the accumulator `acc`, and must return one of:
+
+    * `{:cont, acc}` - continue streaming
+
+    * `{:halt, acc}` - cancel the request and close the connection
+
+  Response entries are:
+
+    * `{:status, status}` - the HTTP response status
+
+    * `{:headers, headers}` - the HTTP response headers
+
+    * `{:data, data}` - the HTTP response body chunk
+
+    * `{:trailers, trailers}` - the HTTP response trailers
+
+  See also `request/3`, `stream/5`.
 
   > ### HTTP2 streaming and back-pressure {: .warning}
   >
@@ -568,13 +609,6 @@ defmodule Finch do
   > when streaming large responses which you do not intend to keep
   > in memory.
 
-  ## Stream commands
-
-    * `{:status, status}` - the http response status
-    * `{:headers, headers}` - the http response headers
-    * `{:data, data}` - a streaming section of the http response body
-    * `{:trailers, trailers}` - the http response trailers
-
   ## Options
 
   Shares options with `request/3`.
@@ -583,8 +617,7 @@ defmodule Finch do
 
       path = "/tmp/archive.zip"
       file = File.open!(path, [:write, :exclusive])
-      url = "https://example.com/archive.zip"
-      request = Finch.build(:get, url)
+      request = Finch.build(:get, "https://example.com/archive.zip")
 
       Finch.stream_while(request, MyFinch, nil, fn
         {:status, status}, acc ->
@@ -600,6 +633,36 @@ defmodule Finch do
           {:cont, acc}
       end)
 
+      File.close(file)
+
+  Uploading a file using `req_body_fun`:
+
+      file = File.open!("/tmp/archive.zip", [:read])
+
+      req_body_fun = fn file ->
+        case IO.binread(file, 4096) do
+          :eof -> {:cont, file}
+          data -> {:cont, data, file}
+        end
+      end
+
+      request = Finch.build(:post, "https://example.com/upload", [], {:stream, req_body_fun})
+
+      resp_fun = fn
+        {:status, status}, acc ->
+          IO.inspect(status)
+          {:cont, acc}
+
+        {:headers, headers}, acc ->
+          IO.inspect(headers)
+          {:cont, acc}
+
+        {:data, data}, acc ->
+          IO.inspect(data)
+          {:cont, acc}
+      end
+
+      {:ok, file} = Finch.stream_while(request, MyFinch, file, resp_fun)
       File.close(file)
   """
   @spec stream_while(Request.t(), name(), acc, stream_while(acc), request_opts()) ::
@@ -621,6 +684,8 @@ defmodule Finch do
 
   It can still raise exceptions if it was not possible to check out a connection in the given `:pool_timeout`.
 
+  See also `stream/5`.
+
   ## Options
 
     * `:pool_timeout` - This timeout is applied when we check out a connection from the pool.
@@ -641,6 +706,8 @@ defmodule Finch do
   def request(req, name, opts \\ [])
 
   def request(%Request{} = req, name, opts) do
+    validate_no_req_body_fun!(req, "Finch.request/3")
+
     request_span req, name do
       acc = {nil, [], [], []}
 
@@ -738,6 +805,8 @@ defmodule Finch do
   """
   @spec async_request(Request.t(), name(), request_opts()) :: request_ref()
   def async_request(%Request{} = req, name, opts \\ []) do
+    validate_no_req_body_fun!(req, "Finch.async_request/3")
+
     {pool, pool_mod} = get_pool(req, name)
     pool_mod.async_request(pool, req, name, opts)
   end
@@ -750,6 +819,15 @@ defmodule Finch do
     {pool_mod, _cancel_ref} = request_ref
     pool_mod.cancel_async_request(request_ref)
   end
+
+  defp validate_no_req_body_fun!(%Request{body: {:stream, fun}}, caller)
+       when is_function(fun, 1) do
+    raise ArgumentError,
+          "streaming request body with an accumulator function is not supported in #{caller}, " <>
+            "use Finch.stream_while/5 instead"
+  end
+
+  defp validate_no_req_body_fun!(_req, _caller), do: :ok
 
   defp get_pool(%Request{scheme: scheme, unix_socket: unix_socket, pool_tag: tag}, name)
        when is_binary(unix_socket) do

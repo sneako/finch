@@ -897,6 +897,81 @@ defmodule FinchTest do
                |> Finch.stream_while(finch_name, acc, fun)
     end
 
+    test "stream request body with acc on HTTP/1", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert Plug.Conn.get_http_protocol(conn) == :"HTTP/1.1"
+        {:ok, "012", conn} = Plug.Conn.read_body(conn)
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      acc = 0
+
+      req_fun = fn
+        3 ->
+          {:cont, {nil, [], ""}}
+
+        count ->
+          {:cont, "#{count}", count + 1}
+      end
+
+      resp_fun = fn
+        {:status, value}, {_, headers, body} ->
+          {:cont, {value, headers, body}}
+
+        {:headers, value}, {status, headers, body} ->
+          {:cont, {status, headers ++ value, body}}
+
+        {:data, value}, {status, headers, body} ->
+          {:cont, {status, headers, body <> value}}
+      end
+
+      assert {:ok, {200, [_ | _], "OK"}} =
+               Finch.build(:post, endpoint(bypass), [], {:stream, req_fun})
+               |> Finch.stream_while(finch_name, acc, resp_fun)
+    end
+
+    test "stream request body with halt on HTTP/1", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.stub(bypass, "POST", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      req_fun = fn
+        2 -> {:halt, :halted}
+        count -> {:cont, "#{count}", count + 1}
+      end
+
+      resp_fun = fn _, acc -> {:cont, acc} end
+
+      assert {:ok, :halted} =
+               Finch.build(:post, endpoint(bypass), [], {:stream, req_fun})
+               |> Finch.stream_while(finch_name, 0, resp_fun)
+    end
+
+    test "stream request body with invalid return on HTTP/1", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.stub(bypass, "POST", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      req_fun = fn _acc -> :oops end
+      resp_fun = fn _, acc -> {:cont, acc} end
+
+      assert_raise RuntimeError,
+                   "expected {:cont, chunk, acc}, {:cont, acc}, or {:halt, acc} from req_body_fun, got: :oops",
+                   fn ->
+                     Finch.build(:post, endpoint(bypass), [], {:stream, req_fun})
+                     |> Finch.stream_while(finch_name, 0, resp_fun)
+                   end
+    end
+
     test "invalid return value on HTTP/1", %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
 
@@ -998,6 +1073,31 @@ defmodule FinchTest do
                |> Finch.stream_while(finch_name, acc, fun)
 
       Process.sleep(1000)
+    end
+
+    test "stream request body with acc on HTTP/2 raises", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocols: [:http2]
+           ]
+         }}
+      )
+
+      req_fun = fn count -> {:cont, "#{count}", count + 1} end
+      resp_fun = fn _, acc -> {:cont, acc} end
+
+      assert_raise ArgumentError,
+                   "{:stream, req_body_fun} is not yet supported on HTTP/2 pools",
+                   fn ->
+                     Finch.build(:post, endpoint(bypass), [], {:stream, req_fun})
+                     |> Finch.stream_while(finch_name, 0, resp_fun)
+                   end
     end
 
     test "invalid return value on HTTP/2", %{bypass: bypass, finch_name: finch_name} do
@@ -1151,6 +1251,19 @@ defmodule FinchTest do
   end
 
   describe "async_request/3 with HTTP/1" do
+    test "raises when using request body accumulator function", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      req_fun = fn count -> {:cont, "#{count}", count + 1} end
+
+      assert_raise ArgumentError,
+                   "streaming request body with an accumulator function is not supported in Finch.async_request/3, use Finch.stream_while/5 instead",
+                   fn ->
+                     Finch.build(:post, "https://example.com", [], {:stream, req_fun})
+                     |> Finch.async_request(finch_name)
+                   end
+    end
+
     test "sends response messages to calling process", %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
 
@@ -1160,6 +1273,30 @@ defmodule FinchTest do
 
       request_ref =
         Finch.build(:get, endpoint(bypass))
+        |> Finch.async_request(finch_name)
+
+      assert_receive {^request_ref, {:status, 200}}
+      assert_receive {^request_ref, {:headers, headers}} when is_list(headers)
+      assert_receive {^request_ref, {:data, "OK"}}
+      assert_receive {^request_ref, :done}
+    end
+
+    test "supports streaming request body from enumerable", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      req_stream = Stream.map(1..3, &Integer.to_string/1)
+
+      Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert Plug.Conn.get_http_protocol(conn) == :"HTTP/1.1"
+        assert {:ok, "123", conn} = Plug.Conn.read_body(conn)
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request_ref =
+        Finch.build(:post, endpoint(bypass), [], {:stream, req_stream})
         |> Finch.async_request(finch_name)
 
       assert_receive {^request_ref, {:status, 200}}
@@ -1190,6 +1327,40 @@ defmodule FinchTest do
       assert_receive {^request_ref, {:status, 200}}
       assert_receive {^request_ref, {:headers, headers}} when is_list(headers)
       for _ <- 1..5, do: assert_receive({^request_ref, {:data, "chunk-data"}})
+      assert_receive {^request_ref, :done}
+    end
+  end
+
+  describe "async_request/3 with HTTP/2" do
+    test "supports streaming request body from enumerable", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocols: [:http2]
+           ]
+         }}
+      )
+
+      req_stream = Stream.map(1..3, &Integer.to_string/1)
+
+      Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert Plug.Conn.get_http_protocol(conn) == :"HTTP/2"
+        assert {:ok, "123", conn} = Plug.Conn.read_body(conn)
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request_ref =
+        Finch.build(:post, endpoint(bypass), [], {:stream, req_stream})
+        |> Finch.async_request(finch_name)
+
+      assert_receive {^request_ref, {:status, 200}}
+      assert_receive {^request_ref, {:headers, headers}} when is_list(headers)
+      assert_receive {^request_ref, {:data, "OK"}}
       assert_receive {^request_ref, :done}
     end
   end

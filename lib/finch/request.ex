@@ -59,7 +59,8 @@ defmodule Finch.Request do
   @typedoc """
   Optional request body.
   """
-  @type body() :: iodata() | {:stream, Enumerable.t()} | nil
+  @type body() ::
+          iodata() | {:stream, Enumerable.t()} | {:stream, Finch.req_body_fun(term())} | nil
 
   @type build_opt() :: {:unix_socket, String.t()}
 
