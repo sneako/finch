@@ -305,7 +305,7 @@ defmodule Finch do
   def find_pool(name, %Finch.Pool{} = pool) do
     case Pool.Manager.get_pool(name, pool, _start_pool? = false) do
       {pid, _mod} -> {:ok, pid}
-      :not_found -> :error
+      _ -> :error
     end
   end
 
@@ -644,8 +644,10 @@ defmodule Finch do
   end
 
   defp __stream__(%Request{} = req, name, acc, fun, opts) do
-    {pool, pool_mod} = get_pool(req, name)
-    pool_mod.request(pool, req, acc, fun, name, opts)
+    case get_pool(req, name) do
+      {pool, pool_mod} -> pool_mod.request(pool, req, acc, fun, name, opts)
+      _ -> {:error, Finch.Error.exception(:pool_not_available), acc}
+    end
   end
 
   @doc """
@@ -770,8 +772,10 @@ defmodule Finch do
   """
   @spec async_request(Request.t(), name(), request_opts()) :: request_ref()
   def async_request(%Request{} = req, name, opts \\ []) do
-    {pool, pool_mod} = get_pool(req, name)
-    pool_mod.async_request(pool, req, name, opts)
+    case get_pool(req, name) do
+      {pool, pool_mod} -> pool_mod.async_request(pool, req, name, opts)
+      _ -> raise Finch.Error, :pool_not_available
+    end
   end
 
   @doc """
