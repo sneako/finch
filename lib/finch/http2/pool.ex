@@ -33,6 +33,12 @@ defmodule Finch.HTTP2.Pool do
   # Call the pool with the request. The pool will multiplex multiple requests
   # and stream the result set back to the calling process using `send`
   @impl Finch.Pool.Manager
+  def request(_pool, %{body: {:stream, fun}}, _acc, _fun, _name, _opts)
+      when is_function(fun, 1) do
+    raise ArgumentError,
+          "{:stream, req_body_fun} is not yet supported on HTTP/2 pools"
+  end
+
   def request(pool, request, acc, fun, name, opts) do
     opts = Keyword.put_new(opts, :receive_timeout, @default_receive_timeout)
     timeout = opts[:receive_timeout]
