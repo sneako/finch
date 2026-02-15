@@ -852,7 +852,9 @@ defmodule Finch do
     end
   end
 
-  def get_pool_status(finch_name, %Finch.Pool{} = pool) do
+  def get_pool_status(finch_name, pool_identifier) do
+    pool = resolve_pool(pool_identifier)
+
     case Pool.Manager.get_pool_supervisor(finch_name, pool) do
       {_pid, pool_name, pool_mod, pool_count} ->
         pool_mod.get_pool_status(finch_name, pool_name, pool_count)
@@ -860,16 +862,6 @@ defmodule Finch do
       :not_found ->
         {:error, :not_found}
     end
-  end
-
-  def get_pool_status(finch_name, {scheme, host, port}) do
-    pool = Finch.Pool.from_name({scheme, host, port, :default})
-    get_pool_status(finch_name, pool)
-  end
-
-  def get_pool_status(finch_name, url_or_scheme) do
-    pool = Finch.Pool.new(url_or_scheme)
-    get_pool_status(finch_name, pool)
   end
 
   @doc """
@@ -884,20 +876,19 @@ defmodule Finch do
   place while this function is being invoked.
   """
   @spec stop_pool(name(), pool_identifier()) :: :ok | {:error, :not_found}
-  def stop_pool(finch_name, %Finch.Pool{} = pool) do
+  def stop_pool(finch_name, pool_identifier) do
+    pool = resolve_pool(pool_identifier)
+
     case Pool.Manager.get_pool_supervisor(finch_name, pool) do
       :not_found -> {:error, :not_found}
       {pid, _pool_name, _pool_mod, _pool_count} -> Supervisor.stop(pid)
     end
   end
 
-  def stop_pool(finch_name, {scheme, host, port}) do
-    pool = Finch.Pool.from_name({scheme, host, port, :default})
-    stop_pool(finch_name, pool)
-  end
+  defp resolve_pool(%Finch.Pool{} = pool), do: pool
 
-  def stop_pool(finch_name, url_or_scheme) do
-    pool = Finch.Pool.new(url_or_scheme)
-    stop_pool(finch_name, pool)
-  end
+  defp resolve_pool({scheme, host, port}),
+    do: Finch.Pool.from_name({scheme, host, port, :default})
+
+  defp resolve_pool(url) when is_binary(url), do: Finch.Pool.new(url)
 end
