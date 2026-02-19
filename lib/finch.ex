@@ -168,7 +168,7 @@ defmodule Finch do
   The request body function used with `{:stream, req_body_fun}` in `build/5`.
   """
   @type req_body_fun(acc) ::
-          (acc -> {:cont, iodata(), acc} | {:cont, acc} | {:halt, acc})
+          (acc -> {:data, iodata(), acc} | {:cont, acc} | {:halt, acc})
 
   @doc """
   Start an instance of Finch.
@@ -572,7 +572,7 @@ defmodule Finch do
   When the request body is set to `{:stream, req_body_fun}` (see `build/5`), `req_body_fun`
   receives the accumulator `acc` and must return one of:
 
-    * `{:cont, chunk, acc}` - emit request body `chunk` and continue streaming
+    * `{:data, chunk, acc}` - emit request body `chunk` and continue streaming
 
     * `{:cont, acc}` - request body is done, `acc` is passed to `resp_fun`
 
@@ -586,7 +586,7 @@ defmodule Finch do
 
     * `{:cont, acc}` - continue streaming
 
-    * `{:halt, acc}` - cancel the request and close the connection
+    * `{:halt, acc}` - cancel the request. On HTTP/1, this also closes the connection
 
   Response entries are:
 
@@ -642,7 +642,7 @@ defmodule Finch do
       req_body_fun = fn file ->
         case IO.binread(file, 4096) do
           :eof -> {:cont, file}
-          data -> {:cont, data, file}
+          data -> {:data, data, file}
         end
       end
 

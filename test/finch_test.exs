@@ -913,7 +913,7 @@ defmodule FinchTest do
           {:cont, {nil, [], ""}}
 
         count ->
-          {:cont, "#{count}", count + 1}
+          {:data, "#{count}", count + 1}
       end
 
       resp_fun = fn
@@ -941,7 +941,7 @@ defmodule FinchTest do
 
       req_fun = fn
         2 -> {:halt, :halted}
-        count -> {:cont, "#{count}", count + 1}
+        count -> {:data, "#{count}", count + 1}
       end
 
       resp_fun = fn _, acc -> {:cont, acc} end
@@ -965,7 +965,7 @@ defmodule FinchTest do
       resp_fun = fn _, acc -> {:cont, acc} end
 
       assert_raise RuntimeError,
-                   "expected {:cont, chunk, acc}, {:cont, acc}, or {:halt, acc} from req_body_fun, got: :oops",
+                   "expected req_body_fun to return {:data, chunk, acc}, {:cont, acc}, or {:halt, acc}, got: :oops",
                    fn ->
                      Finch.build(:post, endpoint(bypass), [], {:stream, req_fun})
                      |> Finch.stream_while(finch_name, 0, resp_fun)
