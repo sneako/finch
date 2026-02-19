@@ -189,7 +189,7 @@ defmodule Finch.HTTP1.Conn do
 
   defp stream_request_body(mint, ref, req_body_fun, acc) when is_function(req_body_fun, 1) do
     case req_body_fun.(acc) do
-      {:cont, chunk, new_acc} ->
+      {:data, chunk, new_acc} ->
         case Mint.HTTP.stream_request_body(mint, ref, chunk) do
           {:ok, mint} ->
             stream_request_body(mint, ref, req_body_fun, new_acc)
@@ -205,7 +205,7 @@ defmodule Finch.HTTP1.Conn do
         {:halt, mint, final_acc}
 
       other ->
-        raise "expected {:cont, chunk, acc}, {:cont, acc}, or {:halt, acc} from req_body_fun, got: #{inspect(other)}"
+        raise "expected req_body_fun to return {:data, chunk, acc}, {:cont, acc}, or {:halt, acc}, got: #{inspect(other)}"
     end
   end
 
