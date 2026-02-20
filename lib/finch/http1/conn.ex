@@ -120,8 +120,8 @@ defmodule Finch.HTTP1.Conn do
              stream_or_body(req.body)
            ) do
         {:ok, mint, ref} ->
-          case maybe_stream_request_body(mint, ref, req.body) do
-            {:ok, mint} ->
+          case maybe_stream_request_body(mint, ref, req.body, acc) do
+            {:ok, mint, acc} ->
               Telemetry.stop(:send, start_time, metadata, extra_measurements)
               start_time = Telemetry.start(:recv, metadata, extra_measurements)
               resp_metadata = %{status: nil, headers: [], trailers: []}
@@ -140,6 +140,11 @@ defmodule Finch.HTTP1.Conn do
                 )
 
               handle_response(response, conn, metadata, start_time, extra_measurements)
+
+            {:halt, mint, acc} ->
+              Telemetry.stop(:send, start_time, metadata, extra_measurements)
+              conn = close(%{conn | mint: mint})
+              {:ok, conn, acc}
 
             {:error, mint, error} ->
               handle_request_error(
@@ -173,19 +178,51 @@ defmodule Finch.HTTP1.Conn do
     {:error, %{conn | mint: mint}, error, acc}
   end
 
-  defp maybe_stream_request_body(mint, ref, {:stream, stream}) do
-    with {:ok, mint} <- stream_request_body(mint, ref, stream) do
-      Mint.HTTP.stream_request_body(mint, ref, :eof)
+  defp maybe_stream_request_body(mint, ref, {:stream, stream}, acc) do
+    with {:ok, mint, acc} <- stream_request_body(mint, ref, stream, acc),
+         {:ok, mint} <- Mint.HTTP.stream_request_body(mint, ref, :eof) do
+      {:ok, mint, acc}
     end
   end
 
-  defp maybe_stream_request_body(mint, _, _), do: {:ok, mint}
+  defp maybe_stream_request_body(mint, _, _, acc), do: {:ok, mint, acc}
 
-  defp stream_request_body(mint, ref, stream) do
-    Enum.reduce_while(stream, {:ok, mint}, fn
-      chunk, {:ok, mint} -> {:cont, Mint.HTTP.stream_request_body(mint, ref, chunk)}
-      _chunk, error -> {:halt, error}
-    end)
+  defp stream_request_body(mint, ref, req_body_fun, acc) when is_function(req_body_fun, 1) do
+    case req_body_fun.(acc) do
+      {:data, chunk, new_acc} ->
+        case Mint.HTTP.stream_request_body(mint, ref, chunk) do
+          {:ok, mint} ->
+            stream_request_body(mint, ref, req_body_fun, new_acc)
+
+          {:error, _, _} = error ->
+            error
+        end
+
+      {:cont, final_acc} ->
+        {:ok, mint, final_acc}
+
+      {:halt, final_acc} ->
+        {:halt, mint, final_acc}
+
+      other ->
+        raise "expected req_body_fun to return {:data, chunk, acc}, {:cont, acc}, or {:halt, acc}, got: #{inspect(other)}"
+    end
+  end
+
+  defp stream_request_body(mint, ref, stream, acc) do
+    result =
+      Enum.reduce_while(stream, {:ok, mint}, fn
+        chunk, {:ok, mint} ->
+          {:cont, Mint.HTTP.stream_request_body(mint, ref, chunk)}
+
+        _chunk, error ->
+          {:halt, error}
+      end)
+
+    case result do
+      {:ok, mint} -> {:ok, mint, acc}
+      error -> error
+    end
   end
 
   def close(%{mint: nil} = conn), do: conn
