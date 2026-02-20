@@ -4,6 +4,9 @@
 
 ### Added
 
+- New `:http2` configuration section with support for
+  - `wait_for_server_settings?` adds blocking until settings are negotiated
+  - `ping_interval` adds automatic HTTP/2 PING frames on an interval of inactivity
 - Add `http+unix://` and `https+unix://` URL scheme support for cleaner Unix socket pool configuration #351
 - Add pool tagging support for connection pool isolation #345
 - Add `Finch.find_pool/2` to look up a pool by configuration and return its pid

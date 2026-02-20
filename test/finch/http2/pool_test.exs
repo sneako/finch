@@ -34,12 +34,13 @@ defmodule Finch.HTTP2.PoolTest do
       %{
         conn_opts: [transport_opts: [verify: :verify_none]],
         start_pool_metrics?: false,
-        count: 1
+        count: 1,
+        wait_for_server_settings?: false,
+        ping_interval: :infinity
       }
 
     pool = Finch.Pool.from_name({:https, "localhost", port, :default})
-    pool_opts = Map.new(pool_opts)
-    config = Map.merge(defaults, pool_opts)
+    config = Enum.into(pool_opts, defaults)
     Pool.start_link({pool, :pool_name, :test, config, 1})
   end
 
@@ -509,6 +510,211 @@ defmodule Finch.HTTP2.PoolTest do
     end
   end
 
+  describe "ping_interval" do
+    test "sends PING frames at the configured interval" do
+      {:ok, _pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port, ping_interval: 50)
+        end)
+
+      # Should receive a PING frame one interval after another
+      assert_recv_frames([ping()])
+      assert_recv_frames([ping()])
+    end
+
+    test "does not send PINGs when interval is :infinity" do
+      {:ok, _pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port, ping_interval: :infinity)
+        end)
+
+      # Wait a bit and verify no PING is received
+      refute_receive {:ssl, _, _}, 100
+    end
+
+    test "responds to pong without error", %{request: req} do
+      us = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port, ping_interval: 50)
+        end)
+
+      # Receive the PING and send a PONG back
+      assert_recv_frames([ping(opaque_data: data)])
+      server_send_frames([ping(stream_id: 0, flags: set_flags(:ping, [:ack]), opaque_data: data)])
+
+      # Pool should still be functional - send a request
+      spawn(fn ->
+        {:ok, resp} = request(pool, req, [])
+        send(us, {:resp, {:ok, resp}})
+      end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
+        data(stream_id: stream_id, data: "ok", flags: set_flags(:data, [:end_stream]))
+      ])
+
+      assert_receive {:resp, {:ok, {200, [], "ok"}}}
+    end
+  end
+
+  describe "idle ping reset" do
+    test "ping timer resets on request activity", %{request: req} do
+      us = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port, ping_interval: 50)
+        end)
+
+      # Send a request at 25ms, which should reset the ping timer
+      Process.sleep(25)
+
+      spawn(fn ->
+        {:ok, resp} = request(pool, req, [])
+        send(us, {:resp, {:ok, resp}})
+      end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
+        data(stream_id: stream_id, data: "ok", flags: set_flags(:data, [:end_stream]))
+      ])
+
+      assert_receive {:resp, {:ok, {200, [], "ok"}}}
+
+      # Record the time after the response was received
+      activity_time = System.monotonic_time(:millisecond)
+
+      # The PING should arrive >50ms after the last activity (the response).
+      # If the timer hadn't been reset, it would have fired earlier (>50ms after connect).
+      assert ping() = receive_ping_frame()
+
+      ping_time = System.monotonic_time(:millisecond)
+      elapsed = ping_time - activity_time
+
+      # The PING should have arrived after at least ~100ms (allowing some slack from the 50ms interval)
+      assert elapsed >= 50, "PING arrived too early (#{elapsed}ms), timer was not reset"
+    end
+  end
+
+  describe "on-demand ping" do
+    test "returns RTT on success" do
+      us = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      spawn(fn ->
+        result = Pool.ping(pool)
+        send(us, {:ping_result, result})
+      end)
+
+      assert_recv_frames([ping(opaque_data: data)])
+
+      server_send_frames([ping(stream_id: 0, flags: set_flags(:ping, [:ack]), opaque_data: data)])
+      assert_receive {:ping_result, {:ok, rtt}}
+      assert is_integer(rtt)
+      assert rtt >= 0
+    end
+
+    test "returns error when disconnected" do
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      # Close the server to force disconnection, sleep just to yield the process
+      :ok = :ssl.close(server_socket())
+      Process.sleep(1)
+
+      assert {:error, %Finch.Error{reason: :disconnected}} = Pool.ping(pool)
+    end
+
+    test "returns error when read_only" do
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      us = self()
+
+      # Start a request to keep a pending stream
+      spawn(fn ->
+        result =
+          request(
+            pool,
+            %{
+              scheme: :https,
+              method: "GET",
+              path: "/",
+              query: nil,
+              host: "localhost",
+              port: nil,
+              headers: [],
+              body: nil
+            },
+            []
+          )
+
+        send(us, {:resp, result})
+      end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      # Send GOAWAY to enter read_only state
+      server_send_frames([
+        goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "bye")
+      ])
+
+      Process.sleep(1)
+
+      assert {:error, %Finch.Error{reason: :read_only}} = Pool.ping(pool)
+
+      # Complete the pending request to clean up
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
+        data(stream_id: stream_id, data: "ok", flags: set_flags(:data, [:end_stream]))
+      ])
+
+      assert_receive {:resp, {:ok, _}}
+    end
+
+    test "pending pings fail on disconnect" do
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      us = self()
+
+      spawn(fn ->
+        result = Pool.ping(pool)
+        send(us, {:ping_result, result})
+      end)
+
+      # Wait for the PING frame to arrive
+      assert_recv_frames([ping()])
+
+      # Close server to force disconnect (don't send PONG)
+      :ok = :ssl.close(server_socket())
+
+      assert_receive {:ping_result, {:error, %Finch.Error{reason: :connection_closed}}}
+    end
+  end
+
   @pdict_key {__MODULE__, :http2_test_server}
 
   defp request(pool, req, opts) do
@@ -556,5 +762,36 @@ defmodule Finch.HTTP2.PoolTest do
   defp server_send_settings() do
     server = Process.get(@pdict_key)
     :ok = MockHTTP2Server.send_server_settings(server)
+  end
+
+  # Receive frames from server socket, skipping non-PING frames (e.g. WINDOW_UPDATE).
+  # Returns the first PING frame found.
+  defp receive_ping_frame do
+    server = Process.get(@pdict_key)
+    receive_ping_frame(server, "")
+  end
+
+  defp receive_ping_frame(%{socket: server_socket} = server, buffer) do
+    data =
+      case buffer do
+        "" ->
+          assert_receive {:ssl, ^server_socket, data}, 500
+          data
+
+        _ ->
+          buffer
+      end
+
+    case Mint.HTTP2.Frame.decode_next(data) do
+      {:ok, ping(opaque_data: _) = frame, _rest} ->
+        frame
+
+      {:ok, _other_frame, rest} ->
+        receive_ping_frame(server, rest)
+
+      :more ->
+        assert_receive {:ssl, ^server_socket, more_data}, 500
+        receive_ping_frame(server, data <> more_data)
+    end
   end
 end
