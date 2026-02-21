@@ -65,19 +65,18 @@ defmodule Finch.ALPNIntegrationTest do
 
   # Test that confirms HTTP/2-only works correctly with large bodies
   test "POST request with body larger than 64KB using HTTP/2 only (should work)", %{url: url} do
-    start_supervised!(
-      {Finch,
-       name: HTTP2Finch,
-       pools: %{
-         default: [
-           protocols: [:http2],
-           conn_opts: [
-             transport_opts: [
-               verify: :verify_none
-             ]
-           ]
-         ]
-       }}
+    Finch.TestHelper.start_finch!(
+      name: HTTP2Finch,
+      pools: %{
+        url => [
+          protocols: [:http2],
+          conn_opts: [
+            transport_opts: [
+              verify: :verify_none
+            ]
+          ]
+        ]
+      }
     )
 
     large_body = :crypto.strong_rand_bytes(65_538)

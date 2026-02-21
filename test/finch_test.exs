@@ -261,20 +261,19 @@ defmodule FinchTest do
            bypass: bypass,
            finch_name: finch_name
          } do
-      start_supervised!(
-        {Finch,
-         name: finch_name,
-         pools: %{
-           default: [
-             protocols: [:http2],
-             count: 1,
-             conn_opts: [
-               transport_opts: [
-                 verify: :verify_none
-               ]
-             ]
-           ]
-         }}
+      Finch.TestHelper.start_finch!(
+        name: finch_name,
+        pools: %{
+          endpoint(bypass) => [
+            protocols: [:http2],
+            count: 1,
+            conn_opts: [
+              transport_opts: [
+                verify: :verify_none
+              ]
+            ]
+          ]
+        }
       )
 
       data = :crypto.strong_rand_bytes(1_000)
@@ -312,20 +311,19 @@ defmodule FinchTest do
            bypass: bypass,
            finch_name: finch_name
          } do
-      start_supervised!(
-        {Finch,
-         name: finch_name,
-         pools: %{
-           default: [
-             protocols: [:http2],
-             count: 1,
-             conn_opts: [
-               transport_opts: [
-                 verify: :verify_none
-               ]
-             ]
-           ]
-         }}
+      Finch.TestHelper.start_finch!(
+        name: finch_name,
+        pools: %{
+          endpoint(bypass) => [
+            protocols: [:http2],
+            count: 1,
+            conn_opts: [
+              transport_opts: [
+                verify: :verify_none
+              ]
+            ]
+          ]
+        }
       )
 
       data = :crypto.strong_rand_bytes(1_000)
@@ -362,20 +360,19 @@ defmodule FinchTest do
            bypass: bypass,
            finch_name: finch_name
          } do
-      start_supervised!(
-        {Finch,
-         name: finch_name,
-         pools: %{
-           default: [
-             protocols: [:http2],
-             count: 1,
-             conn_opts: [
-               transport_opts: [
-                 verify: :verify_none
-               ]
-             ]
-           ]
-         }}
+      Finch.TestHelper.start_finch!(
+        name: finch_name,
+        pools: %{
+          endpoint(bypass) => [
+            protocols: [:http2],
+            count: 1,
+            conn_opts: [
+              transport_opts: [
+                verify: :verify_none
+              ]
+            ]
+          ]
+        }
       )
 
       # 2MB of data
@@ -723,20 +720,19 @@ defmodule FinchTest do
 
     test "HTTP/2 with atom accumulator, illustrating that the type/shape of the accumulator is not important",
          %{bypass: bypass, finch_name: finch_name} do
-      start_supervised!(
-        {Finch,
-         name: finch_name,
-         pools: %{
-           default: [
-             protocols: [:http2],
-             count: 1,
-             conn_opts: [
-               transport_opts: [
-                 verify: :verify_none
-               ]
-             ]
-           ]
-         }}
+      Finch.TestHelper.start_finch!(
+        name: finch_name,
+        pools: %{
+          endpoint(bypass) => [
+            protocols: [:http2],
+            count: 1,
+            conn_opts: [
+              transport_opts: [
+                verify: :verify_none
+              ]
+            ]
+          ]
+        }
       )
 
       expect_any(bypass)
@@ -1060,14 +1056,13 @@ defmodule FinchTest do
     end
 
     test "successful get request with HTTP/2", %{bypass: bypass, finch_name: finch_name} do
-      start_supervised!(
-        {Finch,
-         name: finch_name,
-         pools: %{
-           default: [
-             protocols: [:http2]
-           ]
-         }}
+      Finch.TestHelper.start_finch!(
+        name: finch_name,
+        pools: %{
+          endpoint(bypass) => [
+            protocols: [:http2]
+          ]
+        }
       )
 
       Bypass.expect_once(bypass, "GET", "/", fn conn ->
@@ -1089,16 +1084,6 @@ defmodule FinchTest do
     end
 
     test "function halts on HTTP/2", %{finch_name: finch_name} do
-      start_supervised!(
-        {Finch,
-         name: finch_name,
-         pools: %{
-           default: [
-             protocols: [:http2]
-           ]
-         }}
-      )
-
       # Start custom server because Bypass would complain when it outlives test process.
       url =
         start_server(
@@ -1110,6 +1095,15 @@ defmodule FinchTest do
             {InfiniteStream, []}
           ]
         )
+
+      Finch.TestHelper.start_finch!(
+        name: finch_name,
+        pools: %{
+          url => [
+            protocols: [:http2]
+          ]
+        }
+      )
 
       acc = {nil, [], ""}
 
@@ -1147,14 +1141,13 @@ defmodule FinchTest do
       bypass: bypass,
       finch_name: finch_name
     } do
-      start_supervised!(
-        {Finch,
-         name: finch_name,
-         pools: %{
-           default: [
-             protocols: [:http2]
-           ]
-         }}
+      Finch.TestHelper.start_finch!(
+        name: finch_name,
+        pools: %{
+          endpoint(bypass) => [
+            protocols: [:http2]
+          ]
+        }
       )
 
       req_fun = fn count -> {:cont, "#{count}", count + 1} end
@@ -1169,14 +1162,13 @@ defmodule FinchTest do
     end
 
     test "invalid return value on HTTP/2", %{bypass: bypass, finch_name: finch_name} do
-      start_supervised!(
-        {Finch,
-         name: finch_name,
-         pools: %{
-           default: [
-             protocols: [:http2]
-           ]
-         }}
+      Finch.TestHelper.start_finch!(
+        name: finch_name,
+        pools: %{
+          endpoint(bypass) => [
+            protocols: [:http2]
+          ]
+        }
       )
 
       Bypass.stub(bypass, "GET", "/", fn conn ->
@@ -1404,14 +1396,13 @@ defmodule FinchTest do
       bypass: bypass,
       finch_name: finch_name
     } do
-      start_supervised!(
-        {Finch,
-         name: finch_name,
-         pools: %{
-           default: [
-             protocols: [:http2]
-           ]
-         }}
+      Finch.TestHelper.start_finch!(
+        name: finch_name,
+        pools: %{
+          endpoint(bypass) => [
+            protocols: [:http2]
+          ]
+        }
       )
 
       req_stream = Stream.map(1..3, &Integer.to_string/1)
