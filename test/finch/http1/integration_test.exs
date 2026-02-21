@@ -32,9 +32,23 @@ defmodule Finch.HTTP1.IntegrationTest do
        }}
     )
 
+    test_pid = self()
+    ref = make_ref()
+
+    :telemetry.attach(
+      "h2-connect-fail",
+      [:finch, :connect, :stop],
+      fn _, _, %{error: _}, _ -> send(test_pid, ref) end,
+      nil
+    )
+
     assert capture_log(fn ->
              {:error, _} = Finch.build(:get, url) |> Finch.request(H2Finch)
+             assert_receive ^ref, 5_000
+             Logger.flush()
            end) =~ "No application protocol"
+
+    :telemetry.detach("h2-connect-fail")
   end
 
   @tag :capture_log

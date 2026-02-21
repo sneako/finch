@@ -277,6 +277,7 @@ defmodule Finch do
 
     config = %{
       registry_name: name,
+      registry_listeners: Keyword.get(opts, :registry_listeners, []),
       supervisor_name: Pool.Manager.supervisor_name(name),
       supervisor_registry_name: Pool.Manager.supervisor_registry_name(name),
       default_pool_config: default_pool_config,
@@ -359,7 +360,11 @@ defmodule Finch do
   @impl true
   def init(config) do
     children = [
-      {Registry, keys: :duplicate, name: config.registry_name, meta: [config: config]},
+      {Registry,
+       keys: :duplicate,
+       name: config.registry_name,
+       listeners: config.registry_listeners,
+       meta: [config: config]},
       {Registry, keys: :unique, name: config.supervisor_registry_name},
       {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
       {Pool.Manager, config}
