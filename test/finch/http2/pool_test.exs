@@ -54,8 +54,8 @@ defmodule Finch.HTTP2.PoolTest do
         end)
 
       spawn(fn ->
-        {:ok, resp} = request(pool, req, [])
-        send(us, {:resp, {:ok, resp}})
+        result = request(pool, req, [])
+        send(us, {:resp, result})
       end)
 
       assert_recv_frames([headers(stream_id: stream_id)])
@@ -358,14 +358,22 @@ defmodule Finch.HTTP2.PoolTest do
             Finch.build(:get, url <> "/stream/5/500")
             |> Finch.async_request(finch_name)
 
-          # allow process to exit normally after sending
           send(outer, ref)
+
+          # Stay alive long enough for the assertion to check the request is tracked
+          receive do
+            :continue -> :ok
+          after
+            500 -> :ok
+          end
         end)
 
       assert_receive {Finch.HTTP2.Pool, {pool, _}} = ref
 
       assert {_, %{refs: %{^ref => _}}} = :sys.get_state(pool)
 
+      # Let the spawned process exit normally
+      send(caller, :continue)
       Process.sleep(100)
       refute Process.alive?(caller)
 
