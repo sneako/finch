@@ -10,20 +10,19 @@ defmodule Finch.HTTP2.IntegrationTest do
   end
 
   test "sends http2 requests", %{url: url} do
-    start_supervised!(
-      {Finch,
-       name: TestFinch,
-       pools: %{
-         default: [
-           protocols: [:http2],
-           count: 5,
-           conn_opts: [
-             transport_opts: [
-               verify: :verify_none
-             ]
-           ]
-         ]
-       }}
+    TestHelper.start_finch!(
+      name: TestFinch,
+      pools: %{
+        url => [
+          protocols: [:http2],
+          count: 5,
+          conn_opts: [
+            transport_opts: [
+              verify: :verify_none
+            ]
+          ]
+        ]
+      }
     )
 
     assert {:ok, response} = Finch.build(:get, url) |> Finch.request(TestFinch)
@@ -31,20 +30,19 @@ defmodule Finch.HTTP2.IntegrationTest do
   end
 
   test "sends the query string", %{url: url} do
-    start_supervised!(
-      {Finch,
-       name: TestFinch,
-       pools: %{
-         default: [
-           protocols: [:http2],
-           count: 5,
-           conn_opts: [
-             transport_opts: [
-               verify: :verify_none
-             ]
-           ]
-         ]
-       }}
+    TestHelper.start_finch!(
+      name: TestFinch,
+      pools: %{
+        url => [
+          protocols: [:http2],
+          count: 5,
+          conn_opts: [
+            transport_opts: [
+              verify: :verify_none
+            ]
+          ]
+        ]
+      }
     )
 
     query_string = URI.encode_query(test: true, these: "params")
@@ -55,20 +53,19 @@ defmodule Finch.HTTP2.IntegrationTest do
   end
 
   test "multiplexes requests over a single pool", %{url: url} do
-    start_supervised!(
-      {Finch,
-       name: TestFinch,
-       pools: %{
-         default: [
-           protocols: [:http2],
-           count: 1,
-           conn_opts: [
-             transport_opts: [
-               verify: :verify_none
-             ]
-           ]
-         ]
-       }}
+    TestHelper.start_finch!(
+      name: TestFinch,
+      pools: %{
+        url => [
+          protocols: [:http2],
+          count: 1,
+          conn_opts: [
+            transport_opts: [
+              verify: :verify_none
+            ]
+          ]
+        ]
+      }
     )
 
     # We create multiple requests here using a single connection. There is a delay
@@ -99,22 +96,21 @@ defmodule Finch.HTTP2.IntegrationTest do
     log_file = Path.join(tmp_dir, "ssl-key-file.log")
     :ok = System.put_env("SSLKEYLOGFILE", log_file)
 
-    start_supervised!(
-      {Finch,
-       name: TestFinch,
-       pools: %{
-         default: [
-           protocols: [:http2],
-           count: 5,
-           conn_opts: [
-             transport_opts: [
-               verify: :verify_none,
-               keep_secrets: true,
-               versions: [:"tlsv1.2", :"tlsv1.3"]
-             ]
-           ]
-         ]
-       }}
+    TestHelper.start_finch!(
+      name: TestFinch,
+      pools: %{
+        url => [
+          protocols: [:http2],
+          count: 5,
+          conn_opts: [
+            transport_opts: [
+              verify: :verify_none,
+              keep_secrets: true,
+              versions: [:"tlsv1.2", :"tlsv1.3"]
+            ]
+          ]
+        ]
+      }
     )
 
     try do
@@ -128,19 +124,18 @@ defmodule Finch.HTTP2.IntegrationTest do
   end
 
   test "cancel streaming response", %{url: url} do
-    start_supervised!(
-      {Finch,
-       name: TestFinch,
-       pools: %{
-         default: [
-           protocols: [:http2],
-           conn_opts: [
-             transport_opts: [
-               verify: :verify_none
-             ]
-           ]
-         ]
-       }}
+    TestHelper.start_finch!(
+      name: TestFinch,
+      pools: %{
+        url => [
+          protocols: [:http2],
+          conn_opts: [
+            transport_opts: [
+              verify: :verify_none
+            ]
+          ]
+        ]
+      }
     )
 
     assert catch_throw(
@@ -158,19 +153,18 @@ defmodule Finch.HTTP2.IntegrationTest do
   end
 
   test "cancel completed streaming response", %{url: url} do
-    start_supervised!(
-      {Finch,
-       name: TestFinch,
-       pools: %{
-         default: [
-           protocols: [:http2],
-           conn_opts: [
-             transport_opts: [
-               verify: :verify_none
-             ]
-           ]
-         ]
-       }}
+    TestHelper.start_finch!(
+      name: TestFinch,
+      pools: %{
+        url => [
+          protocols: [:http2],
+          conn_opts: [
+            transport_opts: [
+              verify: :verify_none
+            ]
+          ]
+        ]
+      }
     )
 
     assert catch_throw(

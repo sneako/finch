@@ -13,7 +13,12 @@ defmodule Finch.HTTP2.PoolTest do
   @moduletag :capture_log
 
   setup do
-    start_supervised({Registry, keys: :unique, name: :test})
+    us = self()
+
+    listener = spawn(fn -> listener(us) end)
+    Process.register(listener, __MODULE__)
+
+    start_supervised({Registry, keys: :unique, name: :test, listeners: [__MODULE__]})
 
     request = %{
       scheme: :https,
@@ -25,6 +30,11 @@ defmodule Finch.HTTP2.PoolTest do
       headers: [],
       body: nil
     }
+
+    on_exit(fn ->
+      Process.unregister(__MODULE__)
+      Process.exit(listener, :stop)
+    end)
 
     {:ok, request: request}
   end
@@ -54,8 +64,8 @@ defmodule Finch.HTTP2.PoolTest do
         end)
 
       spawn(fn ->
-        {:ok, resp} = request(pool, req, [])
-        send(us, {:resp, {:ok, resp}})
+        result = request(pool, req, [])
+        send(us, {:resp, result})
       end)
 
       assert_recv_frames([headers(stream_id: stream_id)])
@@ -177,7 +187,13 @@ defmodule Finch.HTTP2.PoolTest do
     test "with wait_for_server_settings: true, request fails with :connection_not_ready until SETTINGS applied then succeeds",
          %{request: req} do
       us = self()
-      server_opts = [defer_settings: true, server_settings: [max_concurrent_streams: 1]]
+
+      server_opts = [
+        assert_registered: false,
+        defer_settings: true,
+        server_settings: [max_concurrent_streams: 1]
+      ]
+
       pool_opts = [wait_for_server_settings?: true]
 
       # Server defers sending SETTINGS so the client stays in :handshaking until we send them.
@@ -309,8 +325,8 @@ defmodule Finch.HTTP2.PoolTest do
 
   describe "async requests" do
     test "sends responses to the caller", %{test: finch_name} do
-      start_finch!(finch_name)
       {:ok, url} = start_server!()
+      start_finch!(finch_name, url)
 
       request_ref =
         Finch.build(:get, url)
@@ -323,8 +339,8 @@ defmodule Finch.HTTP2.PoolTest do
     end
 
     test "sends errors to the caller", %{test: finch_name} do
-      start_finch!(finch_name)
       {:ok, url} = start_server!()
+      start_finch!(finch_name, url)
 
       request_ref =
         Finch.build(:get, url <> "/wait/100")
@@ -334,8 +350,8 @@ defmodule Finch.HTTP2.PoolTest do
     end
 
     test "canceled with cancel_async_request/1", %{test: finch_name} do
-      start_finch!(finch_name)
       {:ok, url} = start_server!()
+      start_finch!(finch_name, url)
 
       ref =
         Finch.build(:get, url <> "/stream/1/50")
@@ -347,8 +363,8 @@ defmodule Finch.HTTP2.PoolTest do
     end
 
     test "canceled if calling process exits normally", %{test: finch_name} do
-      start_finch!(finch_name)
       {:ok, url} = start_server!()
+      start_finch!(finch_name, url)
 
       outer = self()
 
@@ -358,14 +374,22 @@ defmodule Finch.HTTP2.PoolTest do
             Finch.build(:get, url <> "/stream/5/500")
             |> Finch.async_request(finch_name)
 
-          # allow process to exit normally after sending
           send(outer, ref)
+
+          # Stay alive long enough for the assertion to check the request is tracked
+          receive do
+            :continue -> :ok
+          after
+            500 -> :ok
+          end
         end)
 
       assert_receive {Finch.HTTP2.Pool, {pool, _}} = ref
 
       assert {_, %{refs: %{^ref => _}}} = :sys.get_state(pool)
 
+      # Let the spawned process exit normally
+      send(caller, :continue)
       Process.sleep(100)
       refute Process.alive?(caller)
 
@@ -374,8 +398,8 @@ defmodule Finch.HTTP2.PoolTest do
     end
 
     test "canceled if calling process exits abnormally", %{test: finch_name} do
-      start_finch!(finch_name)
       {:ok, url} = start_server!()
+      start_finch!(finch_name, url)
 
       outer = self()
 
@@ -487,21 +511,20 @@ defmodule Finch.HTTP2.PoolTest do
       assert_receive {^ref, {:error, %{reason: {:max_header_list_size_exceeded, _, _}}}}
     end
 
-    defp start_finch!(finch_name) do
-      start_supervised!(
-        {Finch,
-         name: finch_name,
-         pools: %{
-           default: [
-             protocols: [:http2],
-             count: 5,
-             conn_opts: [
-               transport_opts: [
-                 verify: :verify_none
-               ]
-             ]
-           ]
-         }}
+    defp start_finch!(finch_name, url) do
+      Finch.TestHelper.start_finch!(
+        name: finch_name,
+        pools: %{
+          url => [
+            protocols: [:http2],
+            count: 5,
+            conn_opts: [
+              transport_opts: [
+                verify: :verify_none
+              ]
+            ]
+          ]
+        }
       )
     end
 
@@ -717,6 +740,86 @@ defmodule Finch.HTTP2.PoolTest do
 
   @pdict_key {__MODULE__, :http2_test_server}
 
+  describe "pool registration" do
+    test "GOAWAY causes pool to unregister from the registry", %{request: req} do
+      us = self()
+
+      {:ok, pool} = start_server_and_connect_with(fn port -> start_pool(port) end)
+
+      # Pool should be registered after connecting
+      assert [{^pool, _}] = Registry.lookup(:test, :pool_name)
+
+      spawn(fn ->
+        result = request(pool, req, [])
+        send(us, {:resp, result})
+      end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      # Send GOAWAY to enter read_only mode
+      server_send_frames([
+        goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "bye")
+      ])
+
+      assert_unregistered()
+
+      # Complete the pending request
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
+        data(stream_id: stream_id, data: "ok", flags: set_flags(:data, [:end_stream]))
+      ])
+
+      assert_receive {:resp, {:ok, {200, [], "ok"}}}
+
+      assert_unregistered()
+    end
+
+    test "disconnect unregisters and reconnect re-registers", %{request: req} do
+      us = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      # Pool should be registered after connecting
+      assert [{^pool, _}] = Registry.lookup(:test, :pool_name)
+
+      # Close the server socket to force disconnection
+      :ok = :ssl.close(server_socket())
+      assert_unregistered()
+
+      # Accept a new connection on the same listen socket (pool will reconnect)
+      server = Process.get(@pdict_key)
+      server = MockHTTP2Server.accept_socket(server)
+      Process.put(@pdict_key, server)
+
+      assert_registered()
+
+      # Pool should be re-registered after reconnecting
+      assert [{^pool, _}] = Registry.lookup(:test, :pool_name)
+
+      # Verify pool is functional by sending a request
+      spawn(fn ->
+        result = request(pool, req, [])
+        send(us, {:resp, result})
+      end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
+        data(stream_id: stream_id, data: "hello", flags: set_flags(:data, [:end_stream]))
+      ])
+
+      assert_receive {:resp, {:ok, {200, [], "hello"}}}
+    end
+  end
+
   defp request(pool, req, opts) do
     acc = {nil, [], ""}
 
@@ -732,9 +835,23 @@ defmodule Finch.HTTP2.PoolTest do
   defp start_server_and_connect_with(opts \\ [], fun) do
     {result, server} = MockHTTP2Server.start_and_connect_with(opts, fun)
 
+    if false != opts[:assert_registered] do
+      assert_registered()
+    end
+
     Process.put(@pdict_key, server)
 
     result
+  end
+
+  def assert_registered() do
+    assert_receive({:register, _registry, _key, _pid, _})
+    assert [{_, _} | _] = Registry.lookup(:test, :pool_name)
+  end
+
+  defp assert_unregistered() do
+    assert_receive {:unregister, _registry, _key, _pid}
+    assert [] = Registry.lookup(:test, :pool_name)
   end
 
   defp recv_next_frames(n) do
@@ -792,6 +909,14 @@ defmodule Finch.HTTP2.PoolTest do
       :more ->
         assert_receive {:ssl, ^server_socket, more_data}, 500
         receive_ping_frame(server, data <> more_data)
+    end
+  end
+
+  defp listener(us) do
+    receive do
+      msg ->
+        send(us, msg)
+        listener(us)
     end
   end
 end

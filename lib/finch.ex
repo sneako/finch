@@ -277,6 +277,7 @@ defmodule Finch do
 
     config = %{
       registry_name: name,
+      registry_listeners: Keyword.get(opts, :registry_listeners, []),
       supervisor_name: Pool.Manager.supervisor_name(name),
       supervisor_registry_name: Pool.Manager.supervisor_registry_name(name),
       default_pool_config: default_pool_config,
@@ -305,7 +306,7 @@ defmodule Finch do
   def find_pool(name, %Finch.Pool{} = pool) do
     case Pool.Manager.get_pool(name, pool, _start_pool? = false) do
       {pid, _mod} -> {:ok, pid}
-      :not_found -> :error
+      _ -> :error
     end
   end
 
@@ -359,7 +360,11 @@ defmodule Finch do
   @impl true
   def init(config) do
     children = [
-      {Registry, keys: :duplicate, name: config.registry_name, meta: [config: config]},
+      {Registry,
+       keys: :duplicate,
+       name: config.registry_name,
+       listeners: config.registry_listeners,
+       meta: [config: config]},
       {Registry, keys: :unique, name: config.supervisor_registry_name},
       {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
       {Pool.Manager, config}
@@ -644,8 +649,10 @@ defmodule Finch do
   end
 
   defp __stream__(%Request{} = req, name, acc, fun, opts) do
-    {pool, pool_mod} = get_pool(req, name)
-    pool_mod.request(pool, req, acc, fun, name, opts)
+    case get_pool(req, name) do
+      {pool, pool_mod} -> pool_mod.request(pool, req, acc, fun, name, opts)
+      _ -> {:error, Finch.Error.exception(:pool_not_available), acc}
+    end
   end
 
   @doc """
@@ -770,8 +777,10 @@ defmodule Finch do
   """
   @spec async_request(Request.t(), name(), request_opts()) :: request_ref()
   def async_request(%Request{} = req, name, opts \\ []) do
-    {pool, pool_mod} = get_pool(req, name)
-    pool_mod.async_request(pool, req, name, opts)
+    case get_pool(req, name) do
+      {pool, pool_mod} -> pool_mod.async_request(pool, req, name, opts)
+      _ -> raise Finch.Error, :pool_not_available
+    end
   end
 
   @doc """

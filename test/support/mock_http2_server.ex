@@ -3,7 +3,14 @@ defmodule Finch.MockHTTP2Server do
   import ExUnit.Assertions
   alias Mint.HTTP2.Frame
 
-  defstruct [:socket, :encode_table, :decode_table, :pending_settings]
+  defstruct [
+    :socket,
+    :listen_socket,
+    :server_settings,
+    :encode_table,
+    :decode_table,
+    :pending_settings
+  ]
 
   @fixtures_dir Path.expand("../fixtures", __DIR__)
 
@@ -35,6 +42,8 @@ defmodule Finch.MockHTTP2Server do
 
     server = %__MODULE__{
       socket: server_socket,
+      listen_socket: listen_socket,
+      server_settings: server_settings,
       encode_table: HPAX.new(4096),
       decode_table: HPAX.new(4096),
       pending_settings: if(defer_settings?, do: server_settings, else: nil)
@@ -106,6 +115,28 @@ defmodule Finch.MockHTTP2Server do
   @spec get_socket(%__MODULE__{}) :: :ssl.sslsocket()
   def get_socket(server) do
     server.socket
+  end
+
+  @doc """
+  Accept a new connection on the same listen socket (for reconnect tests).
+  Returns a new server struct with fresh HPAX tables and the new socket.
+  """
+  @spec accept_socket(%__MODULE__{}) :: %__MODULE__{}
+  def accept_socket(
+        %__MODULE__{listen_socket: listen_socket, server_settings: server_settings} = server
+      ) do
+    {:ok, socket} = :ssl.transport_accept(listen_socket, 5_000)
+    {:ok, socket} = :ssl.handshake(socket)
+    :ok = perform_http2_handshake(socket, server_settings)
+    :ok = :ssl.setopts(socket, active: true)
+
+    %__MODULE__{
+      server
+      | socket: socket,
+        encode_table: HPAX.new(4096),
+        decode_table: HPAX.new(4096),
+        pending_settings: nil
+    }
   end
 
   defp accept(listen_socket, parent, server_settings, defer_settings?) do
