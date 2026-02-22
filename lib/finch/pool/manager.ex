@@ -88,31 +88,46 @@ defmodule Finch.Pool.Manager do
     :ignore
   end
 
-  @spec get_pool(atom(), Finch.Pool.t()) :: {pid(), module()} | :not_found | :not_ready
-  def get_pool(registry_name, %Finch.Pool{} = pool, start_pool? \\ true) do
+  @spec get_pool(atom(), Finch.Pool.t(), Access.t()) ::
+          {pid(), module()} | :not_found | :not_ready
+  def get_pool(registry_name, %Finch.Pool{} = pool, opts \\ [start_pool?: true]) do
+    start_pool? = Access.get(opts, :start_pool?, true)
+    do_get_pool(registry_name, pool, start_pool?, opts)
+  end
+
+  defp do_get_pool(registry_name, pool, start_pool?, opts) do
     pool_name = Finch.Pool.to_name(pool)
 
     case Registry.lookup(registry_name, pool_name) do
       [] when start_pool? ->
-        maybe_start_pool(registry_name, pool, pool_name)
+        maybe_start_pool(registry_name, pool, pool_name, opts)
 
       [] ->
         :not_found
 
+      [single] ->
+        single
+
       [_ | _] = entries ->
-        Enum.random(entries)
+        select_pool(entries, opts[:pool_strategy])
     end
   end
 
-  @spec maybe_start_pool(atom(), Finch.Pool.t(), term()) ::
+  defp select_pool(entries, nil), do: Enum.random(entries)
+  defp select_pool(entries, {fun, state}) when is_function(fun, 2), do: fun.(entries, state)
+  defp select_pool(entries, {mod, state}) when is_atom(mod), do: mod.select(entries, state)
+  defp select_pool(entries, fun) when is_function(fun, 1), do: fun.(entries)
+  defp select_pool(entries, mod) when is_atom(mod), do: mod.select(entries, nil)
+
+  @spec maybe_start_pool(atom(), Finch.Pool.t(), term(), Access.t()) ::
           {pid(), module()} | :not_found | :not_ready
-  defp maybe_start_pool(registry_name, pool, pool_name) do
+  defp maybe_start_pool(registry_name, pool, pool_name, opts) do
     case Registry.lookup(supervisor_registry_name(registry_name), pool_name) do
       [] ->
         # No supervisor — pool not configured yet, create on demand
         {:ok, config} = Registry.meta(registry_name, :config)
         start_pool(pool, pool_name, config)
-        get_pool(registry_name, pool, false)
+        do_get_pool(registry_name, pool, false, opts)
 
       [_ | _] ->
         # Supervisor exists but no ready workers

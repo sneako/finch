@@ -1926,6 +1926,109 @@ defmodule FinchTest do
     end
   end
 
+  describe "pool strategy" do
+    test "without pool_strategy uses random selection (backwards compatible)", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name, pools: %{default: [count: 3, size: 1]}})
+      expect_any(bypass)
+
+      # Multiple requests without pool_strategy should succeed (random selection)
+      for _ <- 1..10 do
+        assert {:ok, %Response{status: 200}} =
+                 Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+      end
+
+      assert get_pools(finch_name, pool(bypass)) |> length() == 3
+    end
+
+    test "pool_strategy module is also used", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name, pools: %{default: [count: 3, size: 1]}})
+      expect_any(bypass)
+
+      opts = [pool_strategy: Finch.Pool.Strategy.Hash]
+
+      for _ <- 1..3 do
+        assert {:ok, %Response{status: 200}} =
+                 Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name, opts)
+      end
+
+      assert get_pools(finch_name, pool(bypass)) |> length() == 3
+    end
+
+    test "pool_strategy round-robin distributes requests across workers", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name, pools: %{default: [count: 3, size: 1]}})
+      expect_any(bypass)
+
+      counter = Finch.Pool.Strategy.RoundRobin.new()
+      opts = [pool_strategy: {Finch.Pool.Strategy.RoundRobin, counter}]
+
+      for _ <- 1..6 do
+        assert {:ok, %Response{status: 200}} =
+                 Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name, opts)
+      end
+
+      assert get_pools(finch_name, pool(bypass)) |> length() == 3
+    end
+
+    test "pool_strategy custom function is used", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name, pools: %{default: [count: 3, size: 1]}})
+      expect_any(bypass)
+
+      # Always pick the first entry
+      first_entry = fn entries -> hd(entries) end
+      opts = [pool_strategy: first_entry]
+
+      {:ok, %Response{status: 200}} =
+        Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name, opts)
+
+      assert get_pools(finch_name, pool(bypass)) |> length() == 3
+    end
+
+    test "pool_strategy 2-arity function (capture) is used for direct call", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name, pools: %{default: [count: 3, size: 1]}})
+      expect_any(bypass)
+
+      counter = Finch.Pool.Strategy.RoundRobin.new()
+      # Pass &Mod.select/2 + state so manager does fun.(entries, state) instead of mod.select/2
+      opts = [pool_strategy: {&Finch.Pool.Strategy.RoundRobin.select/2, counter}]
+
+      for _ <- 1..3 do
+        assert {:ok, %Response{status: 200}} =
+                 Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name, opts)
+      end
+
+      assert get_pools(finch_name, pool(bypass)) |> length() == 3
+    end
+
+    test "count 1 short-circuits (single worker, no strategy selection)", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name, pools: %{default: [count: 1, size: 1]}})
+      expect_any(bypass)
+
+      # With one worker, strategy is not invoked; request still works
+      counter = Finch.Pool.Strategy.RoundRobin.new()
+      opts = [pool_strategy: {Finch.Pool.Strategy.RoundRobin, counter}]
+
+      {:ok, %Response{status: 200}} =
+        Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name, opts)
+
+      assert get_pools(finch_name, pool(bypass)) |> length() == 1
+    end
+  end
+
   describe "user-managed pools (Finch.Pool.child_spec/1)" do
     test "{Finch.Pool, ...} can be added to a supervision tree", %{
       bypass: bypass,

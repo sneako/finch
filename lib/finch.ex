@@ -140,6 +140,24 @@ defmodule Finch do
           {:pool_timeout, timeout()}
           | {:receive_timeout, timeout()}
           | {:request_timeout, timeout()}
+          | {:pool_strategy, pool_strategy()}
+
+  @typedoc """
+  Pool strategy to choose a pool from a list of pools.
+
+    * `{module, state}` - a module implementing `Finch.Pool.Strategy`
+        (e.g. `{Finch.Pool.Strategy.RoundRobin, counter}`)
+    * `{&module.select/2, state}` - same as above but avoids dynamic dispatch;
+        use for performance-critical paths
+    * `module` - a module implementing `Finch.Pool.Strategy`
+        (e.g. `Finch.Pool.Strategy.Random`) that needs no state: `nil` will be passed as a default
+    * a 1-arity function `fn entries -> chosen end` where `entries` is `nonempty_list(term())`
+  """
+  @type pool_strategy() ::
+          (nonempty_list(term()) -> term())
+          | {(nonempty_list(term()), term() -> term()), term()}
+          | {module(), term()}
+          | module()
 
   @typedoc """
   Options used by request functions.
@@ -310,7 +328,7 @@ defmodule Finch do
   """
   @spec find_pool(name(), Finch.Pool.t()) :: {:ok, pid()} | :error
   def find_pool(name, %Finch.Pool{} = pool) do
-    case Pool.Manager.get_pool(name, pool, _start_pool? = false) do
+    case Pool.Manager.get_pool(name, pool, %{start_pool?: false}) do
       {pid, _mod} -> {:ok, pid}
       _ -> :error
     end
@@ -338,7 +356,7 @@ defmodule Finch do
     if Process.whereis(name) do
       supervisor_registry_name = Pool.Manager.supervisor_registry_name(name)
 
-      case Pool.Manager.get_pool(supervisor_registry_name, pool, false) do
+      case Pool.Manager.get_pool(supervisor_registry_name, pool, %{start_pool?: false}) do
         :not_found ->
           spec = Finch.Pool.child_spec([finch: name, pool: pool] ++ opts)
           supervisor_name = Pool.Manager.supervisor_name(name)
@@ -712,7 +730,7 @@ defmodule Finch do
   end
 
   defp __stream__(%Request{} = req, name, acc, fun, opts) do
-    case get_pool(req, name) do
+    case get_pool(req, name, opts) do
       {pool, pool_mod} -> pool_mod.request(pool, req, acc, fun, name, opts)
       _ -> {:error, Finch.Error.exception(:pool_not_available), acc}
     end
@@ -738,6 +756,8 @@ defmodule Finch do
       it does not guarantee the call will return precisely when the time has elapsed.
       Default value is `:infinity`.
 
+    * `:pool_strategy` - When the pool has multiple workers (`count: N`), selects which worker handles
+      the request. Default is random selection. See `t:pool_strategy/0` for details.
   """
   @spec request(Request.t(), name(), request_opts()) ::
           {:ok, Response.t()}
@@ -846,7 +866,7 @@ defmodule Finch do
   def async_request(%Request{} = req, name, opts \\ []) do
     validate_no_req_body_fun!(req, "Finch.async_request/3")
 
-    case get_pool(req, name) do
+    case get_pool(req, name, opts) do
       {pool, pool_mod} -> pool_mod.async_request(pool, req, name, opts)
       _ -> raise Finch.Error, :pool_not_available
     end
@@ -870,15 +890,15 @@ defmodule Finch do
 
   defp validate_no_req_body_fun!(_req, _caller), do: :ok
 
-  defp get_pool(%Request{scheme: scheme, unix_socket: unix_socket, pool_tag: tag}, name)
+  defp get_pool(%Request{scheme: scheme, unix_socket: unix_socket, pool_tag: tag}, name, opts)
        when is_binary(unix_socket) do
     pool = Finch.Pool.from_name({scheme, {:local, unix_socket}, 0, tag})
-    Pool.Manager.get_pool(name, pool)
+    Pool.Manager.get_pool(name, pool, opts)
   end
 
-  defp get_pool(%Request{scheme: scheme, host: host, port: port, pool_tag: tag}, name) do
+  defp get_pool(%Request{scheme: scheme, host: host, port: port, pool_tag: tag}, name, opts) do
     pool = Finch.Pool.from_name({scheme, host, port, tag})
-    Pool.Manager.get_pool(name, pool)
+    Pool.Manager.get_pool(name, pool, opts)
   end
 
   @doc """
