@@ -932,23 +932,86 @@ defmodule FinchTest do
                |> Finch.stream_while(finch_name, acc, resp_fun)
     end
 
-    test "stream request body with halt on HTTP/1", %{bypass: bypass, finch_name: finch_name} do
+    test "stream request body with halt on HTTP/1", %{finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
 
-      Bypass.stub(bypass, "POST", "/", fn conn ->
-        Plug.Conn.send_resp(conn, 200, "OK")
-      end)
+      # We don't use Bypass because when the client halts and closes the connection,
+      # Bypass would crash trying to write response to dead socket.
+      {:ok, listen_sock} =
+        MockSocketServer.start(
+          handler: fn transport, socket ->
+            # Send response regardless of whether the client has halted yet;
+            # ignore errors since the client may have already closed the connection.
+            _ = transport.send(socket, "HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nOK")
+          end
+        )
+
+      {:ok, port} = :inet.port(listen_sock)
+
+      acc = 1
 
       req_fun = fn
-        2 -> {:halt, :halted}
-        count -> {:data, "#{count}", count + 1}
+        1 ->
+          {:data, "chunk1", 2}
+
+        2 ->
+          {:halt, :halted}
       end
 
       resp_fun = fn _, acc -> {:cont, acc} end
 
       assert {:ok, :halted} =
-               Finch.build(:post, endpoint(bypass), [], {:stream, req_fun})
-               |> Finch.stream_while(finch_name, 0, resp_fun)
+               Finch.build(:post, "http://localhost:#{port}", [], {:stream, req_fun})
+               |> Finch.stream_while(finch_name, acc, resp_fun)
+    end
+
+    test "stream request body error when connection closes mid-stream on HTTP/1",
+         %{finch_name: finch_name, test_pid: test_pid} do
+      start_supervised!({Finch, name: finch_name})
+
+      # We can't use Bypass or MockSocketServer here: both read the full request before
+      # responding, but we need to stop reading mid-flight, RST the connection, and
+      # synchronize with the client to guarantee the error surfaces during body streaming.
+      {:ok, listen_sock} = :gen_tcp.listen(0, mode: :binary, active: false, reuseaddr: true)
+      {:ok, port} = :inet.port(listen_sock)
+
+      Task.start_link(fn ->
+        expected_payload = """
+        POST / HTTP/1.1\r
+        transfer-encoding: chunked\r
+        host: localhost:#{port}\r
+        user-agent: mint/#{Application.spec(:mint, :vsn)}\r
+        \r
+        """
+
+        {:ok, sock} = :gen_tcp.accept(listen_sock)
+        {:ok, ^expected_payload} = :gen_tcp.recv(sock, byte_size(expected_payload))
+
+        {:ok, "6\r\nchunk1\r\n"} = :gen_tcp.recv(sock, 0)
+
+        :inet.setopts(sock, linger: {true, 0})
+        :ok = :gen_tcp.close(sock)
+        send(test_pid, :server_closed)
+      end)
+
+      acc = 1
+
+      req_fun = fn
+        1 ->
+          {:data, "chunk1", 2}
+
+        2 ->
+          assert_receive :server_closed
+          {:data, "chunk2", 3}
+      end
+
+      resp_fun = fn _, acc ->
+        {:cont, acc}
+      end
+
+      assert {:error, %Mint.TransportError{reason: :closed}, 3} =
+               Finch.build(:post, "http://localhost:#{port}", [], {:stream, req_fun})
+               |> Finch.stream_while(finch_name, acc, resp_fun)
     end
 
     test "stream request body with invalid return on HTTP/1", %{

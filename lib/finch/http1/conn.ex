@@ -146,7 +146,7 @@ defmodule Finch.HTTP1.Conn do
               conn = close(%{conn | mint: mint})
               {:ok, conn, acc}
 
-            {:error, mint, error} ->
+            {:error, mint, error, acc} ->
               handle_request_error(
                 conn,
                 mint,
@@ -179,30 +179,37 @@ defmodule Finch.HTTP1.Conn do
   end
 
   defp maybe_stream_request_body(mint, ref, {:stream, stream}, acc) do
-    with {:ok, mint, acc} <- stream_request_body(mint, ref, stream, acc),
-         {:ok, mint} <- Mint.HTTP.stream_request_body(mint, ref, :eof) do
-      {:ok, mint, acc}
+    with {:ok, mint, acc} <- stream_request_body(mint, ref, stream, acc) do
+      case Mint.HTTP.stream_request_body(mint, ref, :eof) do
+        {:ok, mint} ->
+          {:ok, mint, acc}
+
+        {:error, mint, reason} ->
+          {:error, mint, reason, acc}
+      end
     end
   end
 
-  defp maybe_stream_request_body(mint, _, _, acc), do: {:ok, mint, acc}
+  defp maybe_stream_request_body(mint, _, _, acc) do
+    {:ok, mint, acc}
+  end
 
   defp stream_request_body(mint, ref, req_body_fun, acc) when is_function(req_body_fun, 1) do
     case req_body_fun.(acc) do
-      {:data, chunk, new_acc} ->
+      {:data, chunk, acc} ->
         case Mint.HTTP.stream_request_body(mint, ref, chunk) do
           {:ok, mint} ->
-            stream_request_body(mint, ref, req_body_fun, new_acc)
+            stream_request_body(mint, ref, req_body_fun, acc)
 
-          {:error, _, _} = error ->
-            error
+          {:error, mint, reason} ->
+            {:error, mint, reason, acc}
         end
 
-      {:cont, final_acc} ->
-        {:ok, mint, final_acc}
+      {:cont, acc} ->
+        {:ok, mint, acc}
 
-      {:halt, final_acc} ->
-        {:halt, mint, final_acc}
+      {:halt, acc} ->
+        {:halt, mint, acc}
 
       other ->
         raise "expected req_body_fun to return {:data, chunk, acc}, {:cont, acc}, or {:halt, acc}, got: #{inspect(other)}"
@@ -220,8 +227,11 @@ defmodule Finch.HTTP1.Conn do
       end)
 
     case result do
-      {:ok, mint} -> {:ok, mint, acc}
-      error -> error
+      {:ok, mint} ->
+        {:ok, mint, acc}
+
+      {:error, mint, reason} ->
+        {:error, mint, reason, acc}
     end
   end
 
