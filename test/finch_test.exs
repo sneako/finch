@@ -937,7 +937,7 @@ defmodule FinchTest do
 
       # We don't use Bypass because when the client halts and closes the connection,
       # Bypass would crash trying to write response to dead socket.
-      {:ok, listen_sock} =
+      {:ok, %{url: url}} =
         MockSocketServer.start(
           handler: fn transport, socket ->
             # Send response regardless of whether the client has halted yet;
@@ -945,8 +945,6 @@ defmodule FinchTest do
             _ = transport.send(socket, "HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nOK")
           end
         )
-
-      {:ok, port} = :inet.port(listen_sock)
 
       acc = 1
 
@@ -961,7 +959,7 @@ defmodule FinchTest do
       resp_fun = fn _, acc -> {:cont, acc} end
 
       assert {:ok, :halted} =
-               Finch.build(:post, "http://localhost:#{port}", [], {:stream, req_fun})
+               Finch.build(:post, url, [], {:stream, req_fun})
                |> Finch.stream_while(finch_name, acc, resp_fun)
     end
 
@@ -1022,7 +1020,7 @@ defmodule FinchTest do
 
       # We don't use Bypass because when the client halts and closes the connection,
       # Bypass would crash trying to write response to dead socket.
-      {:ok, listen_sock} =
+      {:ok, %{url: url}} =
         MockSocketServer.start(
           handler: fn transport, socket ->
             # Send response regardless of whether the client has halted yet;
@@ -1031,15 +1029,13 @@ defmodule FinchTest do
           end
         )
 
-      {:ok, port} = :inet.port(listen_sock)
-
       req_fun = fn _acc -> :oops end
       resp_fun = fn _, _ -> raise "unreachable" end
 
       assert_raise RuntimeError,
                    "expected req_body_fun to return {:data, chunk, acc}, {:cont, acc}, or {:halt, acc}, got: :oops",
                    fn ->
-                     Finch.build(:post, "http://localhost:#{port}", [], {:stream, req_fun})
+                     Finch.build(:post, url, [], {:stream, req_fun})
                      |> Finch.stream_while(finch_name, 0, resp_fun)
                    end
     end

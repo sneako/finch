@@ -105,9 +105,7 @@ defmodule Finch.HTTP1.IntegrationTest do
       :ok = transport.send(socket, data)
     end
 
-    {:ok, socket} = Finch.MockSocketServer.start(socket: {nil, []}, handler: handler)
-    {:ok, port} = :inet.port(socket)
-    url = "http://localhost:#{port}"
+    {:ok, %{url: url}} = Finch.MockSocketServer.start(socket: {nil, []}, handler: handler)
 
     start_supervised!(
       {Finch,
