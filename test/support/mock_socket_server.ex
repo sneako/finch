@@ -28,7 +28,21 @@ defmodule Finch.MockSocketServer do
       serve(transport, client, handler)
     end)
 
-    {:ok, socket}
+    url =
+      case {transport, address} do
+        {:gen_tcp, nil} ->
+          {:ok, port} = :inet.port(socket)
+          "http://localhost:#{port}"
+
+        {:ssl, nil} ->
+          {:ok, port} = :inet.port(socket)
+          "https://localhost:#{port}"
+
+        _ ->
+          nil
+      end
+
+    {:ok, %{url: url}}
   end
 
   defp listen(transport, nil) do

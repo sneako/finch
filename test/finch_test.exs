@@ -897,6 +897,149 @@ defmodule FinchTest do
                |> Finch.stream_while(finch_name, acc, fun)
     end
 
+    test "stream request body with acc on HTTP/1", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert Plug.Conn.get_http_protocol(conn) == :"HTTP/1.1"
+        {:ok, "012", conn} = Plug.Conn.read_body(conn)
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      acc = 0
+
+      req_fun = fn
+        3 ->
+          {:cont, {nil, [], ""}}
+
+        count ->
+          {:data, "#{count}", count + 1}
+      end
+
+      resp_fun = fn
+        {:status, value}, {_, headers, body} ->
+          {:cont, {value, headers, body}}
+
+        {:headers, value}, {status, headers, body} ->
+          {:cont, {status, headers ++ value, body}}
+
+        {:data, value}, {status, headers, body} ->
+          {:cont, {status, headers, body <> value}}
+      end
+
+      assert {:ok, {200, [_ | _], "OK"}} =
+               Finch.build(:post, endpoint(bypass), [], {:stream, req_fun})
+               |> Finch.stream_while(finch_name, acc, resp_fun)
+    end
+
+    test "stream request body with halt on HTTP/1", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      # We don't use Bypass because when the client halts and closes the connection,
+      # Bypass would crash trying to write response to dead socket.
+      {:ok, %{url: url}} =
+        MockSocketServer.start(
+          handler: fn transport, socket ->
+            # Send response regardless of whether the client has halted yet;
+            # ignore errors since the client may have already closed the connection.
+            _ = transport.send(socket, "HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nOK")
+          end
+        )
+
+      acc = 1
+
+      req_fun = fn
+        1 ->
+          {:data, "chunk1", 2}
+
+        2 ->
+          {:halt, :halted}
+      end
+
+      resp_fun = fn _, acc -> {:cont, acc} end
+
+      assert {:ok, :halted} =
+               Finch.build(:post, url, [], {:stream, req_fun})
+               |> Finch.stream_while(finch_name, acc, resp_fun)
+    end
+
+    test "stream request body error when connection closes mid-stream on HTTP/1",
+         %{finch_name: finch_name} do
+      test_pid = self()
+      start_supervised!({Finch, name: finch_name})
+
+      # We can't use Bypass or MockSocketServer here: both read the full request before
+      # responding, but we need to stop reading mid-flight, RST the connection, and
+      # synchronize with the client to guarantee the error surfaces during body streaming.
+      {:ok, listen_sock} = :gen_tcp.listen(0, mode: :binary, active: false, reuseaddr: true)
+      {:ok, port} = :inet.port(listen_sock)
+
+      Task.start_link(fn ->
+        expected_payload = """
+        POST / HTTP/1.1\r
+        transfer-encoding: chunked\r
+        host: localhost:#{port}\r
+        user-agent: mint/#{Application.spec(:mint, :vsn)}\r
+        \r
+        """
+
+        {:ok, sock} = :gen_tcp.accept(listen_sock)
+        {:ok, ^expected_payload} = :gen_tcp.recv(sock, byte_size(expected_payload))
+
+        {:ok, "6\r\nchunk1\r\n"} = :gen_tcp.recv(sock, 0)
+
+        :inet.setopts(sock, linger: {true, 0})
+        :ok = :gen_tcp.close(sock)
+        send(test_pid, :server_closed)
+      end)
+
+      acc = 1
+
+      req_fun = fn
+        1 ->
+          {:data, "chunk1", 2}
+
+        2 ->
+          assert_receive :server_closed
+          {:data, "chunk2", 3}
+      end
+
+      resp_fun = fn _, acc ->
+        {:cont, acc}
+      end
+
+      assert {:error, %Mint.TransportError{reason: :closed}, 3} =
+               Finch.build(:post, "http://localhost:#{port}", [], {:stream, req_fun})
+               |> Finch.stream_while(finch_name, acc, resp_fun)
+    end
+
+    test "stream request body with invalid return on HTTP/1", %{
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      # We don't use Bypass because when the client halts and closes the connection,
+      # Bypass would crash trying to write response to dead socket.
+      {:ok, %{url: url}} =
+        MockSocketServer.start(
+          handler: fn transport, socket ->
+            # Send response regardless of whether the client has halted yet;
+            # ignore errors since the client may have already closed the connection.
+            _ = transport.send(socket, "HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nOK")
+          end
+        )
+
+      req_fun = fn _acc -> :oops end
+      resp_fun = fn _, _ -> raise "unreachable" end
+
+      assert_raise RuntimeError,
+                   "expected req_body_fun to return {:data, chunk, acc}, {:cont, acc}, or {:halt, acc}, got: :oops",
+                   fn ->
+                     Finch.build(:post, url, [], {:stream, req_fun})
+                     |> Finch.stream_while(finch_name, 0, resp_fun)
+                   end
+    end
+
     test "invalid return value on HTTP/1", %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
 
@@ -998,6 +1141,31 @@ defmodule FinchTest do
                |> Finch.stream_while(finch_name, acc, fun)
 
       Process.sleep(1000)
+    end
+
+    test "stream request body with acc on HTTP/2 raises", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocols: [:http2]
+           ]
+         }}
+      )
+
+      req_fun = fn count -> {:cont, "#{count}", count + 1} end
+      resp_fun = fn _, acc -> {:cont, acc} end
+
+      assert_raise ArgumentError,
+                   "{:stream, req_body_fun} is not yet supported on HTTP/2 pools",
+                   fn ->
+                     Finch.build(:post, endpoint(bypass), [], {:stream, req_fun})
+                     |> Finch.stream_while(finch_name, 0, resp_fun)
+                   end
     end
 
     test "invalid return value on HTTP/2", %{bypass: bypass, finch_name: finch_name} do
@@ -1151,6 +1319,19 @@ defmodule FinchTest do
   end
 
   describe "async_request/3 with HTTP/1" do
+    test "raises when using request body accumulator function", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      req_fun = fn count -> {:cont, "#{count}", count + 1} end
+
+      assert_raise ArgumentError,
+                   "streaming request body with an accumulator function is not supported in Finch.async_request/3, use Finch.stream_while/5 instead",
+                   fn ->
+                     Finch.build(:post, "https://example.com", [], {:stream, req_fun})
+                     |> Finch.async_request(finch_name)
+                   end
+    end
+
     test "sends response messages to calling process", %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
 
@@ -1160,6 +1341,30 @@ defmodule FinchTest do
 
       request_ref =
         Finch.build(:get, endpoint(bypass))
+        |> Finch.async_request(finch_name)
+
+      assert_receive {^request_ref, {:status, 200}}
+      assert_receive {^request_ref, {:headers, headers}} when is_list(headers)
+      assert_receive {^request_ref, {:data, "OK"}}
+      assert_receive {^request_ref, :done}
+    end
+
+    test "supports streaming request body from enumerable", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      req_stream = Stream.map(1..3, &Integer.to_string/1)
+
+      Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert Plug.Conn.get_http_protocol(conn) == :"HTTP/1.1"
+        assert {:ok, "123", conn} = Plug.Conn.read_body(conn)
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request_ref =
+        Finch.build(:post, endpoint(bypass), [], {:stream, req_stream})
         |> Finch.async_request(finch_name)
 
       assert_receive {^request_ref, {:status, 200}}
@@ -1190,6 +1395,40 @@ defmodule FinchTest do
       assert_receive {^request_ref, {:status, 200}}
       assert_receive {^request_ref, {:headers, headers}} when is_list(headers)
       for _ <- 1..5, do: assert_receive({^request_ref, {:data, "chunk-data"}})
+      assert_receive {^request_ref, :done}
+    end
+  end
+
+  describe "async_request/3 with HTTP/2" do
+    test "supports streaming request body from enumerable", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{
+           default: [
+             protocols: [:http2]
+           ]
+         }}
+      )
+
+      req_stream = Stream.map(1..3, &Integer.to_string/1)
+
+      Bypass.expect_once(bypass, "POST", "/", fn conn ->
+        assert Plug.Conn.get_http_protocol(conn) == :"HTTP/2"
+        assert {:ok, "123", conn} = Plug.Conn.read_body(conn)
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      request_ref =
+        Finch.build(:post, endpoint(bypass), [], {:stream, req_stream})
+        |> Finch.async_request(finch_name)
+
+      assert_receive {^request_ref, {:status, 200}}
+      assert_receive {^request_ref, {:headers, headers}} when is_list(headers)
+      assert_receive {^request_ref, {:data, "OK"}}
       assert_receive {^request_ref, :done}
     end
   end
