@@ -198,7 +198,7 @@ defmodule Finch do
   The request body function used with `{:stream, req_body_fun}` in `build/5`.
   """
   @type req_body_fun(acc) ::
-          (acc -> {:data, iodata(), acc} | {:cont, acc} | {:halt, acc})
+          (acc -> {:data, binary(), acc} | {:cont, acc} | {:halt, acc})
 
   @doc """
   Start an instance of Finch.
