@@ -107,20 +107,16 @@ defmodule Finch.Pool.Manager do
   @spec maybe_start_pool(atom(), Finch.Pool.t(), term()) ::
           {pid(), module()} | :not_found | :not_ready
   defp maybe_start_pool(registry_name, pool, pool_name) do
-    if Process.whereis(registry_name) do
-      case Registry.lookup(supervisor_registry_name(registry_name), pool_name) do
-        [] ->
-          # No supervisor — pool not configured yet, create on demand
-          {:ok, config} = Registry.meta(registry_name, :config)
-          start_pool(pool, pool_name, config)
-          get_pool(registry_name, pool, false)
+    case Registry.lookup(supervisor_registry_name(registry_name), pool_name) do
+      [] ->
+        # No supervisor — pool not configured yet, create on demand
+        {:ok, config} = Registry.meta(registry_name, :config)
+        start_pool(pool, pool_name, config)
+        get_pool(registry_name, pool, false)
 
-        [_ | _] ->
-          # Supervisor exists but no ready workers
-          :not_ready
-      end
-    else
-      :not_found
+      [_ | _] ->
+        # Supervisor exists but no ready workers
+        :not_ready
     end
   end
 
