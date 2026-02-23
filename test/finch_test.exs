@@ -966,7 +966,8 @@ defmodule FinchTest do
     end
 
     test "stream request body error when connection closes mid-stream on HTTP/1",
-         %{finch_name: finch_name, test_pid: test_pid} do
+         %{finch_name: finch_name} do
+      test_pid = self()
       start_supervised!({Finch, name: finch_name})
 
       # We can't use Bypass or MockSocketServer here: both read the full request before
