@@ -205,14 +205,14 @@ defmodule Finch.HTTP1.Conn do
             {:error, mint, reason, acc}
         end
 
-      {:cont, acc} ->
+      {:done, acc} ->
         {:ok, mint, acc}
 
       {:halt, acc} ->
         {:halt, mint, acc}
 
       other ->
-        raise "expected req_body_fun to return {:data, chunk, acc}, {:cont, acc}, or {:halt, acc}, got: #{inspect(other)}"
+        raise "expected req_body_fun to return {:data, chunk, acc}, {:done, acc}, or {:halt, acc}, got: #{inspect(other)}"
     end
   end
 
