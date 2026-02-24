@@ -909,11 +909,11 @@ defmodule FinchTest do
       acc = 0
 
       req_fun = fn
-        3 ->
-          {:cont, {nil, [], ""}}
-
-        count ->
+        count when count < 3 ->
           {:data, "#{count}", count + 1}
+
+        3 ->
+          {:done, {nil, [], ""}}
       end
 
       resp_fun = fn
@@ -1033,7 +1033,7 @@ defmodule FinchTest do
       resp_fun = fn _, _ -> raise "unreachable" end
 
       assert_raise RuntimeError,
-                   "expected req_body_fun to return {:data, chunk, acc}, {:cont, acc}, or {:halt, acc}, got: :oops",
+                   "expected req_body_fun to return {:data, chunk, acc}, {:done, acc}, or {:halt, acc}, got: :oops",
                    fn ->
                      Finch.build(:post, url, [], {:stream, req_fun})
                      |> Finch.stream_while(finch_name, 0, resp_fun)
