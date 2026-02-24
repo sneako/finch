@@ -80,23 +80,43 @@ defmodule Finch.Pool.Manager do
 
   @impl true
   def init(config) do
-    Enum.each(config.pools, fn {pool, _} -> start_pool(pool, config) end)
+    Enum.each(config.pools, fn {pool, _} ->
+      pool_name = Finch.Pool.to_name(pool)
+      start_pool(pool, pool_name, config)
+    end)
+
     :ignore
   end
 
-  @spec get_pool(atom(), Finch.Pool.t()) :: {pid(), module()} | :not_found
+  @spec get_pool(atom(), Finch.Pool.t()) :: {pid(), module()} | :not_found | :not_ready
   def get_pool(registry_name, %Finch.Pool{} = pool, start_pool? \\ true) do
-    case Registry.lookup(registry_name, Finch.Pool.to_name(pool)) do
+    pool_name = Finch.Pool.to_name(pool)
+
+    case Registry.lookup(registry_name, pool_name) do
       [] when start_pool? ->
-        {:ok, config} = Registry.meta(registry_name, :config)
-        start_pool(pool, config)
-        get_pool(registry_name, pool, false)
+        maybe_start_pool(registry_name, pool, pool_name)
 
       [] ->
         :not_found
 
       [_ | _] = entries ->
         Enum.random(entries)
+    end
+  end
+
+  @spec maybe_start_pool(atom(), Finch.Pool.t(), term()) ::
+          {pid(), module()} | :not_found | :not_ready
+  defp maybe_start_pool(registry_name, pool, pool_name) do
+    case Registry.lookup(supervisor_registry_name(registry_name), pool_name) do
+      [] ->
+        # No supervisor — pool not configured yet, create on demand
+        {:ok, config} = Registry.meta(registry_name, :config)
+        start_pool(pool, pool_name, config)
+        get_pool(registry_name, pool, false)
+
+      [_ | _] ->
+        # Supervisor exists but no ready workers
+        :not_ready
     end
   end
 
@@ -139,8 +159,7 @@ defmodule Finch.Pool.Manager do
 
   ## Callbacks
 
-  defp start_pool(pool, config) do
-    pool_name = Finch.Pool.to_name(pool)
+  defp start_pool(pool, pool_name, config) do
     pool_config = pool_config(config, pool)
     track_default? = pool_config.start_pool_metrics? and not Map.has_key?(config.pools, pool)
 
