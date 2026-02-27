@@ -153,11 +153,19 @@ defmodule Finch do
         (e.g. `Finch.Pool.Strategy.Random`) that needs no state: `nil` will be passed as a default
     * a 1-arity function `fn entries -> chosen end` where `entries` is `nonempty_list(term())`
   """
+
+  @type pool_strategy_state() :: term()
+  @type pool_strategy_module() :: module()
+  @type pool_strategy_module_with_state() :: {module(), pool_strategy_state()}
+  @type pool_strategy_fun() :: (nonempty_list(term()) -> term())
+  @type pool_strategy_fun_with_state() ::
+          {(nonempty_list(term()), pool_strategy_state() -> term()), pool_strategy_state()}
+
   @type pool_strategy() ::
-          (nonempty_list(term()) -> term())
-          | {(nonempty_list(term()), term() -> term()), term()}
-          | {module(), term()}
-          | module()
+          pool_strategy_fun()
+          | pool_strategy_fun_with_state()
+          | pool_strategy_module_with_state()
+          | pool_strategy_module()
 
   @typedoc """
   Options used by request functions.
