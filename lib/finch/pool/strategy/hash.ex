@@ -29,11 +29,8 @@ defmodule Finch.Pool.Strategy.Hash do
 
   @impl Finch.Pool.Strategy
   @spec new() :: term()
-  def new(), do: self()
-
-  @impl Finch.Pool.Strategy
   @spec new(key :: term()) :: term()
-  def new(key), do: key
+  def new(key \\ self()), do: key
 
   @impl Finch.Pool.Strategy
   def select(entries, key) do
