@@ -63,6 +63,10 @@ it is requested using the `:default` configuration. This means given the pool
 configuration above each origin/`{scheme, host, port}` will launch 2 (`:count`) new pool
 processes. So, if you encountered 10 separate combinations, that'd be 20 pool processes.
 
+For how `:size` and `:count` interact on HTTP/1, how workers are chosen when `:count` is
+greater than 1 (including the `:pool_strategy` request option), see the **Pool Configuration
+Options** and **Multiple workers** sections in `Finch.start_link/1`.
+
 ### Pool Tagging
 
 Finch supports pool tagging, which allows you to create separate pools for the same

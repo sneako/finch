@@ -18,7 +18,9 @@ defmodule Finch.Pool.Strategy do
       Finch.request(req, MyFinch, pool_strategy: {&Finch.Pool.Strategy.RoundRobin.select/2, counter})
 
       # Hash-based (same key always maps to same worker; useful for connection affinity)
-      Finch.request(req, MyFinch, pool_strategy: {Finch.Pool.Strategy.HashBased, team_id})
+      Finch.request(req, MyFinch, pool_strategy: {Finch.Pool.Strategy.Hash, team_id})
+
+  Built-in strategies: `Finch.Pool.Strategy.Random`, `Finch.Pool.Strategy.RoundRobin`, `Finch.Pool.Strategy.Hash`.
 
   ## Custom strategy
 
@@ -53,7 +55,7 @@ defmodule Finch.Pool.Strategy do
   @callback new() :: term()
 
   @doc """
-  Optional. Returns initial state for strategies that take a key or option (e.g. HashBased).
+  Optional. Returns initial state for strategies that take a key or option (e.g. Hash).
   """
   @callback new(term()) :: term()
   @optional_callbacks new: 0, new: 1
