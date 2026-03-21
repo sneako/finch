@@ -2200,6 +2200,96 @@ defmodule FinchTest do
     end
   end
 
+  describe "get_pool_count/2 and set_pool_count/3" do
+    test "get_pool_count returns current count", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{endpoint(bypass) => [count: 2, size: 5]}}
+      )
+
+      assert {:ok, 2} = Finch.get_pool_count(finch_name, endpoint(bypass))
+    end
+
+    test "get_pool_count returns not_found for unknown pool", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+      assert {:error, :not_found} = Finch.get_pool_count(finch_name, "http://unknown:9999")
+    end
+
+    test "scale up workers", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{endpoint(bypass) => [count: 1, size: 5]}}
+      )
+
+      expect_any(bypass)
+      assert {:ok, 1} = Finch.get_pool_count(finch_name, endpoint(bypass))
+
+      assert :ok = Finch.set_pool_count(finch_name, endpoint(bypass), 3)
+      assert {:ok, 3} = Finch.get_pool_count(finch_name, endpoint(bypass))
+
+      # Requests still work after scale up
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+    end
+
+    test "scale down workers", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{endpoint(bypass) => [count: 3, size: 5]}}
+      )
+
+      expect_any(bypass)
+      assert {:ok, 3} = Finch.get_pool_count(finch_name, endpoint(bypass))
+
+      assert :ok = Finch.set_pool_count(finch_name, endpoint(bypass), 1)
+      assert {:ok, 1} = Finch.get_pool_count(finch_name, endpoint(bypass))
+
+      # Requests still work after scale down
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+    end
+
+    test "same count is a no-op", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{endpoint(bypass) => [count: 2, size: 5]}}
+      )
+
+      assert :ok = Finch.set_pool_count(finch_name, endpoint(bypass), 2)
+      assert {:ok, 2} = Finch.get_pool_count(finch_name, endpoint(bypass))
+    end
+
+    test "set_pool_count returns not_found for unknown pool", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+      assert {:error, :not_found} = Finch.set_pool_count(finch_name, "http://unknown:9999", 2)
+    end
+
+    test "scale up and down with pool status", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{endpoint(bypass) => [count: 1, size: 5, start_pool_metrics?: true]}}
+      )
+
+      expect_any(bypass)
+
+      # Scale up
+      assert :ok = Finch.set_pool_count(finch_name, endpoint(bypass), 3)
+      assert {:ok, 3} = Finch.get_pool_count(finch_name, endpoint(bypass))
+
+      # Pool status works after resize
+      assert {:ok, metrics} = Finch.get_pool_status(finch_name, endpoint(bypass))
+      assert length(metrics) == 3
+
+      # Scale back down
+      assert :ok = Finch.set_pool_count(finch_name, endpoint(bypass), 2)
+      assert {:ok, 2} = Finch.get_pool_count(finch_name, endpoint(bypass))
+
+      assert {:ok, metrics} = Finch.get_pool_status(finch_name, endpoint(bypass))
+      assert length(metrics) == 2
+
+      # Requests work
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+    end
+  end
+
   defp get_pools(name, pool) do
     Registry.lookup(name, Finch.Pool.to_name(pool))
   end

@@ -16,19 +16,45 @@ defmodule Finch.Pool.Supervisor do
     end
 
     specs =
-      Enum.map(1..pool_config.count, fn pool_idx ->
-        pool_args = {pool, pool_name, registry_name, pool_config, pool_idx}
-
-        # If the children are transient or temporary, then we want to propagate shutdown up
-        case Supervisor.child_spec({pool_config.mod, pool_args}, id: pool_idx) do
-          %{restart: restart} = spec when restart in [:transient, :temporary] ->
-            Map.put(spec, :significant, true)
-
-          spec ->
-            spec
-        end
-      end)
+      Enum.map(1..pool_config.count, &build_child_spec(pool, registry_name, pool_config, &1))
 
     Supervisor.init(specs, auto_shutdown: :all_significant, strategy: :one_for_one)
+  end
+
+  def set_count(sup_pid, pool, registry_name, pool_config, old_count, new_count) do
+    cond do
+      new_count > old_count ->
+        for pool_idx <- (old_count + 1)..new_count do
+          spec = build_child_spec(pool, registry_name, pool_config, pool_idx)
+          Supervisor.start_child(sup_pid, spec)
+        end
+
+        :ok
+
+      new_count < old_count ->
+        for pool_idx <- old_count..(new_count + 1)//-1 do
+          Supervisor.terminate_child(sup_pid, pool_idx)
+          Supervisor.delete_child(sup_pid, pool_idx)
+        end
+
+        :ok
+
+      true ->
+        :ok
+    end
+  end
+
+  defp build_child_spec(pool, registry_name, pool_config, pool_idx) do
+    pool_name = Finch.Pool.to_name(pool)
+    pool_args = {pool, pool_name, registry_name, pool_config, pool_idx}
+
+    # If the children are transient or temporary, then we want to propagate shutdown up
+    case Supervisor.child_spec({pool_config.mod, pool_args}, id: pool_idx) do
+      %{restart: restart} = spec when restart in [:transient, :temporary] ->
+        Map.put(spec, :significant, true)
+
+      spec ->
+        spec
+    end
   end
 end

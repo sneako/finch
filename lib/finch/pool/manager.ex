@@ -136,7 +136,7 @@ defmodule Finch.Pool.Manager do
   end
 
   @spec get_pool_supervisor(Finch.name(), Finch.Pool.t()) ::
-          {pid(), pool_name(), module(), pos_integer()} | :not_found
+          {pid(), pool_name(), module(), pos_integer(), map()} | :not_found
   def get_pool_supervisor(finch_name, %Finch.Pool{} = pool) do
     pool_name = Finch.Pool.to_name(pool)
 
@@ -144,8 +144,18 @@ defmodule Finch.Pool.Manager do
     # This prevents atom creation when checking non-existent instances.
     if Process.whereis(finch_name) do
       case Registry.lookup(supervisor_registry_name(finch_name), pool_name) do
-        [] -> :not_found
-        [{pid, {pool_mod, pool_count}}] -> {pid, pool_name, pool_mod, pool_count}
+        [] ->
+          :not_found
+
+        [{pid, {pool_mod, _pool_count, pool_config}}] ->
+          # Derive current worker count from supervisor children for accurate
+          # count after runtime resize via set_pool_count/3
+          try do
+            pool_count = Supervisor.count_children(pid).workers
+            {pid, pool_name, pool_mod, pool_count, pool_config}
+          catch
+            :exit, _ -> :not_found
+          end
       end
     else
       :not_found
@@ -163,7 +173,7 @@ defmodule Finch.Pool.Manager do
     {:ok, config} = Registry.meta(finch_name, :config)
     pool_name = Finch.Pool.to_name(pool)
     pool_config = sanitize_pool_config(opts, pool)
-    data = {pool_config.mod, pool_config.count}
+    data = {pool_config.mod, pool_config.count, pool_config}
     name = {:via, Registry, {config.supervisor_registry_name, pool_name, data}}
 
     Supervisor.child_spec(
@@ -172,13 +182,24 @@ defmodule Finch.Pool.Manager do
     )
   end
 
+  @spec set_pool_count(Finch.name(), Finch.Pool.t(), pos_integer()) :: :ok | {:error, term()}
+  def set_pool_count(finch_name, %Finch.Pool{} = pool, count) do
+    case get_pool_supervisor(finch_name, pool) do
+      :not_found ->
+        {:error, :not_found}
+
+      {pid, _pool_name, _pool_mod, old_count, pool_config} ->
+        Finch.Pool.Supervisor.set_count(pid, pool, finch_name, pool_config, old_count, count)
+    end
+  end
+
   ## Callbacks
 
   defp start_pool(pool, pool_name, config) do
     pool_config = pool_config(config, pool)
     track_default? = pool_config.start_pool_metrics? and not Map.has_key?(config.pools, pool)
 
-    data = {pool_config.mod, pool_config.count}
+    data = {pool_config.mod, pool_config.count, pool_config}
     name = {:via, Registry, {config.supervisor_registry_name, pool_name, data}}
 
     config.supervisor_name

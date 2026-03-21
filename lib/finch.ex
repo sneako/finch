@@ -1022,7 +1022,7 @@ defmodule Finch do
     pool = resolve_pool(pool_identifier)
 
     case Pool.Manager.get_pool_supervisor(finch_name, pool) do
-      {_pid, pool_name, pool_mod, pool_count} ->
+      {_pid, pool_name, pool_mod, pool_count, _pool_config} ->
         pool_mod.get_pool_status(finch_name, pool_name, pool_count)
 
       :not_found ->
@@ -1078,8 +1078,45 @@ defmodule Finch do
 
     case Pool.Manager.get_pool_supervisor(finch_name, pool) do
       :not_found -> {:error, :not_found}
-      {pid, _pool_name, _pool_mod, _pool_count} -> Supervisor.stop(pid)
+      {pid, _pool_name, _pool_mod, _pool_count, _pool_config} -> Supervisor.stop(pid)
     end
+  end
+
+  @doc """
+  Returns the current worker count for the given pool.
+
+  Returns `{:ok, count}` if the pool exists, `{:error, :not_found}` otherwise.
+
+  ## Examples
+
+      {:ok, count} = Finch.get_pool_count(MyFinch, "https://example.com")
+  """
+  @spec get_pool_count(name(), pool_identifier()) :: {:ok, pos_integer()} | {:error, :not_found}
+  def get_pool_count(finch_name, pool_identifier) do
+    pool = resolve_pool(pool_identifier)
+
+    case Pool.Manager.get_pool_supervisor(finch_name, pool) do
+      :not_found -> {:error, :not_found}
+      {_pid, _pool_name, _pool_mod, pool_count, _pool_config} -> {:ok, pool_count}
+    end
+  end
+
+  @doc """
+  Dynamically changes the number of pool workers for the given pool.
+
+  Returns `:ok` on success, `{:error, :not_found}` if the pool doesn't exist.
+
+  Only pools that were explicitly configured or dynamically started via
+  `Finch.start_pool/3` can be resized. Default (catch-all) pools cannot be resized.
+
+  ## Examples
+
+      :ok = Finch.set_pool_count(MyFinch, "https://example.com", 4)
+  """
+  @spec set_pool_count(name(), pool_identifier(), pos_integer()) :: :ok | {:error, term()}
+  def set_pool_count(finch_name, pool_identifier, count) when is_integer(count) and count > 0 do
+    pool = resolve_pool(pool_identifier)
+    Pool.Manager.set_pool_count(finch_name, pool, count)
   end
 
   defp resolve_pool(%Finch.Pool{} = pool), do: pool
