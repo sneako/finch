@@ -2,6 +2,7 @@ defmodule Finch.Pool.Supervisor do
   @moduledoc false
 
   # Supervisor each process in a pool (effectively one child per pool_config.count)
+  alias Finch.Pool
   use Supervisor, restart: :transient
 
   def start_link({name, arg}) do
@@ -9,7 +10,7 @@ defmodule Finch.Pool.Supervisor do
   end
 
   def init({registry_name, pool, pool_config, track_default?}) do
-    pool_name = Finch.Pool.to_name(pool)
+    pool_name = Pool.to_name(pool)
 
     if track_default? do
       Registry.register(registry_name, :default, {pool_name, pool_config.mod, pool_config.count})
@@ -32,6 +33,7 @@ defmodule Finch.Pool.Supervisor do
         :ok
 
       new_count < old_count ->
+
         for pool_idx <- old_count..(new_count + 1)//-1 do
           Supervisor.terminate_child(sup_pid, pool_idx)
           Supervisor.delete_child(sup_pid, pool_idx)
@@ -45,7 +47,7 @@ defmodule Finch.Pool.Supervisor do
   end
 
   defp build_child_spec(pool, registry_name, pool_config, pool_idx) do
-    pool_name = Finch.Pool.to_name(pool)
+    pool_name = Pool.to_name(pool)
     pool_args = {pool, pool_name, registry_name, pool_config, pool_idx}
 
     # If the children are transient or temporary, then we want to propagate shutdown up

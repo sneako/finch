@@ -421,6 +421,8 @@ defmodule Finch do
 
   @impl true
   def init(config) do
+    Finch.PoolMetrics.new(config.registry_name)
+
     children = [
       {Registry,
        keys: :duplicate,
@@ -1077,8 +1079,13 @@ defmodule Finch do
     pool = resolve_pool(pool_identifier)
 
     case Pool.Manager.get_pool_supervisor(finch_name, pool) do
-      :not_found -> {:error, :not_found}
-      {pid, _pool_name, _pool_mod, _pool_count, _pool_config} -> Supervisor.stop(pid)
+      :not_found ->
+        {:error, :not_found}
+
+      {pid, pool_name, _pool_mod, _pool_count, _pool_config} ->
+        result = Supervisor.stop(pid)
+        Finch.PoolMetrics.delete_pool(finch_name, pool_name)
+        result
     end
   end
 

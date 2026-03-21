@@ -414,6 +414,7 @@ defmodule Finch.HTTP2.Pool do
 
   def connected(:enter, _old_state, data) do
     {:ok, _} = Registry.register(data.finch_name, data.pool_name, __MODULE__)
+    update_max_concurrent_streams(data)
     {:keep_state_and_data, ping_action(data)}
   end
 
@@ -444,6 +445,7 @@ defmodule Finch.HTTP2.Pool do
     case HTTP2.stream(data.conn, message) do
       {:ok, conn, responses} ->
         data = put_in(data.conn, conn)
+        update_max_concurrent_streams(data)
         {data, response_actions} = handle_responses(data, responses)
 
         cond do
@@ -910,7 +912,7 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp put_request(data, ref, request) do
-    PoolMetrics.maybe_add(data.metrics_ref, in_flight_requests: 1)
+    PoolMetrics.maybe_add(data.metrics_ref, :in_flight_requests, 1)
 
     data
     |> put_in([:requests, ref], request)
@@ -919,7 +921,7 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp pop_request(data, ref) do
-    PoolMetrics.maybe_add(data.metrics_ref, in_flight_requests: -1)
+    PoolMetrics.maybe_add(data.metrics_ref, :in_flight_requests, -1)
 
     case pop_in(data.requests[ref]) do
       {nil, data} ->
@@ -965,5 +967,12 @@ defmodule Finch.HTTP2.Pool do
 
   defp reply(%{from: from}, reply) do
     :gen_statem.reply(from, reply)
+  end
+
+  defp update_max_concurrent_streams(%{metrics_ref: nil}), do: :ok
+
+  defp update_max_concurrent_streams(%{conn: conn, metrics_ref: metrics_ref}) do
+    value = HTTP2.get_server_setting(conn, :max_concurrent_streams)
+    PoolMetrics.maybe_put(metrics_ref, :max_concurrent_streams, value)
   end
 end

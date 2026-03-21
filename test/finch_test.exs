@@ -2288,6 +2288,59 @@ defmodule FinchTest do
       assert {:ok, %Response{status: 200}} =
                Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
     end
+
+    test "scale down cleans up metrics entries", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{endpoint(bypass) => [count: 3, size: 5, start_pool_metrics?: true]}}
+      )
+
+      expect_any(bypass)
+
+      # Make a request so pools register
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+
+      assert {:ok, metrics} = Finch.get_pool_status(finch_name, endpoint(bypass))
+      assert length(metrics) == 3
+
+      # Scale down to 1
+      assert :ok = Finch.set_pool_count(finch_name, endpoint(bypass), 1)
+
+      # Only 1 metric entry should remain
+      assert {:ok, [_single]} = Finch.get_pool_status(finch_name, endpoint(bypass))
+
+      # Verify orphaned entries are gone from ETS
+      table = Finch.PoolMetrics.table_name(finch_name)
+      pool_name = Finch.Pool.to_name(pool(bypass))
+      assert :ets.lookup(table, {pool_name, 2}) == []
+      assert :ets.lookup(table, {pool_name, 3}) == []
+    end
+
+    test "stop_pool cleans up all metrics entries", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{endpoint(bypass) => [count: 2, size: 5, start_pool_metrics?: true]}}
+      )
+
+      expect_any(bypass)
+
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+
+      assert {:ok, metrics} = Finch.get_pool_status(finch_name, endpoint(bypass))
+      assert length(metrics) == 2
+
+      # Stop the pool
+      assert :ok = Finch.stop_pool(finch_name, endpoint(bypass))
+
+      # All metrics should be cleaned up
+      table = Finch.PoolMetrics.table_name(finch_name)
+      pool_name = Finch.Pool.to_name(pool(bypass))
+      assert :ets.match(table, {{pool_name, :_}, :_, :_}) == []
+    end
   end
 
   defp get_pools(name, pool) do

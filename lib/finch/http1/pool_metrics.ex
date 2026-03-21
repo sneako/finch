@@ -28,54 +28,38 @@ defmodule Finch.HTTP1.PoolMetrics do
     :in_use_connections
   ]
 
-  @atomic_idx [
-    pool_idx: 1,
-    pool_size: 2,
-    in_use_connections: 3
-  ]
+  alias Finch.PoolMetrics
 
-  def init(registry, pool_name, pool_idx, pool_size) do
-    ref = :atomics.new(length(@atomic_idx), [])
-    :atomics.add(ref, @atomic_idx[:pool_idx], pool_idx)
-    :atomics.add(ref, @atomic_idx[:pool_size], pool_size)
+  # Row layout: {{pool_name, pool_idx}, pool_size, in_use_connections}
+  @pos_in_use 3
 
-    :persistent_term.put({__MODULE__, registry, pool_name, pool_idx}, ref)
-    {:ok, ref}
+  def init(finch_name, pool_name, pool_idx, pool_size) do
+    table = PoolMetrics.table_name(finch_name)
+    PoolMetrics.insert(table, pool_name, pool_idx, [pool_size, 0])
+    {:ok, {table, pool_name, pool_idx}}
   end
 
-  def maybe_add(nil, _metrics_list), do: :ok
+  def maybe_add(nil, _, _), do: :ok
 
-  def maybe_add(ref, metrics_list) do
-    Enum.each(metrics_list, fn {metric_name, val} ->
-      :atomics.add(ref, @atomic_idx[metric_name], val)
-    end)
+  def maybe_add({table, pool_name, pool_idx}, :in_use_connections, delta) do
+    PoolMetrics.update(table, pool_name, pool_idx, @pos_in_use, delta)
   end
 
-  def get_pool_status(name, pool_name, pool_idx) do
-    {__MODULE__, name, pool_name, pool_idx}
-    |> :persistent_term.get(nil)
-    |> get_pool_status()
-  end
+  def get_pool_status(finch_name, pool_name, pool_idx) do
+    table = PoolMetrics.table_name(finch_name)
 
-  def get_pool_status(nil), do: {:error, :not_found}
+    case PoolMetrics.get_row(table, pool_name, pool_idx) do
+      nil ->
+        {:error, :not_found}
 
-  def get_pool_status(ref) do
-    %{
-      pool_idx: pool_idx,
-      pool_size: pool_size,
-      in_use_connections: in_use_connections
-    } =
-      @atomic_idx
-      |> Enum.map(fn {k, idx} -> {k, :atomics.get(ref, idx)} end)
-      |> Map.new()
-
-    result = %__MODULE__{
-      pool_index: pool_idx,
-      pool_size: pool_size,
-      available_connections: pool_size - in_use_connections,
-      in_use_connections: in_use_connections
-    }
-
-    {:ok, result}
+      {_key, pool_size, in_use} ->
+        {:ok,
+         %__MODULE__{
+           pool_index: pool_idx,
+           pool_size: pool_size,
+           available_connections: pool_size - in_use,
+           in_use_connections: in_use
+         }}
+    end
   end
 end
