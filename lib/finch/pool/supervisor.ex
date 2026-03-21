@@ -33,7 +33,6 @@ defmodule Finch.Pool.Supervisor do
         :ok
 
       new_count < old_count ->
-
         for pool_idx <- old_count..(new_count + 1)//-1 do
           Supervisor.terminate_child(sup_pid, pool_idx)
           Supervisor.delete_child(sup_pid, pool_idx)

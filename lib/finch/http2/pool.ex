@@ -20,7 +20,7 @@ defmodule Finch.HTTP2.Pool do
   @backoff_max 10_000
   @backoff_max_failure_count ceil(:math.log2(@backoff_max / @backoff_base))
 
-  @impl true
+  @impl :gen_statem
   def callback_mode(), do: [:state_functions, :state_enter]
 
   def child_spec(opts) do
@@ -206,8 +206,10 @@ defmodule Finch.HTTP2.Pool do
     :gen_statem.start_link(__MODULE__, opts, [])
   end
 
-  @impl true
+  @impl :gen_statem
   def init({pool, pool_name, registry, pool_config, pool_idx}) do
+    Process.flag(:trap_exit, true)
+
     {:ok, metrics_ref} =
       if pool_config.start_pool_metrics?,
         do: PoolMetrics.init(registry, pool_name, pool_idx),
@@ -968,6 +970,13 @@ defmodule Finch.HTTP2.Pool do
   defp reply(%{from: from}, reply) do
     :gen_statem.reply(from, reply)
   end
+
+  @impl :gen_statem
+  def terminate(_reason, _state, %{metrics_ref: {table, pool_name, pool_idx}}) do
+    Finch.PoolMetrics.delete(table, pool_name, pool_idx)
+  end
+
+  def terminate(_reason, _state, _data), do: :ok
 
   defp update_max_concurrent_streams(%{metrics_ref: nil}), do: :ok
 

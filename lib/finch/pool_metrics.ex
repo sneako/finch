@@ -71,10 +71,10 @@ defmodule Finch.PoolMetrics do
 
   @doc """
   Deletes the metrics row for a given pool worker.
+  Accepts the ETS table name directly.
   """
   @spec delete(atom(), term(), pos_integer()) :: true
-  def delete(registry_name, pool_name, pool_idx) do
-    table = table_name(registry_name)
+  def delete(table, pool_name, pool_idx) do
     :ets.delete(table, {pool_name, pool_idx})
   end
 
