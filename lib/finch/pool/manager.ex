@@ -148,14 +148,8 @@ defmodule Finch.Pool.Manager do
           :not_found
 
         [{pid, {pool_mod, _pool_count, pool_config}}] ->
-          # Derive current worker count from supervisor children for accurate
-          # count after runtime resize via set_pool_count/3
-          try do
-            pool_count = Supervisor.count_children(pid).workers
-            {pid, pool_name, pool_mod, pool_count, pool_config}
-          catch
-            :exit, _ -> :not_found
-          end
+          pool_count = Registry.count_match(finch_name, pool_name, :_)
+          {pid, pool_name, pool_mod, pool_count, pool_config}
       end
     else
       :not_found

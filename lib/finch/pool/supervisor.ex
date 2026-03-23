@@ -13,7 +13,7 @@ defmodule Finch.Pool.Supervisor do
     pool_name = Pool.to_name(pool)
 
     if track_default? do
-      Registry.register(registry_name, :default, {pool_name, pool_config.mod, pool_config.count})
+      Registry.register(registry_name, :default, {pool_name, pool_config.mod})
     end
 
     specs =

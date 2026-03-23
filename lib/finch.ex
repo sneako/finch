@@ -1004,7 +1004,9 @@ defmodule Finch do
   def get_pool_status(finch_name, :default) do
     finch_name
     |> Pool.Manager.get_default_pools()
-    |> Enum.reduce(%{}, fn {_pid, {pool_name, pool_mod, pool_count}}, acc ->
+    |> Enum.reduce(%{}, fn {_sup_pid, {pool_name, pool_mod}}, acc ->
+      pool_count = Registry.count_match(finch_name, pool_name, :_)
+
       case pool_mod.get_pool_status(finch_name, pool_name, pool_count) do
         {:ok, metrics} ->
           pool_id = Pool.from_name(pool_name)
@@ -1113,8 +1115,8 @@ defmodule Finch do
 
   Returns `:ok` on success, `{:error, :not_found}` if the pool doesn't exist.
 
-  Only pools that were explicitly configured or dynamically started via
-  `Finch.start_pool/3` can be resized. Default (catch-all) pools cannot be resized.
+  Works with all kinds of pools, but note that `:default` pools must have
+  been materialized by at least one request before they can be resized.
 
   ## Examples
 

@@ -2341,6 +2341,50 @@ defmodule FinchTest do
       pool_name = Finch.Pool.to_name(pool(bypass))
       assert :ets.match(table, {{pool_name, :_}, :_, :_}) == []
     end
+
+    test "resizing a materialized default pool updates :default pool metrics", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name, pools: %{default: [start_pool_metrics?: true]}})
+
+      expect_any(bypass)
+
+      url = endpoint(bypass)
+      pool = pool(bypass)
+
+      # Materialize the catch-all default pool first.
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, url) |> Finch.request(finch_name)
+
+      assert {:ok, %{^pool => metrics}} = Finch.get_pool_status(finch_name, :default)
+      assert length(metrics) == 1
+
+      assert :ok = Finch.set_pool_count(finch_name, url, 3)
+      assert {:ok, 3} = Finch.get_pool_count(finch_name, url)
+
+      assert eventually(
+               fn ->
+                 case Finch.get_pool_status(finch_name, url) do
+                   {:ok, metrics} -> length(metrics) == 3
+                   _ -> false
+                 end
+               end,
+               100,
+               50
+             )
+
+      assert eventually(
+               fn ->
+                 case Finch.get_pool_status(finch_name, :default) do
+                   {:ok, %{^pool => metrics}} -> length(metrics) == 3
+                   _ -> false
+                 end
+               end,
+               100,
+               50
+             )
+    end
   end
 
   defp get_pools(name, pool) do
