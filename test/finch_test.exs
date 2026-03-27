@@ -2200,6 +2200,193 @@ defmodule FinchTest do
     end
   end
 
+  describe "get_pool_count/2 and set_pool_count/3" do
+    test "get_pool_count returns current count", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{endpoint(bypass) => [count: 2, size: 5]}}
+      )
+
+      assert {:ok, 2} = Finch.get_pool_count(finch_name, endpoint(bypass))
+    end
+
+    test "get_pool_count returns not_found for unknown pool", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+      assert {:error, :not_found} = Finch.get_pool_count(finch_name, "http://unknown:9999")
+    end
+
+    test "scale up workers", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{endpoint(bypass) => [count: 1, size: 5]}}
+      )
+
+      expect_any(bypass)
+      assert {:ok, 1} = Finch.get_pool_count(finch_name, endpoint(bypass))
+
+      assert :ok = Finch.set_pool_count(finch_name, endpoint(bypass), 3)
+      assert {:ok, 3} = Finch.get_pool_count(finch_name, endpoint(bypass))
+
+      # Requests still work after scale up
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+    end
+
+    test "scale down workers", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{endpoint(bypass) => [count: 3, size: 5]}}
+      )
+
+      expect_any(bypass)
+      assert {:ok, 3} = Finch.get_pool_count(finch_name, endpoint(bypass))
+
+      assert :ok = Finch.set_pool_count(finch_name, endpoint(bypass), 1)
+      assert {:ok, 1} = Finch.get_pool_count(finch_name, endpoint(bypass))
+
+      # Requests still work after scale down
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+    end
+
+    test "same count is a no-op", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch, name: finch_name, pools: %{endpoint(bypass) => [count: 2, size: 5]}}
+      )
+
+      assert :ok = Finch.set_pool_count(finch_name, endpoint(bypass), 2)
+      assert {:ok, 2} = Finch.get_pool_count(finch_name, endpoint(bypass))
+    end
+
+    test "set_pool_count returns not_found for unknown pool", %{finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+      assert {:error, :not_found} = Finch.set_pool_count(finch_name, "http://unknown:9999", 2)
+    end
+
+    test "scale up and down with pool status", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{endpoint(bypass) => [count: 1, size: 5, start_pool_metrics?: true]}}
+      )
+
+      expect_any(bypass)
+
+      # Scale up
+      assert :ok = Finch.set_pool_count(finch_name, endpoint(bypass), 3)
+      assert {:ok, 3} = Finch.get_pool_count(finch_name, endpoint(bypass))
+
+      # Pool status works after resize
+      assert {:ok, metrics} = Finch.get_pool_status(finch_name, endpoint(bypass))
+      assert length(metrics) == 3
+
+      # Scale back down
+      assert :ok = Finch.set_pool_count(finch_name, endpoint(bypass), 2)
+      assert {:ok, 2} = Finch.get_pool_count(finch_name, endpoint(bypass))
+
+      assert {:ok, metrics} = Finch.get_pool_status(finch_name, endpoint(bypass))
+      assert length(metrics) == 2
+
+      # Requests work
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+    end
+
+    test "scale down cleans up metrics entries", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{endpoint(bypass) => [count: 3, size: 5, start_pool_metrics?: true]}}
+      )
+
+      expect_any(bypass)
+
+      # Make a request so pools register
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+
+      assert {:ok, metrics} = Finch.get_pool_status(finch_name, endpoint(bypass))
+      assert length(metrics) == 3
+
+      # Scale down to 1
+      assert :ok = Finch.set_pool_count(finch_name, endpoint(bypass), 1)
+
+      # Only 1 metric entry should remain
+      assert {:ok, [_single]} = Finch.get_pool_status(finch_name, endpoint(bypass))
+
+      # Verify orphaned entries are gone from ETS
+      table = Finch.PoolMetrics.table_name(finch_name)
+      pool_name = Finch.Pool.to_name(pool(bypass))
+      assert :ets.lookup(table, {pool_name, 2}) == []
+      assert :ets.lookup(table, {pool_name, 3}) == []
+    end
+
+    test "stop_pool cleans up all metrics entries", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{endpoint(bypass) => [count: 2, size: 5, start_pool_metrics?: true]}}
+      )
+
+      expect_any(bypass)
+
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+
+      assert {:ok, metrics} = Finch.get_pool_status(finch_name, endpoint(bypass))
+      assert length(metrics) == 2
+
+      # Stop the pool
+      assert :ok = Finch.stop_pool(finch_name, endpoint(bypass))
+
+      # All metrics should be cleaned up
+      table = Finch.PoolMetrics.table_name(finch_name)
+      pool_name = Finch.Pool.to_name(pool(bypass))
+      assert :ets.match(table, {{pool_name, :_}, :_, :_}) == []
+    end
+
+    test "resizing a materialized default pool updates :default pool metrics", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name, pools: %{default: [start_pool_metrics?: true]}})
+
+      expect_any(bypass)
+
+      url = endpoint(bypass)
+      pool = pool(bypass)
+
+      # Materialize the catch-all default pool first.
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, url) |> Finch.request(finch_name)
+
+      assert {:ok, %{^pool => metrics}} = Finch.get_pool_status(finch_name, :default)
+      assert length(metrics) == 1
+
+      assert :ok = Finch.set_pool_count(finch_name, url, 3)
+      assert {:ok, 3} = Finch.get_pool_count(finch_name, url)
+
+      assert eventually(
+               fn ->
+                 case Finch.get_pool_status(finch_name, url) do
+                   {:ok, metrics} -> length(metrics) == 3
+                   _ -> false
+                 end
+               end,
+               100,
+               50
+             )
+
+      assert eventually(
+               fn ->
+                 case Finch.get_pool_status(finch_name, :default) do
+                   {:ok, %{^pool => metrics}} -> length(metrics) == 3
+                   _ -> false
+                 end
+               end,
+               100,
+               50
+             )
+    end
+  end
+
   defp get_pools(name, pool) do
     Registry.lookup(name, Finch.Pool.to_name(pool))
   end
