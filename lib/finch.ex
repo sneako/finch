@@ -40,7 +40,7 @@ defmodule Finch do
       raise **`count`** when you see checkout queue timeouts or heavy load on one shard. Use
       `t:pool_metrics/0`, `get_pool_status/2`, and Finch telemetry to inspect connections per shard.
 
-      - **HTTP/2**: Each shard is a single process able to multiplex multiple requests. Shards
+      - **HTTP/2**: Each shard is a single connection process, able to multiplex requests. Shards
       register under the same registry key, so increasing `:count` spreads concurrent load across
       more processes and can relieve pressure when a **single** pool process (message handling,
       socket operations) becomes the bottleneck. Prefer the **lowest `:count`** unless one shard is
