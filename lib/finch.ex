@@ -28,26 +28,45 @@ defmodule Finch do
       """,
       default: [:http1]
     ],
-    size: [
-      type: :pos_integer,
-      doc: """
-      Number of connections to maintain in each pool. Used only by HTTP1 pools \
-      since HTTP2 is able to multiplex requests through a single connection. In \
-      other words, for HTTP2, the size is always 1 and the `:count` should be \
-      configured in order to increase capacity.
-      """,
-      default: @default_pool_size
-    ],
     count: [
       type: :pos_integer,
       doc: """
-      Number of pools to start. HTTP1 pools are able to re-use connections in the \
-      same pool and establish new ones only when necessary. However, if there is a \
-      high pool count and few requests are made, these requests will be scattered \
-      across pools, reducing connection reuse. It is recommended to increase the pool \
-      count for HTTP1 only if you are experiencing high checkout times.
+      How many **shards** to start for this pool key.
+
+      - **HTTP/1**: Each shard is a `NimblePool`. HTTP/1 shards are able to re-use connections in
+      the same shard and establish new ones only when necessary. A higher `:count` under moderate
+      traffic scatters work so idle connections stay **per shard**, which **reduces HTTP/1
+      connection reuse**. Prefer the **lowest `:count`** that still meets latency and throughput;
+      raise **`count`** when you see checkout queue timeouts or heavy load on one shard. Use
+      `t:pool_metrics/0`, `get_pool_status/2`, and Finch telemetry to inspect connections per shard.
+
+      - **HTTP/2**: Each shard is a single connection process, able to multiplex requests. Shards
+      register under the same registry key, so increasing `:count` spreads concurrent load across
+      more processes and can relieve pressure when a **single** pool process (message handling,
+      socket operations) becomes the bottleneck. Prefer the **lowest `:count`** unless one shard is
+      the limit; raise **`count`** when telemetry or `get_pool_status/2` shows a shard consistently
+      hot (e.g. high `in_flight_requests`).
+
+      When `:count` > 1, **`:pool_strategy`** selects the shard per request—see [Multiple shards
+      (`count` > 1) and `:pool_strategy`](#start_link/1-multiple-shards-count-1-and-pool_strategy).
       """,
       default: @default_pool_count
+    ],
+    size: [
+      type: :pos_integer,
+      doc: """
+      It is the maximum number of HTTP/1 connections per pool **shard**. Connections are opened
+      **lazily** up to this cap; the value is an upper bound, not a reservation. When every
+      connection in that shard is busy, further requests wait in the checkout queue until one is
+      returned or `:pool_timeout` (see `request/3`) is exceeded.
+
+      This applies only to HTTP/1 pools. For HTTP/2, this setting is ignored. A single connection
+      multiplexes streams per pool process; use `:count` for more HTTP/2 connections in parallel.
+
+      Combined with `:count`, the upper bound on concurrent HTTP/1 connections to one origin
+      is roughly **`count * size`**. Actual open connections may be lower.
+      """,
+      default: @default_pool_size
     ],
     conn_opts: [
       type: :keyword_list,
@@ -297,6 +316,17 @@ defmodule Finch do
           :default => [size: 25, count: 2]
         }
       )
+
+  ### Multiple shards (`count` > 1) and `:pool_strategy`
+
+  When `:count` is greater than 1, Finch starts that many shards for the same pool. Each request
+  must pick one shard. **By default** Finch picks uniformly at random, which matches
+  `Finch.Pool.Strategy.Random`.
+
+  You can override selection per request with the `:pool_strategy` option (see `t:pool_strategy/0`
+  and `Finch.Pool.Strategy`). Built-in modules include `Finch.Pool.Strategy.RoundRobin` and
+  `Finch.Pool.Strategy.Hash` (stable mapping from a key to a shard, useful for affinity).
+  You can also pass a custom module or function.
 
   ### Pool Configuration Options
 
@@ -764,7 +794,7 @@ defmodule Finch do
       it does not guarantee the call will return precisely when the time has elapsed.
       Default value is `:infinity`.
 
-    * `:pool_strategy` - When the pool has multiple workers (`count: N`), selects which worker handles
+    * `:pool_strategy` - When the pool has multiple shards (`count: N`), selects which shards handles
       the request. Default is random selection. See `t:pool_strategy/0` for details.
   """
   @spec request(Request.t(), name(), request_opts()) ::

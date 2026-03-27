@@ -62,7 +62,7 @@ defmodule Finch.Request do
   @type body() ::
           iodata() | {:stream, Enumerable.t()} | {:stream, Finch.req_body_fun(term())} | nil
 
-  @type build_opt() :: {:unix_socket, String.t()}
+  @type build_opt() :: {:unix_socket, String.t()} | {:pool_tag, Finch.Pool.pool_tag()}
 
   @typedoc """
   Options used by `build/5`.
