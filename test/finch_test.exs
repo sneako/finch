@@ -1808,6 +1808,72 @@ defmodule FinchTest do
     end
   end
 
+  describe "connection draining" do
+    test "max_connection_age option is accepted and requests succeed", %{finch_name: finch_name} do
+      url = Application.get_env(:finch, :test_https_h2_url)
+
+      Finch.TestHelper.start_finch!(
+        name: finch_name,
+        pools: %{
+          url => [
+            protocols: [:http2],
+            count: 1,
+            http2: [max_connection_age: 30_000, max_connection_age_jitter: 5_000],
+            conn_opts: [
+              transport_opts: [
+                verify: :verify_none
+              ]
+            ]
+          ]
+        }
+      )
+
+      assert {:ok, %Finch.Response{status: 200}} =
+               Finch.build(:get, url) |> Finch.request(finch_name)
+    end
+
+    test "requests succeed after pool drains and restarts", %{finch_name: finch_name} do
+      url = Application.get_env(:finch, :test_https_h2_url)
+
+      Finch.TestHelper.start_finch!(
+        name: finch_name,
+        pools: %{
+          url => [
+            protocols: [:http2],
+            count: 1,
+            http2: [max_connection_age: 500, max_connection_age_jitter: 0],
+            conn_opts: [
+              transport_opts: [
+                verify: :verify_none
+              ]
+            ]
+          ]
+        }
+      )
+
+      # Request before drain timer fires — should succeed normally.
+      assert {:ok, %Finch.Response{status: 200}} =
+               Finch.build(:get, url) |> Finch.request(finch_name)
+
+      # Get the current pool PID and monitor it so we can deterministically
+      # wait for the drain-triggered shutdown instead of sleeping.
+      %URI{scheme: scheme, host: host, port: port} = URI.parse(url)
+      pool_key = {String.to_atom(scheme), host, port, :default}
+      [{old_pid, _}] = Registry.lookup(finch_name, pool_key)
+      ref = Process.monitor(old_pid)
+
+      assert_receive {:DOWN, ^ref, :process, ^old_pid, :normal}, 2_000
+
+      # Wait for the supervisor to restart the pool and re-register it.
+      wait_for_pool(finch_name, pool_key)
+
+      # After the supervisor restarts the pool with a fresh connection,
+      # requests should succeed again.
+      assert {:ok, %Finch.Response{status: 200}} =
+               Finch.build(:get, url) |> Finch.request(finch_name)
+    end
+  end
+
   describe "find_pool/2" do
     test "returns {:ok, pid} for existing pools", %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
@@ -2197,6 +2263,26 @@ defmodule FinchTest do
         Process.sleep(backoff)
         eventually(fun, backoff, retries - 1)
       end
+    end
+  end
+
+  defp wait_for_pool(finch_name, key, timeout \\ 2_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    wait_for_pool_loop(finch_name, key, deadline)
+  end
+
+  defp wait_for_pool_loop(finch_name, key, deadline) do
+    case Registry.lookup(finch_name, key) do
+      [{_pid, _}] ->
+        :ok
+
+      [] ->
+        if System.monotonic_time(:millisecond) < deadline do
+          Process.sleep(10)
+          wait_for_pool_loop(finch_name, key, deadline)
+        else
+          flunk("Pool did not re-register within timeout")
+        end
     end
   end
 
