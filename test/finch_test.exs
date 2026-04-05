@@ -171,6 +171,12 @@ defmodule FinchTest do
         Finch.build(:get, "ftp://example.com")
       end
     end
+
+    test "raises on invalid option", %{bypass: bypass} do
+      assert_raise ArgumentError, ~r/unknown keys \[:invalid_option\]/, fn ->
+        Finch.build(:get, endpoint(bypass), [], nil, invalid_option: true)
+      end
+    end
   end
 
   describe "request/3" do
@@ -620,6 +626,15 @@ defmodule FinchTest do
 
       assert {:ok, %Response{}} =
                Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name, pool_timeout: 1)
+    end
+
+    test "raises on invalid option", %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+
+      assert_raise ArgumentError, ~r/unknown keys \[:unknown_option\]/, fn ->
+        Finch.build(:get, endpoint(bypass))
+        |> Finch.request(finch_name, unknown_option: true)
+      end
     end
   end
 

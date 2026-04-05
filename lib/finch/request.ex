@@ -110,6 +110,7 @@ defmodule Finch.Request do
   @doc false
   @spec build(method(), url(), headers(), body(), build_opts()) :: t()
   def build(method, url, headers, body, opts) do
+    Keyword.validate!(opts, [:unix_socket, :pool_tag])
     unix_socket = Keyword.get(opts, :unix_socket)
     pool_tag = Keyword.get(opts, :pool_tag, :default)
     {scheme, host, port, path, query} = parse_url(url)

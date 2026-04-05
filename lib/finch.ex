@@ -804,6 +804,7 @@ defmodule Finch do
 
   def request(%Request{} = req, name, opts) do
     validate_no_req_body_fun!(req, "Finch.request/3")
+    Keyword.validate!(opts, [:pool_timeout, :receive_timeout, :request_timeout, :pool_strategy])
 
     request_span req, name do
       acc = {nil, [], [], []}
