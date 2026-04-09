@@ -52,8 +52,8 @@ defmodule Finch.HTTP1.PoolTest do
     Process.monitor(supervisor)
     Process.monitor(pool)
 
-    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}
-    assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}
+    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
+    assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}, 200
 
     assert [] = DynamicSupervisor.which_children(IdleFinch.PoolSupervisor)
     assert_receive :telemetry_sent

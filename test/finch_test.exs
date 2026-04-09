@@ -1004,7 +1004,7 @@ defmodule FinchTest do
         {:cont, acc}
       end
 
-      assert {:error, %Mint.TransportError{reason: :closed}, 3} =
+      assert {:error, %Finch.TransportError{reason: :closed}, 3} =
                Finch.build(:post, "http://localhost:#{port}", [], {:stream, req_fun})
                |> Finch.stream_while(finch_name, acc, resp_fun)
     end
