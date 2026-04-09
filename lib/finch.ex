@@ -1004,8 +1004,8 @@ defmodule Finch do
   def get_pool_status(finch_name, :default) do
     finch_name
     |> Pool.Manager.get_default_pools()
-    |> Enum.reduce(%{}, fn {_sup_pid, {pool_name, pool_mod}}, acc ->
-      pool_count = Registry.count_match(finch_name, pool_name, :_)
+    |> Enum.reduce(%{}, fn {sup_pid, {pool_name, pool_mod}}, acc ->
+      pool_count = Supervisor.count_children(sup_pid).workers
 
       case pool_mod.get_pool_status(finch_name, pool_name, pool_count) do
         {:ok, metrics} ->

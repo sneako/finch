@@ -148,7 +148,7 @@ defmodule Finch.Pool.Manager do
           :not_found
 
         [{pid, {pool_mod, _pool_count, pool_config}}] ->
-          pool_count = Registry.count_match(finch_name, pool_name, :_)
+          pool_count = Supervisor.count_children(pid).workers
           {pid, pool_name, pool_mod, pool_count, pool_config}
       end
     else
