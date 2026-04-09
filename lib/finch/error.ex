@@ -32,11 +32,9 @@ defmodule Finch.Error do
   defp format_reason(reason), do: Atom.to_string(reason)
 
   @doc false
-  @spec wrap(term()) :: Finch.Error.t() | Finch.HTTPError.t() | Finch.TransportError.t()
+  @spec wrap(term()) :: Finch.Error.t() | Mint.HTTPError.t() | Mint.TransportError.t()
   def wrap(%Finch.Error{} = error), do: error
-  def wrap(%Finch.HTTPError{} = error), do: error
-  def wrap(%Finch.TransportError{} = error), do: error
-  def wrap(%Mint.HTTPError{} = error), do: Finch.HTTPError.from_mint(error)
-  def wrap(%Mint.TransportError{} = error), do: Finch.TransportError.from_mint(error)
+  def wrap(%Mint.HTTPError{} = error), do: error
+  def wrap(%Mint.TransportError{} = error), do: error
   def wrap(reason), do: exception(reason)
 end

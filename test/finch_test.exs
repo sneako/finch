@@ -641,7 +641,7 @@ defmodule FinchTest do
     test "raises exception on bad request", %{finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
 
-      assert_raise(Finch.TransportError, fn ->
+      assert_raise(Mint.TransportError, fn ->
         Finch.build(:get, "http://idontexist.wat") |> Finch.request!(finch_name)
       end)
     end
@@ -1004,7 +1004,7 @@ defmodule FinchTest do
         {:cont, acc}
       end
 
-      assert {:error, %Finch.TransportError{reason: :closed}, 3} =
+      assert {:error, %Mint.TransportError{reason: :closed}, 3} =
                Finch.build(:post, "http://localhost:#{port}", [], {:stream, req_fun})
                |> Finch.stream_while(finch_name, acc, resp_fun)
     end

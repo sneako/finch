@@ -2,15 +2,16 @@ defmodule Finch.ErrorTest do
   use ExUnit.Case, async: true
 
   describe "wrap/1" do
-    test "wraps Mint.TransportError as Finch.TransportError" do
+    test "returns Mint.TransportError as-is" do
       source = Mint.TransportError.exception(reason: :timeout)
       error = Finch.Error.wrap(source)
 
-      assert %Finch.TransportError{reason: :timeout, source: ^source} = error
+      assert %Mint.TransportError{reason: :timeout} = error
+      assert error == source
       assert Exception.message(error) == Exception.message(source)
     end
 
-    test "wraps Mint.HTTPError as Finch.HTTPError" do
+    test "returns Mint.HTTPError as-is" do
       source =
         Mint.HTTPError.exception(
           reason: :too_many_concurrent_requests,
@@ -19,12 +20,8 @@ defmodule Finch.ErrorTest do
 
       error = Finch.Error.wrap(source)
 
-      assert %Finch.HTTPError{
-               reason: :too_many_concurrent_requests,
-               module: Mint.HTTP2,
-               source: ^source
-             } = error
-
+      assert %Mint.HTTPError{reason: :too_many_concurrent_requests, module: Mint.HTTP2} = error
+      assert error == source
       assert Exception.message(error) == Exception.message(source)
     end
 

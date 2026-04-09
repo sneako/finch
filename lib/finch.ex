@@ -194,14 +194,14 @@ defmodule Finch do
   @typedoc """
   Errors returned by Finch request functions.
   """
-  @type error() :: Finch.Error.t() | Finch.HTTPError.t() | Finch.TransportError.t()
+  @type error() :: Finch.Error.t() | Mint.HTTPError.t() | Mint.TransportError.t()
 
   @doc """
-  Returns true if the term is any Finch error struct (`Finch.error()`).
+  Returns true if the term is any Finch error (`Finch.error()`).
   """
   defguard is_finch_error(term)
-           when is_struct(term, Finch.Error) or is_struct(term, Finch.HTTPError) or
-                  is_struct(term, Finch.TransportError)
+           when is_struct(term, Finch.Error) or is_struct(term, Mint.HTTPError) or
+                  is_struct(term, Mint.TransportError)
 
   @typedoc """
   The reference used to identify a request sent using `async_request/3`.
