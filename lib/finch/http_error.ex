@@ -3,8 +3,10 @@ defmodule Finch.HTTPError do
   Represents HTTP protocol errors returned by Finch.
   """
 
+  @type reason() :: Mint.HTTPError.reason()
+
   @type t() :: %__MODULE__{
-          reason: term(),
+          reason: reason(),
           module: module() | nil,
           source: Mint.HTTPError.t() | nil
         }

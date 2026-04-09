@@ -3,7 +3,9 @@ defmodule Finch.TransportError do
   Represents transport errors returned by Finch.
   """
 
-  @type t() :: %__MODULE__{reason: term(), source: Mint.TransportError.t() | nil}
+  @type reason() :: Mint.TransportError.reason()
+
+  @type t() :: %__MODULE__{reason: reason(), source: Mint.TransportError.t() | nil}
 
   defexception [:reason, :source]
 
