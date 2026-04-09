@@ -6,6 +6,9 @@ defmodule Finch.HTTP2.PoolMetrics do
 
     * `:pool_index` - Index of the pool
     * `:in_flight_requests` - Number of requests currently on the connection
+    * `:available_connections` - Number of available connections
+    * `:max_concurrent_streams` - The server's max concurrent streams setting.
+      This is 0 until the server's SETTINGS frame has been received.
 
   Caveats:
 
@@ -17,55 +20,54 @@ defmodule Finch.HTTP2.PoolMetrics do
 
   defstruct [
     :pool_index,
-    :in_flight_requests
+    :in_flight_requests,
+    :available_connections,
+    :max_concurrent_streams
   ]
 
-  @atomic_idx [
-    pool_idx: 1,
-    in_flight_requests: 2
-  ]
+  alias Finch.PoolMetrics
+
+  # Row layout: {{pool_name, pool_idx}, in_flight_requests, max_concurrent_streams}
+  @pos_in_flight 2
+  @pos_max_streams 3
 
   @doc false
   def init(finch_name, pool_name, pool_idx) do
-    ref = :atomics.new(length(@atomic_idx), [])
-    :atomics.put(ref, @atomic_idx[:pool_idx], pool_idx)
-
-    :persistent_term.put({__MODULE__, finch_name, pool_name, pool_idx}, ref)
-    {:ok, ref}
+    table = PoolMetrics.table_name(finch_name)
+    PoolMetrics.insert(table, pool_name, pool_idx, [0, 0])
+    {:ok, {table, pool_name, pool_idx}}
   end
 
   @doc false
-  def maybe_add(nil, _metrics_list), do: :ok
+  def maybe_add(nil, _, _), do: :ok
 
-  def maybe_add(ref, metrics_list) do
-    Enum.each(metrics_list, fn {metric_name, val} ->
-      :atomics.add(ref, @atomic_idx[metric_name], val)
-    end)
+  def maybe_add({table, pool_name, pool_idx}, :in_flight_requests, delta) do
+    PoolMetrics.update(table, pool_name, pool_idx, @pos_in_flight, delta)
   end
 
   @doc false
-  def get_pool_status(name, pool_name, pool_idx) do
-    {__MODULE__, name, pool_name, pool_idx}
-    |> :persistent_term.get(nil)
-    |> get_pool_status()
+  def maybe_put(nil, _metric, _value), do: :ok
+
+  def maybe_put({table, pool_name, pool_idx}, :max_concurrent_streams, value) do
+    PoolMetrics.put(table, pool_name, pool_idx, @pos_max_streams, value)
   end
 
-  def get_pool_status(nil), do: {:error, :not_found}
+  @doc false
+  def get_pool_status(finch_name, pool_name, pool_idx) do
+    table = PoolMetrics.table_name(finch_name)
 
-  def get_pool_status(ref) do
-    %{
-      pool_idx: pool_idx,
-      in_flight_requests: in_flight_requests
-    } =
-      @atomic_idx
-      |> Enum.map(fn {k, idx} -> {k, :atomics.get(ref, idx)} end)
-      |> Map.new()
+    case PoolMetrics.get_row(table, pool_name, pool_idx) do
+      nil ->
+        {:error, :not_found}
 
-    result = %__MODULE__{
-      pool_index: pool_idx,
-      in_flight_requests: in_flight_requests
-    }
-
-    {:ok, result}
+      {_key, in_flight, max_streams} ->
+        {:ok,
+         %__MODULE__{
+           pool_index: pool_idx,
+           in_flight_requests: in_flight,
+           available_connections: max_streams - in_flight,
+           max_concurrent_streams: max_streams
+         }}
+    end
   end
 end

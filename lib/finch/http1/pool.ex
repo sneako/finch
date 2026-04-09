@@ -190,7 +190,7 @@ defmodule Finch.HTTP1.Pool do
   @impl NimblePool
   def handle_checkout(:checkout, _, %{mint: nil} = conn, %__MODULE__.State{} = pool_state) do
     idle_time = System.monotonic_time() - conn.last_checkin
-    PoolMetrics.maybe_add(pool_state.metric_ref, in_use_connections: 1)
+    PoolMetrics.maybe_add(pool_state.metric_ref, :in_use_connections, 1)
     {:ok, {:fresh, conn, idle_time}, conn, pool_state}
   end
 
@@ -204,7 +204,7 @@ defmodule Finch.HTTP1.Pool do
 
     with true <- Conn.reusable?(conn, idle_time),
          {:ok, conn} <- Conn.set_mode(conn, :passive) do
-      PoolMetrics.maybe_add(metric_ref, in_use_connections: 1)
+      PoolMetrics.maybe_add(metric_ref, :in_use_connections, 1)
       {:ok, {:reuse, conn, idle_time}, conn, update_activity_info(:checkout, pool_state)}
     else
       false ->
@@ -226,7 +226,7 @@ defmodule Finch.HTTP1.Pool do
   @impl NimblePool
   def handle_checkin(checkin, _from, _old_conn, %__MODULE__.State{} = pool_state) do
     %__MODULE__.State{metric_ref: metric_ref} = pool_state
-    PoolMetrics.maybe_add(metric_ref, in_use_connections: -1)
+    PoolMetrics.maybe_add(metric_ref, :in_use_connections, -1)
 
     with {:ok, conn} <- checkin,
          {:ok, conn} <- Conn.set_mode(conn, :active) do
@@ -304,11 +304,21 @@ defmodule Finch.HTTP1.Pool do
   @impl NimblePool
   def handle_cancelled(:checked_out, %__MODULE__.State{} = pool_state) do
     %__MODULE__.State{metric_ref: metric_ref} = pool_state
-    PoolMetrics.maybe_add(metric_ref, in_use_connections: -1)
+    PoolMetrics.maybe_add(metric_ref, :in_use_connections, -1)
     :ok
   end
 
   def handle_cancelled(:queued, _pool_state), do: :ok
+
+  @impl NimblePool
+  def terminate_pool(_reason, %{
+        state: %__MODULE__.State{metric_ref: {table, pool_name, pool_idx}}
+      }) do
+    Finch.PoolMetrics.delete(table, pool_name, pool_idx)
+    :ok
+  end
+
+  def terminate_pool(_reason, _pool_state), do: :ok
 
   defp transfer_if_open(conn, state, {pid, _} = from) do
     if Conn.open?(conn) do
