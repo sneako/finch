@@ -134,8 +134,13 @@ defmodule Finch do
 
   @typedoc """
   The `:name` provided to Finch in `start_link/1`.
+
+  Can be an atom (traditional) or a `{:via, Registry, {registry, key}}` tuple
+  for dynamic naming without atom creation. When using a via tuple, Finch
+  auto-generates an internal atom for its subsystems; users never need to
+  call `String.to_atom/1`.
   """
-  @type name() :: atom()
+  @type name() :: atom() | {:via, Registry, {atom(), term()}}
 
   @type scheme() :: :http | :https
 
@@ -334,19 +339,31 @@ defmodule Finch do
   """
   def start_link(opts) do
     name = finch_name!(opts)
+
+    {internal_name, supervisor_name, via_name} =
+      case name do
+        atom when is_atom(atom) ->
+          {atom, concat_name(atom, "Supervisor"), nil}
+
+        {:via, Registry, {_reg, _key}} = via ->
+          internal = Finch.NameRegistry.register(via)
+          {internal, via, via}
+      end
+
     pools = Keyword.get(opts, :pools, []) |> pool_options!()
     {default_pool_config, pools} = Map.pop(pools, :default)
 
     config = %{
-      registry_name: name,
+      registry_name: internal_name,
       registry_listeners: Keyword.get(opts, :registry_listeners, []),
-      supervisor_name: Pool.Manager.supervisor_name(name),
-      supervisor_registry_name: Pool.Manager.supervisor_registry_name(name),
+      supervisor_name: Pool.Manager.supervisor_name(internal_name),
+      supervisor_registry_name: Pool.Manager.supervisor_registry_name(internal_name),
       default_pool_config: default_pool_config,
-      pools: pools
+      pools: pools,
+      via_name: via_name
     }
 
-    Supervisor.start_link(__MODULE__, config, name: concat_name(name, "Supervisor"))
+    Supervisor.start_link(__MODULE__, config, name: supervisor_name)
   end
 
   @doc """
@@ -366,6 +383,8 @@ defmodule Finch do
   """
   @spec find_pool(name(), Finch.Pool.t()) :: {:ok, pid()} | :error
   def find_pool(name, %Finch.Pool{} = pool) do
+    name = resolve_finch_name(name)
+
     case Pool.Manager.get_pool(name, pool, %{start_pool?: false}) do
       {pid, _mod} -> {:ok, pid}
       _ -> :error
@@ -390,6 +409,8 @@ defmodule Finch do
   def start_pool(name, pool, opts \\ [])
 
   def start_pool(name, %Finch.Pool{} = pool, opts) do
+    name = resolve_finch_name(name)
+
     # Avoid building the child_spec (cast_pool_opts, sanitize, etc.) if the pool already exists
     if Process.whereis(name) do
       supervisor_registry_name = Pool.Manager.supervisor_registry_name(name)
@@ -423,22 +444,45 @@ defmodule Finch do
   def init(config) do
     Finch.PoolMetrics.new(config.registry_name)
 
-    children = [
-      {Registry,
-       keys: :duplicate,
-       name: config.registry_name,
-       listeners: config.registry_listeners,
-       meta: [config: config]},
-      {Registry, keys: :unique, name: config.supervisor_registry_name},
-      {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
-      {Pool.Manager, config}
-    ]
+    via_cleaner =
+      if config.via_name do
+        [{Finch.ViaCleaner, config.via_name}]
+      else
+        []
+      end
+
+    children =
+      via_cleaner ++
+        [
+          {Registry,
+           keys: :duplicate,
+           name: config.registry_name,
+           listeners: config.registry_listeners,
+           meta: [config: config]},
+          {Registry, keys: :unique, name: config.supervisor_registry_name},
+          {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
+          {Pool.Manager, config}
+        ]
 
     Supervisor.init(children, strategy: :one_for_all)
   end
 
   defp finch_name!(opts) do
-    Keyword.get(opts, :name) || raise(ArgumentError, "must supply a name")
+    case Keyword.get(opts, :name) do
+      nil ->
+        raise ArgumentError, "must supply a name"
+
+      name when is_atom(name) ->
+        name
+
+      {:via, Registry, {registry, _key}} = via when is_atom(registry) ->
+        via
+
+      other ->
+        raise ArgumentError,
+              "expected :name to be an atom or {:via, Registry, {registry, key}} tuple, " <>
+                "got: #{inspect(other)}"
+    end
   end
 
   defp pool_options!(pools) do
@@ -548,6 +592,8 @@ defmodule Finch do
 
   defp concat_name(name, suffix), do: :"#{name}.#{suffix}"
 
+  defp resolve_finch_name(name), do: Finch.NameRegistry.resolve(name)
+
   defmacrop request_span(request, name, do: block) do
     quote do
       start_meta = %{request: unquote(request), name: unquote(name)}
@@ -650,6 +696,7 @@ defmodule Finch do
           {:ok, acc} | {:error, Exception.t(), acc}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
+    name = resolve_finch_name(name)
     validate_no_req_body_fun!(req, "Finch.stream/5")
 
     fun = fn entry, acc ->
@@ -764,6 +811,8 @@ defmodule Finch do
           {:ok, acc} | {:error, Exception.t(), acc}
         when acc: term()
   def stream_while(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
+    name = resolve_finch_name(name)
+
     request_span req, name do
       __stream__(req, name, acc, fun, opts)
     end
@@ -805,6 +854,7 @@ defmodule Finch do
   def request(req, name, opts \\ [])
 
   def request(%Request{} = req, name, opts) do
+    name = resolve_finch_name(name)
     validate_no_req_body_fun!(req, "Finch.request/3")
 
     request_span req, name do
@@ -904,6 +954,7 @@ defmodule Finch do
   """
   @spec async_request(Request.t(), name(), request_opts()) :: request_ref()
   def async_request(%Request{} = req, name, opts \\ []) do
+    name = resolve_finch_name(name)
     validate_no_req_body_fun!(req, "Finch.async_request/3")
 
     case get_pool(req, name, opts) do
@@ -1002,6 +1053,8 @@ defmodule Finch do
           | {:error, :not_found}
 
   def get_pool_status(finch_name, :default) do
+    finch_name = resolve_finch_name(finch_name)
+
     finch_name
     |> Pool.Manager.get_default_pools()
     |> Enum.reduce(%{}, fn {sup_pid, {pool_name, pool_mod}}, acc ->
@@ -1023,6 +1076,7 @@ defmodule Finch do
   end
 
   def get_pool_status(finch_name, pool_identifier) do
+    finch_name = resolve_finch_name(finch_name)
     pool = resolve_pool(pool_identifier)
 
     case Pool.Manager.get_pool_supervisor(finch_name, pool) do
@@ -1051,6 +1105,7 @@ defmodule Finch do
   """
   @spec ping(name(), pool_identifier()) :: {:ok, integer()} | {:error, term()}
   def ping(name, pool_identifier) do
+    name = resolve_finch_name(name)
     pool = resolve_pool(pool_identifier)
 
     case Pool.Manager.get_pool(name, pool) do
@@ -1078,6 +1133,7 @@ defmodule Finch do
   """
   @spec stop_pool(name(), pool_identifier()) :: :ok | {:error, :not_found}
   def stop_pool(finch_name, pool_identifier) do
+    finch_name = resolve_finch_name(finch_name)
     pool = resolve_pool(pool_identifier)
 
     case Pool.Manager.get_pool_supervisor(finch_name, pool) do
@@ -1102,6 +1158,7 @@ defmodule Finch do
   """
   @spec get_pool_count(name(), pool_identifier()) :: {:ok, pos_integer()} | {:error, :not_found}
   def get_pool_count(finch_name, pool_identifier) do
+    finch_name = resolve_finch_name(finch_name)
     pool = resolve_pool(pool_identifier)
 
     case Pool.Manager.get_pool_supervisor(finch_name, pool) do
@@ -1124,6 +1181,7 @@ defmodule Finch do
   """
   @spec set_pool_count(name(), pool_identifier(), pos_integer()) :: :ok | {:error, term()}
   def set_pool_count(finch_name, pool_identifier, count) when is_integer(count) and count > 0 do
+    finch_name = resolve_finch_name(finch_name)
     pool = resolve_pool(pool_identifier)
     Pool.Manager.set_pool_count(finch_name, pool, count)
   end

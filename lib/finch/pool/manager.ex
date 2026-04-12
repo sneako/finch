@@ -148,8 +148,14 @@ defmodule Finch.Pool.Manager do
           :not_found
 
         [{pid, {pool_mod, _pool_count, pool_config}}] ->
-          pool_count = Supervisor.count_children(pid).workers
-          {pid, pool_name, pool_mod, pool_count, pool_config}
+          # The pool supervisor may have been stopped between the Registry lookup
+          # and this call (e.g. after stop_pool/2). Guard against the race.
+          try do
+            pool_count = Supervisor.count_children(pid).workers
+            {pid, pool_name, pool_mod, pool_count, pool_config}
+          catch
+            :exit, {:noproc, _} -> :not_found
+          end
       end
     else
       :not_found

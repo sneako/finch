@@ -2387,6 +2387,133 @@ defmodule FinchTest do
     end
   end
 
+  describe "Registry-based naming" do
+    setup %{bypass: bypass} do
+      via_registry = :"finch_via_test_#{System.unique_integer([:positive])}"
+      start_supervised!({Registry, keys: :unique, name: via_registry})
+      {:ok, bypass: bypass, via_registry: via_registry}
+    end
+
+    defp via_name(registry, key), do: {:via, Registry, {registry, key}}
+
+    test "start and make request with via tuple name", %{bypass: bypass, via_registry: reg} do
+      name = via_name(reg, "my-pool")
+      start_supervised!({Finch, name: name})
+
+      expect_any(bypass)
+
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(name)
+    end
+
+    test "multiple via-tuple instances can coexist", %{bypass: bypass, via_registry: reg} do
+      name1 = via_name(reg, "pool-1")
+      name2 = via_name(reg, "pool-2")
+      start_supervised!({Finch, name: name1}, id: :finch_via_1)
+      start_supervised!({Finch, name: name2}, id: :finch_via_2)
+
+      expect_any(bypass)
+
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(name1)
+
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(name2)
+    end
+
+    test "get_pool_status with via tuple name", %{bypass: bypass, via_registry: reg} do
+      name = via_name(reg, "status-pool")
+
+      start_supervised!(
+        {Finch,
+         name: name,
+         pools: %{
+           endpoint(bypass) => [size: 2, count: 1, start_pool_metrics?: true]
+         }}
+      )
+
+      assert {:ok, [%Finch.HTTP1.PoolMetrics{pool_size: 2}]} =
+               Finch.get_pool_status(name, endpoint(bypass))
+    end
+
+    test "get_pool_count and set_pool_count with via tuple name",
+         %{bypass: bypass, via_registry: reg} do
+      name = via_name(reg, "count-pool")
+
+      start_supervised!(
+        {Finch,
+         name: name,
+         pools: %{
+           endpoint(bypass) => [size: 2, count: 1]
+         }}
+      )
+
+      assert {:ok, 1} = Finch.get_pool_count(name, endpoint(bypass))
+      assert :ok = Finch.set_pool_count(name, endpoint(bypass), 3)
+      assert {:ok, 3} = Finch.get_pool_count(name, endpoint(bypass))
+    end
+
+    test "stop_pool with via tuple name", %{bypass: bypass, via_registry: reg} do
+      name = via_name(reg, "stop-pool")
+
+      start_supervised!(
+        {Finch,
+         name: name,
+         pools: %{
+           endpoint(bypass) => [size: 1, count: 1, start_pool_metrics?: true]
+         }}
+      )
+
+      assert {:ok, _metrics} = Finch.get_pool_status(name, endpoint(bypass))
+      assert :ok = Finch.stop_pool(name, endpoint(bypass))
+      assert Finch.stop_pool(name, "http://unknown:9999") == {:error, :not_found}
+    end
+
+    test "dynamic start_pool with via tuple name", %{bypass: bypass, via_registry: reg} do
+      name = via_name(reg, "dynamic-pool")
+      start_supervised!({Finch, name: name})
+
+      pool = Finch.Pool.new(endpoint(bypass))
+      assert :ok = Finch.start_pool(name, pool, size: 2)
+
+      expect_any(bypass)
+
+      assert {:ok, %Response{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(name)
+    end
+
+    test "ETS mapping cleaned up after Finch stops", %{via_registry: reg} do
+      name = via_name(reg, "cleanup-pool")
+      start_supervised!({Finch, name: name}, id: :finch_cleanup_test)
+
+      # Mapping exists while Finch is running
+      assert is_atom(Finch.NameRegistry.resolve(name))
+
+      # Stop Finch
+      stop_supervised!(:finch_cleanup_test)
+
+      # Mapping should be cleaned up
+      assert_raise ArgumentError, ~r/unknown Finch instance/, fn ->
+        Finch.NameRegistry.resolve(name)
+      end
+    end
+
+    test "supervisor is discoverable via the user's Registry", %{via_registry: reg} do
+      name = via_name(reg, "discoverable")
+      start_supervised!({Finch, name: name})
+
+      assert [{pid, _}] = Registry.lookup(reg, "discoverable")
+      assert is_pid(pid)
+      assert Process.alive?(pid)
+    end
+
+    test "raises on invalid name shape" do
+      assert_raise ArgumentError, ~r/expected :name to be an atom/, fn ->
+        Finch.start_link(name: {"not", "valid"})
+      end
+    end
+  end
+
   defp get_pools(name, pool) do
     Registry.lookup(name, Finch.Pool.to_name(pool))
   end

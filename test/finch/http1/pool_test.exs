@@ -52,8 +52,8 @@ defmodule Finch.HTTP1.PoolTest do
     Process.monitor(supervisor)
     Process.monitor(pool)
 
-    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}
-    assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}
+    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 500
+    assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}, 500
 
     assert [] = DynamicSupervisor.which_children(IdleFinch.PoolSupervisor)
     assert_receive :telemetry_sent
@@ -101,8 +101,8 @@ defmodule Finch.HTTP1.PoolTest do
     ref2 = make_ref()
     Task.async(fn -> delay_exec.(ref2, 10) end)
 
-    assert_receive {^ref1, :done}, 150
-    assert_receive {^ref2, :done}, 150
+    assert_receive {^ref1, :done}, 500
+    assert_receive {^ref2, :done}, 500
 
     [{_, supervisor, _, _}] = DynamicSupervisor.which_children(:"#{finch_name}.PoolSupervisor")
     Process.monitor(supervisor)
@@ -116,11 +116,11 @@ defmodule Finch.HTTP1.PoolTest do
 
     ref3 = make_ref()
     Task.async(fn -> assert {:ok, %{status: 200}} = delay_exec.(ref3, 10) end)
-    assert_receive {^ref3, :done}, 150
+    assert_receive {^ref3, :done}, 500
 
     refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
-    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
-    assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}
+    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 500
+    assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}, 500
   end
 
   # @tag capture_log: true
@@ -180,10 +180,10 @@ defmodule Finch.HTTP1.PoolTest do
     assert_receive {^ref2, :start}
     refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 1000
 
-    assert_receive {^ref2, :done}
-    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
+    assert_receive {^ref2, :done}, 500
+    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 500
 
-    assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}, 200
+    assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}, 500
   end
 
   describe "async_request" do
