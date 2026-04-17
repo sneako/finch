@@ -996,7 +996,7 @@ defmodule Finch do
          ]
        }}
   """
-  @spec get_pool_status(name(), pool_identifier()) ::
+  @spec get_pool_status(name(), :default | pool_identifier()) ::
           {:ok, pool_metrics()}
           | {:ok, default_pool_metrics()}
           | {:error, :not_found}
