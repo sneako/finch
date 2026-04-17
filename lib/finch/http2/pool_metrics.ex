@@ -55,22 +55,22 @@ defmodule Finch.HTTP2.PoolMetrics do
   end
 
   @doc false
-  def get_pool_status(finch_name, pool_name, pool_idx) do
-    table = PoolMetrics.table_name(finch_name)
-
-    case PoolMetrics.get_row(table, pool_name, pool_idx) do
-      nil ->
+  def get_pool_status(finch_name, pool_name) do
+    case PoolMetrics.get_all_rows(finch_name, pool_name) do
+      [] ->
         {:error, :not_found}
 
-      {_key, in_flight, max_streams, pid} ->
+      rows ->
         {:ok,
-         %__MODULE__{
-           pid: pid,
-           pool_index: pool_idx,
-           in_flight_requests: in_flight,
-           available_connections: max_streams - in_flight,
-           max_concurrent_streams: max_streams
-         }}
+         Enum.map(rows, fn {{_pool_name, pool_idx}, in_flight, max_streams, pid} ->
+           %__MODULE__{
+             pid: pid,
+             pool_index: pool_idx,
+             in_flight_requests: in_flight,
+             available_connections: max_streams - in_flight,
+             max_concurrent_streams: max_streams
+           }
+         end)}
     end
   end
 end

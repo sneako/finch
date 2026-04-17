@@ -1004,10 +1004,8 @@ defmodule Finch do
   def get_pool_status(finch_name, :default) do
     finch_name
     |> Pool.Manager.get_default_pools()
-    |> Enum.reduce(%{}, fn {sup_pid, {pool_name, pool_mod}}, acc ->
-      pool_count = Supervisor.count_children(sup_pid).workers
-
-      case pool_mod.get_pool_status(finch_name, pool_name, pool_count) do
+    |> Enum.reduce(%{}, fn {_sup_pid, {pool_name, pool_mod}}, acc ->
+      case pool_mod.get_pool_status(finch_name, pool_name) do
         {:ok, metrics} ->
           pool_id = Pool.from_name(pool_name)
           Map.put(acc, pool_id, metrics)
@@ -1025,9 +1023,9 @@ defmodule Finch do
   def get_pool_status(finch_name, pool_identifier) do
     pool = resolve_pool(pool_identifier)
 
-    case Pool.Manager.get_pool_supervisor(finch_name, pool) do
-      {_pid, pool_name, pool_mod, pool_count, _pool_config} ->
-        pool_mod.get_pool_status(finch_name, pool_name, pool_count)
+    case Pool.Manager.get_pool_mod(finch_name, pool) do
+      {pool_name, pool_mod} ->
+        pool_mod.get_pool_status(finch_name, pool_name)
 
       :not_found ->
         {:error, :not_found}

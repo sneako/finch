@@ -47,22 +47,22 @@ defmodule Finch.HTTP1.PoolMetrics do
     PoolMetrics.update(table, pool_name, pool_idx, @pos_in_use, delta)
   end
 
-  def get_pool_status(finch_name, pool_name, pool_idx) do
-    table = PoolMetrics.table_name(finch_name)
-
-    case PoolMetrics.get_row(table, pool_name, pool_idx) do
-      nil ->
+  def get_pool_status(finch_name, pool_name) do
+    case PoolMetrics.get_all_rows(finch_name, pool_name) do
+      [] ->
         {:error, :not_found}
 
-      {_key, pool_size, in_use, pid} ->
+      rows ->
         {:ok,
-         %__MODULE__{
-           pid: pid,
-           pool_index: pool_idx,
-           pool_size: pool_size,
-           available_connections: pool_size - in_use,
-           in_use_connections: in_use
-         }}
+         Enum.map(rows, fn {{_pool_name, pool_idx}, pool_size, in_use, pid} ->
+           %__MODULE__{
+             pid: pid,
+             pool_index: pool_idx,
+             pool_size: pool_size,
+             available_connections: pool_size - in_use,
+             in_use_connections: in_use
+           }
+         end)}
     end
   end
 end

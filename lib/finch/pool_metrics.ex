@@ -23,7 +23,7 @@ defmodule Finch.PoolMetrics do
   @spec new(atom()) :: :ets.table()
   def new(finch_name) do
     :ets.new(table_name(finch_name), [
-      :set,
+      :ordered_set,
       :public,
       :named_table,
       read_concurrency: true,
@@ -59,14 +59,13 @@ defmodule Finch.PoolMetrics do
   end
 
   @doc """
-  Reads the full metrics row for the given key. Returns `nil` if not found.
+  Returns all metrics rows for the given pool_name, using ordered_set prefix lookup.
   """
-  @spec get_row(atom(), term(), pos_integer()) :: tuple() | nil
-  def get_row(table, pool_name, pool_idx) do
-    case :ets.lookup(table, {pool_name, pool_idx}) do
-      [row] -> row
-      [] -> nil
-    end
+  @spec get_all_rows(Finch.name(), term()) :: [tuple()]
+  def get_all_rows(table, pool_name) do
+    table
+    |> table_name()
+    |> :ets.match_object({{pool_name, :_}, :_, :_, :_})
   end
 
   @doc """
