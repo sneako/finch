@@ -4,6 +4,7 @@ defmodule Finch.HTTP1.PoolMetrics do
 
   Available metrics:
 
+    * `:pid` - The pid of the pool worker process
     * `:pool_index` - Index of the pool
     * `:pool_size` - Total number of connections of the pool
     * `:available_connections` - Number of available connections
@@ -22,6 +23,7 @@ defmodule Finch.HTTP1.PoolMetrics do
   @type t :: %__MODULE__{}
 
   defstruct [
+    :pid,
     :pool_index,
     :pool_size,
     :available_connections,
@@ -30,12 +32,12 @@ defmodule Finch.HTTP1.PoolMetrics do
 
   alias Finch.PoolMetrics
 
-  # Row layout: {{pool_name, pool_idx}, pool_size, in_use_connections}
+  # Row layout: {{pool_name, pool_idx}, pool_size, in_use_connections, pid}
   @pos_in_use 3
 
   def init(finch_name, pool_name, pool_idx, pool_size) do
     table = PoolMetrics.table_name(finch_name)
-    PoolMetrics.insert(table, pool_name, pool_idx, [pool_size, 0])
+    PoolMetrics.insert(table, pool_name, pool_idx, [pool_size, 0, self()])
     {:ok, {table, pool_name, pool_idx}}
   end
 
@@ -52,9 +54,10 @@ defmodule Finch.HTTP1.PoolMetrics do
       nil ->
         {:error, :not_found}
 
-      {_key, pool_size, in_use} ->
+      {_key, pool_size, in_use, pid} ->
         {:ok,
          %__MODULE__{
+           pid: pid,
            pool_index: pool_idx,
            pool_size: pool_size,
            available_connections: pool_size - in_use,

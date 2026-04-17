@@ -84,6 +84,6 @@ defmodule Finch.PoolMetrics do
   @spec delete_pool(atom(), term()) :: true
   def delete_pool(finch_name, pool_name) do
     table = table_name(finch_name)
-    :ets.match_delete(table, {{pool_name, :_}, :_, :_})
+    :ets.match_delete(table, {{pool_name, :_}, :_, :_, :_})
   end
 end
