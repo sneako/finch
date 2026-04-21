@@ -4,6 +4,7 @@ defmodule Finch.HTTP2.PoolMetrics do
 
   Available metrics:
 
+    * `:pid` - The pid of the pool worker process
     * `:pool_index` - Index of the pool
     * `:in_flight_requests` - Number of requests currently on the connection
     * `:available_connections` - Number of available connections
@@ -19,6 +20,7 @@ defmodule Finch.HTTP2.PoolMetrics do
   @type t :: %__MODULE__{}
 
   defstruct [
+    :pid,
     :pool_index,
     :in_flight_requests,
     :available_connections,
@@ -27,14 +29,14 @@ defmodule Finch.HTTP2.PoolMetrics do
 
   alias Finch.PoolMetrics
 
-  # Row layout: {{pool_name, pool_idx}, in_flight_requests, max_concurrent_streams}
+  # Row layout: {{pool_name, pool_idx}, in_flight_requests, max_concurrent_streams, pid}
   @pos_in_flight 2
   @pos_max_streams 3
 
   @doc false
   def init(finch_name, pool_name, pool_idx) do
     table = PoolMetrics.table_name(finch_name)
-    PoolMetrics.insert(table, pool_name, pool_idx, [0, 0])
+    PoolMetrics.insert(table, pool_name, pool_idx, [0, 0, self()])
     {:ok, {table, pool_name, pool_idx}}
   end
 
@@ -53,21 +55,22 @@ defmodule Finch.HTTP2.PoolMetrics do
   end
 
   @doc false
-  def get_pool_status(finch_name, pool_name, pool_idx) do
-    table = PoolMetrics.table_name(finch_name)
-
-    case PoolMetrics.get_row(table, pool_name, pool_idx) do
-      nil ->
+  def get_pool_status(finch_name, pool_name) do
+    case PoolMetrics.get_all_rows(finch_name, pool_name) do
+      [] ->
         {:error, :not_found}
 
-      {_key, in_flight, max_streams} ->
+      rows ->
         {:ok,
-         %__MODULE__{
-           pool_index: pool_idx,
-           in_flight_requests: in_flight,
-           available_connections: max_streams - in_flight,
-           max_concurrent_streams: max_streams
-         }}
+         Enum.map(rows, fn {{_pool_name, pool_idx}, in_flight, max_streams, pid} ->
+           %__MODULE__{
+             pid: pid,
+             pool_index: pool_idx,
+             in_flight_requests: in_flight,
+             available_connections: max_streams - in_flight,
+             max_concurrent_streams: max_streams
+           }
+         end)}
     end
   end
 end

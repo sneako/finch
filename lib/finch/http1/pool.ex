@@ -145,16 +145,7 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl Finch.Pool.Manager
-  def get_pool_status(finch_name, pool_name, count) do
-    for index <- 1..count,
-        {:ok, result} <- [PoolMetrics.get_pool_status(finch_name, pool_name, index)] do
-      result
-    end
-    |> case do
-      [] -> {:error, :not_found}
-      result -> {:ok, result}
-    end
-  end
+  defdelegate get_pool_status(finch_name, pool_name), to: PoolMetrics
 
   @impl NimblePool
   def init_pool({pool, pool_name, registry, pool_config, pool_idx}) do

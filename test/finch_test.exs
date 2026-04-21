@@ -2440,7 +2440,7 @@ defmodule FinchTest do
       # All metrics should be cleaned up
       table = Finch.PoolMetrics.table_name(finch_name)
       pool_name = Finch.Pool.to_name(pool(bypass))
-      assert :ets.match(table, {{pool_name, :_}, :_, :_}) == []
+      assert :ets.match(table, {{pool_name, :_}, :_, :_, :_}) == []
     end
 
     test "resizing a materialized default pool updates :default pool metrics", %{

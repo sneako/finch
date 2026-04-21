@@ -32,7 +32,7 @@ defmodule Finch.Pool.Manager do
   @callback cancel_async_request(request_ref()) :: :ok
 
   @doc false
-  @callback get_pool_status(finch_name :: atom(), pool_name(), pos_integer) ::
+  @callback get_pool_status(finch_name :: atom(), pool_name()) ::
               {:ok, list(map)} | {:error, :not_found}
 
   @doc false
@@ -150,6 +150,24 @@ defmodule Finch.Pool.Manager do
         [{pid, {pool_mod, _pool_count, pool_config}}] ->
           pool_count = Supervisor.count_children(pid).workers
           {pid, pool_name, pool_mod, pool_count, pool_config}
+      end
+    else
+      :not_found
+    end
+  end
+
+  @spec get_pool_mod(Finch.name(), Finch.Pool.t()) ::
+          {pool_name(), module()} | :not_found
+  def get_pool_mod(finch_name, %Finch.Pool{} = pool) do
+    pool_name = Finch.Pool.to_name(pool)
+
+    if Process.whereis(finch_name) do
+      case Registry.lookup(supervisor_registry_name(finch_name), pool_name) do
+        [{_pid, {pool_mod, _pool_count, _pool_config}}] ->
+          {pool_name, pool_mod}
+
+        [] ->
+          :not_found
       end
     else
       :not_found
