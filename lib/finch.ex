@@ -105,7 +105,9 @@ defmodule Finch do
       doc: "HTTP/2-specific options. Only relevant when `protocols` includes `:http2`.",
       default: [
         wait_for_server_settings?: false,
-        ping_interval: :infinity
+        ping_interval: :infinity,
+        max_connection_age: :infinity,
+        max_connection_age_jitter: 0
       ],
       keys: [
         wait_for_server_settings?: [
@@ -127,6 +129,28 @@ defmodule Finch do
           the connection has been idle for this duration. When set to `:infinity` (default), \
           no PINGs are sent.
           """
+        ],
+        max_connection_age: [
+          type: :timeout,
+          doc: """
+          Maximum lifetime in milliseconds for an HTTP/2 connection before it is gracefully \
+          drained and replaced with a fresh one. When the timer expires the pool unregisters \
+          from the Registry (so new requests go to a fresh connection), finishes any in-flight \
+          requests, then terminates normally — the supervisor restarts it with a new DNS lookup. \
+          Useful for Kubernetes headless-service load balancing where DNS entries rotate. \
+          Defaults to `:infinity` (no age limit).
+          """,
+          default: :infinity
+        ],
+        max_connection_age_jitter: [
+          type: :non_neg_integer,
+          doc: """
+          Random jitter in milliseconds added to `:max_connection_age`. Prevents multiple \
+          pool shards from draining simultaneously (thundering-herd). The actual age used is \
+          `max_connection_age + :rand.uniform(max_connection_age_jitter)`. \
+          Defaults to `0` (no jitter).
+          """,
+          default: 0
         ]
       ]
     ]
@@ -539,7 +563,9 @@ defmodule Finch do
       pool_max_idle_time: valid[:pool_max_idle_time],
       start_pool_metrics?: valid[:start_pool_metrics?],
       wait_for_server_settings?: valid[:http2][:wait_for_server_settings?],
-      ping_interval: valid[:http2][:ping_interval]
+      ping_interval: valid[:http2][:ping_interval],
+      max_connection_age: valid[:http2][:max_connection_age],
+      max_connection_age_jitter: valid[:http2][:max_connection_age_jitter]
     }
   end
 
@@ -621,6 +647,13 @@ defmodule Finch do
   > not use streaming over HTTP2 for non-terminating responses or
   > when streaming large responses which you do not intend to keep
   > in memory.
+
+  > ### Connection draining {: .info}
+  >
+  > If the HTTP/2 pool this request is dispatched to is currently draining (see
+  > `http2: [max_connection_age: ...]`), the request is automatically retried on a fresh
+  > pool. The retry is transparent to the caller. See `async_request/3` for the async
+  > variant, which does not retry automatically.
 
   ## Options
 
@@ -704,6 +737,13 @@ defmodule Finch do
   > when streaming large responses which you do not intend to keep
   > in memory.
 
+  > ### Connection draining {: .info}
+  >
+  > If the HTTP/2 pool this request is dispatched to is currently draining (see
+  > `http2: [max_connection_age: ...]`), the request is automatically retried on a fresh
+  > pool. The retry is transparent to the caller. See `async_request/3` for the async
+  > variant, which does not retry automatically.
+
   ## Options
 
   Shares options with `request/3`.
@@ -769,10 +809,21 @@ defmodule Finch do
     end
   end
 
-  defp __stream__(%Request{} = req, name, acc, fun, opts) do
+  defp __stream__(req, name, acc, fun, opts, retries \\ 3)
+
+  defp __stream__(%Request{} = req, name, acc, fun, opts, retries) do
     case get_pool(req, name, opts) do
-      {pool, pool_mod} -> pool_mod.request(pool, req, acc, fun, name, opts)
-      _ -> {:error, Finch.Error.exception(:pool_not_available), acc}
+      {pool, pool_mod} ->
+        case pool_mod.request(pool, req, acc, fun, name, opts) do
+          {:error, %Finch.Error{reason: :read_only}, _acc} when retries > 0 ->
+            __stream__(req, name, acc, fun, opts, retries - 1)
+
+          other ->
+            other
+        end
+
+      _ ->
+        {:error, Finch.Error.exception(:pool_not_available), acc}
     end
   end
 
@@ -782,6 +833,13 @@ defmodule Finch do
   It can still raise exceptions if it was not possible to check out a connection in the given `:pool_timeout`.
 
   See also `stream/5`.
+
+  > ### Connection draining {: .info}
+  >
+  > If the HTTP/2 pool this request is dispatched to is currently draining (see
+  > `http2: [max_connection_age: ...]`), the request is automatically retried on a fresh
+  > pool. The retry is transparent to the caller. See `async_request/3` for the async
+  > variant, which does not retry automatically.
 
   ## Options
 
@@ -897,6 +955,13 @@ defmodule Finch do
       {ref, {:headers, [...]}}
       {ref, {:data, "..."}}
       {ref, :done}
+
+  > ### Connection draining {: .info}
+  >
+  > Unlike `request/3` and `stream/5`, async requests are not automatically retried when a
+  > pool is draining (see `http2: [max_connection_age: ...]`). If the caller receives
+  > `{ref, {:error, %Finch.Error{reason: :read_only}}}`, it should retry by calling
+  > `async_request/3` again.
 
   ## Options
 

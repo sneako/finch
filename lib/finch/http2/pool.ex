@@ -230,7 +230,10 @@ defmodule Finch.HTTP2.Pool do
       metrics_ref: metrics_ref,
       wait_for_server_settings?: pool_config.wait_for_server_settings?,
       ping_interval: pool_config.ping_interval,
-      pings: %{}
+      pings: %{},
+      max_connection_age: pool_config.max_connection_age,
+      max_connection_age_jitter: pool_config.max_connection_age_jitter,
+      draining: false
     }
 
     {:ok, :disconnected, data, {:next_event, :internal, {:connect, 0}}}
@@ -273,7 +276,8 @@ defmodule Finch.HTTP2.Pool do
       data
       | conn: nil,
         requests: %{},
-        pings: %{}
+        pings: %{},
+        draining: false
     }
 
     actions = [{{:timeout, :reconnect}, data.backoff_base, 1}]
@@ -352,6 +356,11 @@ defmodule Finch.HTTP2.Pool do
     :keep_state_and_data
   end
 
+  # The connection age timer may fire after transitioning to disconnected. Ignore it.
+  def disconnected({:timeout, :max_connection_age}, _content, _data) do
+    :keep_state_and_data
+  end
+
   # Its possible that we can receive an info message telling us that a socket
   # has been closed. This happens after we enter a disconnected state from a
   # read_only state but we don't have any requests that are open. We've already
@@ -417,7 +426,7 @@ defmodule Finch.HTTP2.Pool do
   def connected(:enter, _old_state, data) do
     {:ok, _} = Registry.register(data.finch_name, data.pool_name, __MODULE__)
     update_max_concurrent_streams(data)
-    {:keep_state_and_data, ping_action(data)}
+    {:keep_state_and_data, [ping_action(data) | connection_age_action(data)]}
   end
 
   # Issue request to the upstream server. We store a ref to the request so we
@@ -513,6 +522,21 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
+  # The connection has exceeded its maximum age. Unregister from the Registry so
+  # that new requests are routed to a fresh pool, then either stop immediately (if
+  # there are no in-flight requests) or drain remaining requests in read-only mode
+  # before stopping. The supervisor will restart the pool with a fresh DNS lookup.
+  def connected({:timeout, :max_connection_age}, _content, data) do
+    Registry.unregister(data.finch_name, data.pool_name)
+    data = %{data | draining: true}
+
+    if Enum.empty?(data.requests) do
+      {:stop, :normal, data}
+    else
+      {:next_state, :connected_read_only, data}
+    end
+  end
+
   def connected({:call, from}, :ping, data) do
     case HTTP2.ping(data.conn) do
       {:ok, conn, ref} ->
@@ -590,12 +614,19 @@ defmodule Finch.HTTP2.Pool do
         {data, actions} = handle_responses(data, responses)
 
         # If the connection is still open for reading and we have pending requests
-        # to receive, we should try to wait for the responses. Otherwise enter
-        # the disconnected state so we can try to re-establish a connection.
-        if HTTP2.open?(conn, :read) && Enum.any?(data.requests) do
-          {:keep_state, data, actions}
-        else
-          {:next_state, :disconnected, data, actions}
+        # to receive, we should try to wait for the responses. If the pool is
+        # draining and all requests are done, stop normally so the supervisor
+        # restarts it with a fresh DNS lookup. Otherwise enter the disconnected
+        # state so we can try to re-establish a connection.
+        cond do
+          HTTP2.open?(conn, :read) && Enum.any?(data.requests) ->
+            {:keep_state, data, actions}
+
+          data.draining && Enum.empty?(data.requests) ->
+            {:stop, :normal, data}
+
+          true ->
+            {:next_state, :disconnected, data, actions}
         end
 
       {:error, conn, error, responses} ->
@@ -607,13 +638,20 @@ defmodule Finch.HTTP2.Pool do
         data = put_in(data.conn, conn)
         {data, actions} = handle_responses(data, responses)
 
-        # Same as above, if we're still waiting on responses, we should stay in
-        # this state. Otherwise, we should enter the disconnected state and try
-        # to re-establish a connection.
-        if HTTP2.open?(conn, :read) && Enum.any?(data.requests) do
-          {:keep_state, data, actions}
-        else
-          {:next_state, :disconnected, data, actions}
+        # If the connection is still open for reading and we have pending requests
+        # to receive, we should try to wait for the responses. If the pool is
+        # draining and all requests are done, stop normally so the supervisor
+        # restarts it with a fresh DNS lookup. Otherwise enter the disconnected
+        # state so we can try to re-establish a connection.
+        cond do
+          HTTP2.open?(conn, :read) && Enum.any?(data.requests) ->
+            {:keep_state, data, actions}
+
+          data.draining && Enum.empty?(data.requests) ->
+            {:stop, :normal, data}
+
+          true ->
+            {:next_state, :disconnected, data, actions}
         end
 
       :unknown ->
@@ -624,6 +662,11 @@ defmodule Finch.HTTP2.Pool do
 
   # The ping timer may fire after transitioning to read-only. Ignore it.
   def connected_read_only({:timeout, :ping}, :ping, _data) do
+    :keep_state_and_data
+  end
+
+  # The connection age timer may fire after transitioning to read-only. Ignore it.
+  def connected_read_only({:timeout, :max_connection_age}, _content, _data) do
     :keep_state_and_data
   end
 
@@ -640,12 +683,19 @@ defmodule Finch.HTTP2.Pool do
       send(request.from_pid, {request.request_ref, {:error, Error.exception(:request_timeout)}})
     end
 
-    # If we're out of requests then we should enter the disconnected state.
-    # Otherwise wait for the remaining responses.
-    if Enum.empty?(data.requests) do
-      {:next_state, :disconnected, data}
-    else
-      {:keep_state, data}
+    # If requests remain, keep waiting for their responses. If the pool is
+    # draining and all requests are done, stop normally so the supervisor
+    # restarts it with a fresh DNS lookup. Otherwise enter the disconnected
+    # state so we can try to re-establish a connection.
+    cond do
+      Enum.any?(data.requests) ->
+        {:keep_state, data}
+
+      data.draining ->
+        {:stop, :normal, data}
+
+      true ->
+        {:next_state, :disconnected, data}
     end
   end
 
@@ -961,6 +1011,18 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp ping_action(data), do: {{:timeout, :ping}, data.ping_interval, :ping}
+
+  defp connection_age_action(%{max_connection_age: :infinity}), do: []
+
+  defp connection_age_action(%{max_connection_age_jitter: jitter} = data)
+       when is_integer(jitter) and jitter > 0 do
+    jitter_value = :rand.uniform(jitter)
+    [{{:timeout, :max_connection_age}, data.max_connection_age + jitter_value, nil}]
+  end
+
+  defp connection_age_action(data) do
+    [{{:timeout, :max_connection_age}, data.max_connection_age, nil}]
+  end
 
   defp reply(%{from: nil, from_pid: pid, request_ref: request_ref}, reply) do
     send(pid, {request_ref, reply})

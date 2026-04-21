@@ -46,7 +46,9 @@ defmodule Finch.HTTP2.PoolTest do
         start_pool_metrics?: false,
         count: 1,
         wait_for_server_settings?: false,
-        ping_interval: :infinity
+        ping_interval: :infinity,
+        max_connection_age: :infinity,
+        max_connection_age_jitter: 0
       }
 
     pool = Finch.Pool.from_name({:https, "localhost", port, :default})
@@ -735,6 +737,70 @@ defmodule Finch.HTTP2.PoolTest do
       :ok = :ssl.close(server_socket())
 
       assert_receive {:ping_result, {:error, %Finch.Error{reason: :connection_closed}}}
+    end
+  end
+
+  describe "connection draining" do
+    test "expiry unregisters pool and stops it" do
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port, max_connection_age: 50, max_connection_age_jitter: 0)
+        end)
+
+      ref = Process.monitor(pool)
+      assert [{^pool, _}] = Registry.lookup(:test, :pool_name)
+
+      assert_receive {:unregister, _registry, _key, _pid}, 500
+      assert [] = Registry.lookup(:test, :pool_name)
+
+      assert_receive {:DOWN, ^ref, :process, ^pool, reason}, 1_000
+      assert reason in [:normal, :noproc]
+    end
+
+    test "drain with in-flight requests completes them before stopping", %{request: req} do
+      us = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port, max_connection_age: 200, max_connection_age_jitter: 0)
+        end)
+
+      ref = Process.monitor(pool)
+
+      spawn(fn ->
+        result = request(pool, req, [])
+        send(us, {:resp, result})
+      end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      assert_receive {:unregister, _registry, _key, _pid}, 500
+
+      # New requests should fail with :read_only
+      assert {:error, %Finch.Error{reason: :read_only}, _acc} = request(pool, req, [])
+
+      # Complete the in-flight request
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
+        data(stream_id: stream_id, data: "drained", flags: set_flags(:data, [:end_stream]))
+      ])
+
+      assert_receive {:resp, {:ok, {200, [], "drained"}}}
+
+      assert_receive {:DOWN, ^ref, :process, ^pool, :normal}, 1_000
+    end
+
+    test "jitter does not crash" do
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port, max_connection_age: 50, max_connection_age_jitter: 50)
+        end)
+
+      ref = Process.monitor(pool)
+      assert_receive {:DOWN, ^ref, :process, ^pool, reason}, 1_000
+      assert reason in [:normal, :noproc]
     end
   end
 
