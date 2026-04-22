@@ -223,7 +223,7 @@ defmodule Finch.HTTP2.PoolTest do
       assert_receive {:result, {:ok, {200, [], "ok"}}}
     end
 
-    test "request timeout with timeout of 0", %{request: req} do
+    test "receive timeout with timeout of 0", %{request: req} do
       us = self()
 
       {:ok, pool} =
@@ -241,7 +241,7 @@ defmodule Finch.HTTP2.PoolTest do
       assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}, _acc}}
     end
 
-    test "request timeout with timeout > 0", %{request: req} do
+    test "receive timeout with timeout > 0", %{request: req} do
       us = self()
 
       {:ok, pool} =
@@ -292,7 +292,7 @@ defmodule Finch.HTTP2.PoolTest do
       refute_receive _any, 200
     end
 
-    test "request timeout with timeout > 0 where :done arrives after timeout", %{request: req} do
+    test "receive timeout with timeout > 0 where :done arrives after timeout", %{request: req} do
       us = self()
 
       {:ok, pool} =
@@ -322,6 +322,68 @@ defmodule Finch.HTTP2.PoolTest do
       assert_recv_frames([rst_stream(stream_id: ^stream_id, error_code: :cancel)])
 
       assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}, _acc}}
+    end
+
+    test "receive timeout resets on each data chunk", %{request: req} do
+      us = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      spawn(fn ->
+        resp = request(pool, req, receive_timeout: 100, request_timeout: :infinity)
+        send(us, {:resp, resp})
+      end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers]))
+      ])
+
+      # Send 3 chunks spaced 50ms apart. Total ~150ms exceeds receive_timeout
+      # of 100ms, but each chunk arrives within the window.
+      for i <- 1..3 do
+        Process.sleep(50)
+        flags = if i == 3, do: set_flags(:data, [:end_stream]), else: 0x00
+        server_send_frames([data(stream_id: stream_id, data: "chunk-#{i}", flags: flags)])
+      end
+
+      assert_receive {:resp, {:ok, _}}, 500
+    end
+
+    test "request_timeout fires when total duration is exceeded", %{request: req} do
+      us = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      spawn(fn ->
+        resp = request(pool, req, receive_timeout: 500, request_timeout: 100)
+        send(us, {:resp, resp})
+      end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers]))
+      ])
+
+      # Chunks keep idle timeout alive but total time exceeds request_timeout
+      for i <- 1..3 do
+        Process.sleep(50)
+        server_send_frames([data(stream_id: stream_id, data: "chunk-#{i}", flags: 0x00)])
+      end
+
+      assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}, _acc}}, 500
     end
   end
 
