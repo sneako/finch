@@ -822,6 +822,10 @@ defmodule Finch do
             other
         end
 
+      :not_ready when retries > 0 ->
+        Process.sleep(100)
+        __stream__(req, name, acc, fun, opts, retries - 1)
+
       _ ->
         {:error, Finch.Error.exception(:pool_not_available), acc}
     end
@@ -971,10 +975,20 @@ defmodule Finch do
   @spec async_request(Request.t(), name(), request_opts()) :: request_ref()
   def async_request(%Request{} = req, name, opts \\ []) do
     validate_no_req_body_fun!(req, "Finch.async_request/3")
+    __async_request__(req, name, opts)
+  end
 
+  defp __async_request__(req, name, opts, retries \\ 3) do
     case get_pool(req, name, opts) do
-      {pool, pool_mod} -> pool_mod.async_request(pool, req, name, opts)
-      _ -> raise Finch.Error, :pool_not_available
+      {pool, pool_mod} ->
+        pool_mod.async_request(pool, req, name, opts)
+
+      :not_ready when retries > 0 ->
+        Process.sleep(100)
+        __async_request__(req, name, opts, retries - 1)
+
+      _ ->
+        raise Finch.Error, :pool_not_available
     end
   end
 
