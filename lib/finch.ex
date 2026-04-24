@@ -822,7 +822,7 @@ defmodule Finch do
             other
         end
 
-      :not_ready when retries > 0 ->
+      status when status in [:not_ready, :not_found] and retries > 0 ->
         Process.sleep(100)
         __stream__(req, name, acc, fun, opts, retries - 1)
 
@@ -983,7 +983,7 @@ defmodule Finch do
       {pool, pool_mod} ->
         pool_mod.async_request(pool, req, name, opts)
 
-      :not_ready when retries > 0 ->
+      status when status in [:not_ready, :not_found] and retries > 0 ->
         Process.sleep(100)
         __async_request__(req, name, opts, retries - 1)
 
