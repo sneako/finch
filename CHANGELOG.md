@@ -1,5 +1,79 @@
 # Changelog
 
+## main
+
+### Added
+
+- New `:http2` configuration section with support for
+  - `wait_for_server_settings?` adds blocking until settings are negotiated
+  - `ping_interval` adds automatic HTTP/2 PING frames on an interval of inactivity
+- Add `http+unix://` and `https+unix://` URL scheme support for cleaner Unix socket pool configuration #351
+- Add pool tagging support for connection pool isolation #345
+- Add `Finch.find_pool/2` to look up a pool by configuration and return its pid
+- Add `Finch.start_pool/3` to start a pool under Finch's internal supervision tree
+- Add `Finch.Pool.child_spec/1` for user-managed pools under your own supervision tree
+- Encapsulate pool identity using a Pool struct #338
+- Add Elixir 1.20 support #346
+
+### Changed
+
+- Pool metrics now return `Finch.Pool.t()` structs as keys
+
+### Deprecated
+
+- Deprecate `{scheme, {:local, path}}` tuple form in `:pools`, use URL strings (e.g. `"http+unix:///path"`) instead #349
+
+### Removed
+
+- Remove deprecated `Finch.request/6` function #348
+- Remove deprecated pool configuration options #348
+
+### Fixed
+
+- Do not exceed max failure count to stop overflows #343
+
+## v0.21.0 (2026-01-22)
+
+### Enhancements
+
+- Add support for querying default pool metrics via `Finch.get_pool_status/2` #329
+- Add more details on `Finch.request/3` docs #327
+
+### Bug Fixes
+
+- Prevent idle HTTP/1 pools from being terminated while connections are in use #292
+- Disable unsupported HTTP/2 server push responses to avoid crashes #333
+- Drop `:cacerts` from defaults for HTTP connections to avoid breaking plain HTTP pools #333
+- Only track default pool metrics when `start_pool_metrics?` is enabled #329
+
+### Other
+
+- Elixir 1.19 compatibility updates for HTTP/1 pool state handling #331
+- CI: update test matrix and x509/deps for Elixir 1.19 #330
+- Add ALPN large-body regression test coverage (issue #265) #332
+
+## v0.20.0 (2025-07-04)
+
+### Enhancements
+
+- Support manual pool termination #299
+- Refactor HTTP1 pool state for better maintainability #308
+- Add `:supported_groups` to list of TLS options #307
+- Be more explicit about the `:default` pool in documentation #314
+- Upgrade `nimble_options` to document deprecations #315
+
+### Bug Fixes
+
+- Fix Finch.stream_while/5 on halt for both HTTP/1 and HTTP/2 #320
+- Return accumulator when Finch.stream/5 and Finch.stream_while/5 fail #295
+- Fix documentation reference for get_pool_status/2 #301
+
+### Other
+
+- Upgrade CI VM to Ubuntu 24 #321
+- CI housekeeping: support Elixir 1.17/Erlang OTP 27, bump Credo and deps #303
+- Update GitHub CI badge URL #304
+
 ## v0.19.0 (2024-09-04)
 
 ### Enhancements

@@ -2,7 +2,7 @@ defmodule Finch.HTTP2.Pool do
   @moduledoc false
 
   @behaviour :gen_statem
-  @behaviour Finch.Pool
+  @behaviour Finch.Pool.Manager
 
   alias Mint.HTTP2
   alias Mint.HTTPError
@@ -16,8 +16,11 @@ defmodule Finch.HTTP2.Pool do
   require Logger
 
   @default_receive_timeout 15_000
+  @backoff_base 500
+  @backoff_max 10_000
+  @backoff_max_failure_count ceil(:math.log2(@backoff_max / @backoff_base))
 
-  @impl true
+  @impl :gen_statem
   def callback_mode(), do: [:state_functions, :state_enter]
 
   def child_spec(opts) do
@@ -27,14 +30,20 @@ defmodule Finch.HTTP2.Pool do
     }
   end
 
-  @impl Finch.Pool
+  @impl Finch.Pool.Manager
   def stream(_pool, _request, _name, _opts) do
     {:error, %RuntimeError{message: "Streaming is not supported for HTTP2"}}
   end
 
   # Call the pool with the request. The pool will multiplex multiple requests
   # and stream the result set back to the calling process using `send`
-  @impl Finch.Pool
+  @impl Finch.Pool.Manager
+  def request(_pool, %{body: {:stream, fun}}, _acc, _fun, _name, _opts)
+      when is_function(fun, 1) do
+    raise ArgumentError,
+          "{:stream, req_body_fun} is not yet supported on HTTP/2 pools"
+  end
+
   def request(pool, request, acc, fun, name, opts) do
     opts = Keyword.put_new(opts, :receive_timeout, @default_receive_timeout)
     timeout = opts[:receive_timeout]
@@ -69,7 +78,7 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  @impl Finch.Pool
+  @impl Finch.Pool.Manager
   def async_request(pool, req, _name, opts) do
     opts = Keyword.put_new(opts, :receive_timeout, @default_receive_timeout)
     request_ref = make_request_ref(pool)
@@ -79,29 +88,14 @@ defmodule Finch.HTTP2.Pool do
     request_ref
   end
 
-  @impl Finch.Pool
+  @impl Finch.Pool.Manager
   def cancel_async_request({_, {pool, _}} = request_ref) do
     :ok = :gen_statem.call(pool, {:cancel, request_ref})
     clean_responses(request_ref)
   end
 
-  @impl Finch.Pool
-  def get_pool_status(finch_name, shp) do
-    case Finch.PoolManager.get_pool_count(finch_name, shp) do
-      nil ->
-        {:error, :not_found}
-
-      count ->
-        1..count
-        |> Enum.map(&PoolMetrics.get_pool_status(finch_name, shp, &1))
-        |> Enum.filter(&match?({:ok, _}, &1))
-        |> Enum.map(&elem(&1, 1))
-        |> case do
-          [] -> {:error, :not_found}
-          result -> {:ok, result}
-        end
-    end
-  end
+  @impl Finch.Pool.Manager
+  defdelegate get_pool_status(finch_name, pool_name), to: PoolMetrics
 
   defp make_request_ref(pool) do
     {__MODULE__, {pool, make_ref()}}
@@ -202,33 +196,40 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
-  def start_link({_shp, _finch_name, _pool_config, _start_pool_metrics?, _pool_idx} = opts) do
+  def ping(pool), do: :gen_statem.call(pool, :ping)
+
+  def start_link({_pool, _pool_name, _registry, _pool_config, _pool_idx} = opts) do
     :gen_statem.start_link(__MODULE__, opts, [])
   end
 
-  @impl true
-  def init({{scheme, host, port} = shp, registry, pool_opts, start_pool_metrics?, pool_idx}) do
-    {:ok, metrics_ref} =
-      if start_pool_metrics?,
-        do: PoolMetrics.init(registry, shp, pool_idx),
-        else: {:ok, nil}
+  @impl :gen_statem
+  def init({pool, pool_name, registry, pool_config, pool_idx}) do
+    Process.flag(:trap_exit, true)
 
-    {:ok, _} = Registry.register(registry, shp, __MODULE__)
+    {:ok, metrics_ref} =
+      if pool_config.start_pool_metrics?,
+        do: PoolMetrics.init(registry, pool_name, pool_idx),
+        else: {:ok, nil}
 
     data = %{
       conn: nil,
       finch_name: registry,
-      scheme: scheme,
-      host: host,
-      port: port,
+      pool: pool,
+      pool_name: pool_name,
       pool_idx: pool_idx,
       requests: %{},
       refs: %{},
       requests_by_pid: %{},
-      backoff_base: 500,
-      backoff_max: 10_000,
-      connect_opts: pool_opts[:conn_opts] || [],
-      metrics_ref: metrics_ref
+      backoff_base: @backoff_base,
+      backoff_max: @backoff_max,
+      connect_opts: pool_config.conn_opts,
+      metrics_ref: metrics_ref,
+      wait_for_server_settings?: pool_config.wait_for_server_settings?,
+      ping_interval: pool_config.ping_interval,
+      pings: %{},
+      max_connection_age: pool_config.max_connection_age,
+      max_connection_age_jitter: pool_config.max_connection_age_jitter,
+      draining: false
     }
 
     {:ok, :disconnected, data, {:next_event, :internal, {:connect, 0}}}
@@ -244,6 +245,8 @@ defmodule Finch.HTTP2.Pool do
   # When entering a disconnected state we need to fail all of the pending
   # requests
   def disconnected(:enter, _, data) do
+    Registry.unregister(data.finch_name, data.pool_name)
+
     :ok =
       Enum.each(data.requests, fn {_ref, request} ->
         send(
@@ -251,6 +254,11 @@ defmodule Finch.HTTP2.Pool do
           {request.request_ref, {:error, Error.exception(:connection_closed)}}
         )
       end)
+
+    # Fail any pending on-demand ping callers
+    Enum.each(data.pings, fn {_ref, {from, _start}} ->
+      :gen_statem.reply(from, {:error, Error.exception(:connection_closed)})
+    end)
 
     # It's possible that we're entering this state before we are alerted of the
     # fact that the socket is closed. This most often happens if we're in a read
@@ -260,10 +268,13 @@ defmodule Finch.HTTP2.Pool do
       HTTP2.close(data.conn)
     end
 
-    data =
+    data = %{
       data
-      |> Map.put(:requests, %{})
-      |> Map.put(:conn, nil)
+      | conn: nil,
+        requests: %{},
+        pings: %{},
+        draining: false
+    }
 
     actions = [{{:timeout, :reconnect}, data.backoff_base, 1}]
 
@@ -272,27 +283,28 @@ defmodule Finch.HTTP2.Pool do
 
   def disconnected(:internal, {:connect, failure_count}, data) do
     metadata = %{
-      scheme: data.scheme,
-      host: data.host,
-      port: data.port,
+      scheme: data.pool.scheme,
+      host: data.pool.host,
+      port: data.pool.port,
       name: data.finch_name
     }
 
     start = Telemetry.start(:connect, metadata)
 
-    case HTTP2.connect(data.scheme, data.host, data.port, data.connect_opts) do
+    case HTTP2.connect(data.pool.scheme, data.pool.host, data.pool.port, data.connect_opts) do
       {:ok, conn} ->
         Telemetry.stop(:connect, start, metadata)
-        SSL.maybe_log_secrets(data.scheme, data.connect_opts, conn)
+        SSL.maybe_log_secrets(data.pool.scheme, data.connect_opts, conn)
         data = %{data | conn: conn}
-        {:next_state, :connected, data}
+        next = if data.wait_for_server_settings?, do: :connecting, else: :connected
+        {:next_state, next, data}
 
       {:error, error} ->
         metadata = Map.put(metadata, :error, error)
         Telemetry.stop(:connect, start, metadata)
 
         Logger.warning([
-          "Failed to connect to #{data.scheme}://#{data.host}:#{data.port}: ",
+          "Failed to connect to #{data.pool.scheme}://#{data.pool.host}:#{data.pool.port}: ",
           Exception.message(error)
         ])
 
@@ -317,6 +329,10 @@ defmodule Finch.HTTP2.Pool do
     {:keep_state_and_data, {:reply, from, {:error, Error.exception(:disconnected)}}}
   end
 
+  def disconnected({:call, from}, :ping, _data) do
+    {:keep_state_and_data, {:reply, from, {:error, Error.exception(:disconnected)}}}
+  end
+
   # Immediately fail a request if we're disconnected
   def disconnected(:cast, {:async_request, pid, request_ref, _, _}, _data) do
     send(pid, {request_ref, {:error, Error.exception(:disconnected)}})
@@ -331,6 +347,16 @@ defmodule Finch.HTTP2.Pool do
     :keep_state_and_data
   end
 
+  # The ping timer may fire after transitioning to disconnected. Ignore it.
+  def disconnected({:timeout, :ping}, :ping, _data) do
+    :keep_state_and_data
+  end
+
+  # The connection age timer may fire after transitioning to disconnected. Ignore it.
+  def disconnected({:timeout, :max_connection_age}, _content, _data) do
+    :keep_state_and_data
+  end
+
   # Its possible that we can receive an info message telling us that a socket
   # has been closed. This happens after we enter a disconnected state from a
   # read_only state but we don't have any requests that are open. We've already
@@ -341,10 +367,62 @@ defmodule Finch.HTTP2.Pool do
   end
 
   @doc false
+  # In connecting we have not received server SETTINGS yet; reject requests.
+  def connecting(event, content, data)
+
+  def connecting(:enter, _old_state, _data), do: :keep_state_and_data
+
+  def connecting({:call, from}, {:request, _, _, _}, _data),
+    do: {:keep_state_and_data, {:reply, from, {:error, Error.exception(:connection_not_ready)}}}
+
+  def connecting({:call, from}, {:cancel, _request_ref}, _data),
+    do: {:keep_state_and_data, {:reply, from, :ok}}
+
+  def connecting({:call, from}, :ping, _data),
+    do: {:keep_state_and_data, {:reply, from, {:error, Error.exception(:connection_not_ready)}}}
+
+  def connecting({:timeout, _}, _content, _data), do: :keep_state_and_data
+
+  def connecting(:cast, {:async_request, pid, request_ref, _, _}, _data) do
+    send(pid, {request_ref, {:error, Error.exception(:connection_not_ready)}})
+    :keep_state_and_data
+  end
+
+  def connecting(:info, {:DOWN, _, :process, _pid, _}, data), do: {:keep_state, data}
+
+  def connecting(:info, message, data) do
+    case HTTP2.stream(data.conn, message) do
+      {:ok, conn, _responses} ->
+        data = put_in(data.conn, conn)
+
+        if HTTP2.open?(data.conn) do
+          {:next_state, :connected, data}
+        else
+          {:keep_state, data}
+        end
+
+      {:error, conn, error, _responses} ->
+        Logger.error([
+          "Received error from server #{data.pool.scheme}:#{data.pool.host}:#{data.pool.port}: ",
+          Exception.message(error)
+        ])
+
+        data = put_in(data.conn, conn)
+        {:next_state, :disconnected, data}
+
+      :unknown ->
+        Logger.warning(["Received unknown message: ", inspect(message)])
+        :keep_state_and_data
+    end
+  end
+
+  @doc false
   def connected(event, content, data)
 
-  def connected(:enter, _old_state, _data) do
-    :keep_state_and_data
+  def connected(:enter, _old_state, data) do
+    {:ok, _} = Registry.register(data.finch_name, data.pool_name, __MODULE__)
+    update_max_concurrent_streams(data)
+    {:keep_state_and_data, [ping_action(data) | connection_age_action(data)]}
   end
 
   # Issue request to the upstream server. We store a ref to the request so we
@@ -374,12 +452,13 @@ defmodule Finch.HTTP2.Pool do
     case HTTP2.stream(data.conn, message) do
       {:ok, conn, responses} ->
         data = put_in(data.conn, conn)
+        update_max_concurrent_streams(data)
         {data, response_actions} = handle_responses(data, responses)
 
         cond do
           HTTP2.open?(data.conn, :write) ->
             data = continue_requests(data)
-            {:keep_state, data, response_actions}
+            {:keep_state, data, [ping_action(data) | response_actions]}
 
           HTTP2.open?(data.conn, :read) && Enum.any?(data.requests) ->
             {:next_state, :connected_read_only, data, response_actions}
@@ -390,7 +469,7 @@ defmodule Finch.HTTP2.Pool do
 
       {:error, conn, error, responses} ->
         Logger.error([
-          "Received error from server #{data.scheme}:#{data.host}:#{data.port}: ",
+          "Received error from server #{data.pool.scheme}:#{data.pool.host}:#{data.pool.port}: ",
           Exception.message(error)
         ])
 
@@ -439,10 +518,52 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
+  # The connection has exceeded its maximum age. Unregister from the Registry so
+  # that new requests are routed to a fresh pool, then either stop immediately (if
+  # there are no in-flight requests) or drain remaining requests in read-only mode
+  # before stopping. The supervisor will restart the pool with a fresh DNS lookup.
+  def connected({:timeout, :max_connection_age}, _content, data) do
+    Registry.unregister(data.finch_name, data.pool_name)
+    data = %{data | draining: true}
+
+    if Enum.empty?(data.requests) do
+      {:stop, :normal, data}
+    else
+      {:next_state, :connected_read_only, data}
+    end
+  end
+
+  def connected({:call, from}, :ping, data) do
+    case HTTP2.ping(data.conn) do
+      {:ok, conn, ref} ->
+        data = put_in(data.pings[ref], {from, System.monotonic_time()})
+        data = put_in(data.conn, conn)
+        {:keep_state, data, [ping_action(data)]}
+
+      {:error, conn, error} ->
+        data = put_in(data.conn, conn)
+        {:keep_state, data, [{:reply, from, {:error, error}}, ping_action(data)]}
+    end
+  end
+
+  def connected({:timeout, :ping}, :ping, data) do
+    case HTTP2.ping(data.conn) do
+      {:ok, conn, _ref} ->
+        data = put_in(data.conn, conn)
+        {:keep_state, data, [ping_action(data)]}
+
+      {:error, conn, _error} ->
+        data = put_in(data.conn, conn)
+        {:next_state, :disconnected, data}
+    end
+  end
+
   @doc false
   def connected_read_only(event, content, data)
 
   def connected_read_only(:enter, _old_state, data) do
+    Registry.unregister(data.finch_name, data.pool_name)
+
     data =
       Enum.reduce(data.requests, data, fn
         # request is awaiting a response and should stay in state
@@ -461,6 +582,10 @@ defmodule Finch.HTTP2.Pool do
 
   # If we're in a read only state then respond with an error immediately
   def connected_read_only({:call, from}, {:request, _, _, _}, _) do
+    {:keep_state_and_data, {:reply, from, {:error, Error.exception(:read_only)}}}
+  end
+
+  def connected_read_only({:call, from}, :ping, _data) do
     {:keep_state_and_data, {:reply, from, {:error, Error.exception(:read_only)}}}
   end
 
@@ -485,36 +610,60 @@ defmodule Finch.HTTP2.Pool do
         {data, actions} = handle_responses(data, responses)
 
         # If the connection is still open for reading and we have pending requests
-        # to receive, we should try to wait for the responses. Otherwise enter
-        # the disconnected state so we can try to re-establish a connection.
-        if HTTP2.open?(conn, :read) && Enum.any?(data.requests) do
-          {:keep_state, data, actions}
-        else
-          {:next_state, :disconnected, data, actions}
+        # to receive, we should try to wait for the responses. If the pool is
+        # draining and all requests are done, stop normally so the supervisor
+        # restarts it with a fresh DNS lookup. Otherwise enter the disconnected
+        # state so we can try to re-establish a connection.
+        cond do
+          HTTP2.open?(conn, :read) && Enum.any?(data.requests) ->
+            {:keep_state, data, actions}
+
+          data.draining && Enum.empty?(data.requests) ->
+            {:stop, :normal, data}
+
+          true ->
+            {:next_state, :disconnected, data, actions}
         end
 
       {:error, conn, error, responses} ->
         Logger.error([
-          "Received error from server #{data.scheme}://#{data.host}:#{data.port}: ",
+          "Received error from server #{data.pool.scheme}://#{data.pool.host}:#{data.pool.port}: ",
           Exception.message(error)
         ])
 
         data = put_in(data.conn, conn)
         {data, actions} = handle_responses(data, responses)
 
-        # Same as above, if we're still waiting on responses, we should stay in
-        # this state. Otherwise, we should enter the disconnected state and try
-        # to re-establish a connection.
-        if HTTP2.open?(conn, :read) && Enum.any?(data.requests) do
-          {:keep_state, data, actions}
-        else
-          {:next_state, :disconnected, data, actions}
+        # If the connection is still open for reading and we have pending requests
+        # to receive, we should try to wait for the responses. If the pool is
+        # draining and all requests are done, stop normally so the supervisor
+        # restarts it with a fresh DNS lookup. Otherwise enter the disconnected
+        # state so we can try to re-establish a connection.
+        cond do
+          HTTP2.open?(conn, :read) && Enum.any?(data.requests) ->
+            {:keep_state, data, actions}
+
+          data.draining && Enum.empty?(data.requests) ->
+            {:stop, :normal, data}
+
+          true ->
+            {:next_state, :disconnected, data, actions}
         end
 
       :unknown ->
         Logger.warning(["Received unknown message: ", inspect(message)])
         :keep_state_and_data
     end
+  end
+
+  # The ping timer may fire after transitioning to read-only. Ignore it.
+  def connected_read_only({:timeout, :ping}, :ping, _data) do
+    :keep_state_and_data
+  end
+
+  # The connection age timer may fire after transitioning to read-only. Ignore it.
+  def connected_read_only({:timeout, :max_connection_age}, _content, _data) do
+    :keep_state_and_data
   end
 
   # In this state, we don't need to call HTTP2.cancel_request/2 since the connection
@@ -530,12 +679,19 @@ defmodule Finch.HTTP2.Pool do
       send(request.from_pid, {request.request_ref, {:error, Error.exception(:request_timeout)}})
     end
 
-    # If we're out of requests then we should enter the disconnected state.
-    # Otherwise wait for the remaining responses.
-    if Enum.empty?(data.requests) do
-      {:next_state, :disconnected, data}
-    else
-      {:keep_state, data}
+    # If requests remain, keep waiting for their responses. If the pool is
+    # draining and all requests are done, stop normally so the supervisor
+    # restarts it with a fresh DNS lookup. Otherwise enter the disconnected
+    # state so we can try to re-establish a connection.
+    cond do
+      Enum.any?(data.requests) ->
+        {:keep_state, data}
+
+      data.draining ->
+        {:stop, :normal, data}
+
+      true ->
+        {:next_state, :disconnected, data}
     end
   end
 
@@ -578,7 +734,7 @@ defmodule Finch.HTTP2.Pool do
         # Set a timeout to close the request after a given timeout
         request_timeout = {{:timeout, {:request_timeout, ref}}, opts[:receive_timeout], nil}
 
-        {:keep_state, data, [request_timeout]}
+        {:keep_state, data, [request_timeout, ping_action(data)]}
 
       error ->
         stream_request(error, request, opts)
@@ -644,6 +800,18 @@ defmodule Finch.HTTP2.Pool do
     {data, [cancel_request_timeout_action(ref) | actions]}
   end
 
+  defp handle_response(data, {:pong, ref}, actions) do
+    case pop_in(data.pings[ref]) do
+      {{reply_to, start_time}, data} ->
+        rtt_native = System.monotonic_time() - start_time
+        {data, [{:reply, reply_to, {:ok, rtt_native}} | actions]}
+
+      {nil, data} ->
+        # Timer-initiated ping, no caller to reply to
+        {data, actions}
+    end
+  end
+
   defp handle_response(data, {:error, ref, error}, actions) do
     {request, data} = pop_request(data, ref)
 
@@ -679,7 +847,7 @@ defmodule Finch.HTTP2.Pool do
   # our retried requests don't "harmonize" making it harder for the downstream
   # service to heal.
   defp backoff(base_backoff, max_backoff, failure_count) do
-    factor = :math.pow(2, failure_count)
+    factor = :math.pow(2, min(failure_count, @backoff_max_failure_count))
     max_sleep = trunc(min(max_backoff, base_backoff * factor))
     :rand.uniform(max_sleep)
   end
@@ -792,7 +960,7 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp put_request(data, ref, request) do
-    PoolMetrics.maybe_add(data.metrics_ref, in_flight_requests: 1)
+    PoolMetrics.maybe_add(data.metrics_ref, :in_flight_requests, 1)
 
     data
     |> put_in([:requests, ref], request)
@@ -801,7 +969,7 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp pop_request(data, ref) do
-    PoolMetrics.maybe_add(data.metrics_ref, in_flight_requests: -1)
+    PoolMetrics.maybe_add(data.metrics_ref, :in_flight_requests, -1)
 
     case pop_in(data.requests[ref]) do
       {nil, data} ->
@@ -838,6 +1006,20 @@ defmodule Finch.HTTP2.Pool do
     end)
   end
 
+  defp ping_action(data), do: {{:timeout, :ping}, data.ping_interval, :ping}
+
+  defp connection_age_action(%{max_connection_age: :infinity}), do: []
+
+  defp connection_age_action(%{max_connection_age_jitter: jitter} = data)
+       when is_integer(jitter) and jitter > 0 do
+    jitter_value = :rand.uniform(jitter)
+    [{{:timeout, :max_connection_age}, data.max_connection_age + jitter_value, nil}]
+  end
+
+  defp connection_age_action(data) do
+    [{{:timeout, :max_connection_age}, data.max_connection_age, nil}]
+  end
+
   defp reply(%{from: nil, from_pid: pid, request_ref: request_ref}, reply) do
     send(pid, {request_ref, reply})
     :ok
@@ -845,5 +1027,19 @@ defmodule Finch.HTTP2.Pool do
 
   defp reply(%{from: from}, reply) do
     :gen_statem.reply(from, reply)
+  end
+
+  @impl :gen_statem
+  def terminate(_reason, _state, %{metrics_ref: {table, pool_name, pool_idx}}) do
+    Finch.PoolMetrics.delete(table, pool_name, pool_idx)
+  end
+
+  def terminate(_reason, _state, _data), do: :ok
+
+  defp update_max_concurrent_streams(%{metrics_ref: nil}), do: :ok
+
+  defp update_max_concurrent_streams(%{conn: conn, metrics_ref: metrics_ref}) do
+    value = HTTP2.get_server_setting(conn, :max_concurrent_streams)
+    PoolMetrics.maybe_put(metrics_ref, :max_concurrent_streams, value)
   end
 end

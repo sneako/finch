@@ -3,13 +3,75 @@ defmodule Finch.HTTP2.TelemetryTest do
 
   @moduletag :capture_log
 
+  describe "connection" do
+    setup %{bypass: bypass} = context do
+      Bypass.expect(bypass, "GET", "/", fn conn ->
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      parent = self()
+      ref = make_ref()
+
+      handler = fn event, measurements, meta, _config ->
+        case event do
+          [:finch, :connect, :start] ->
+            assert is_integer(measurements.system_time)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
+            assert meta.name == TestFinch
+            send(parent, {ref, :start})
+
+          [:finch, :connect, :stop] ->
+            assert is_integer(measurements.duration)
+            assert is_atom(meta.scheme)
+            assert is_integer(meta.port)
+            assert is_binary(meta.host)
+            assert meta.name == TestFinch
+            send(parent, {ref, :stop})
+
+          _ ->
+            flunk("Unknown event")
+        end
+      end
+
+      :telemetry.attach_many(
+        to_string(TestFinch),
+        [
+          [:finch, :connect, :start],
+          [:finch, :connect, :stop]
+        ],
+        handler,
+        nil
+      )
+
+      {:ok, Map.put(context, :ref, ref)}
+    end
+
+    test "reports connection spans", %{bypass: bypass, ref: ref} do
+      Finch.TestHelper.start_finch!(
+        name: TestFinch,
+        pools: %{endpoint(bypass) => [protocols: [:http2], conn_max_idle_time: 10]}
+      )
+
+      assert {:ok, %{status: 200}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(TestFinch)
+
+      assert_receive {^ref, :start}
+      assert_receive {^ref, :stop}
+
+      :telemetry.detach(to_string(TestFinch))
+    end
+  end
+
   setup %{bypass: bypass, finch_name: finch_name} do
     Bypass.expect(bypass, "GET", "/", fn conn ->
       Plug.Conn.send_resp(conn, 200, "OK")
     end)
 
-    start_supervised!(
-      {Finch, name: finch_name, pools: %{default: [protocols: [:http2], conn_max_idle_time: 10]}}
+    Finch.TestHelper.start_finch!(
+      name: finch_name,
+      pools: %{endpoint(bypass) => [protocols: [:http2], conn_max_idle_time: 10]}
     )
 
     :ok
@@ -120,52 +182,6 @@ defmodule Finch.HTTP2.TelemetryTest do
     assert_receive {^ref, :stop}
 
     Bypass.down(bypass)
-
-    :telemetry.detach(to_string(finch_name))
-  end
-
-  test "reports connection spans", %{bypass: bypass, finch_name: finch_name} do
-    parent = self()
-    ref = make_ref()
-
-    handler = fn event, measurements, meta, _config ->
-      case event do
-        [:finch, :connect, :start] ->
-          assert is_integer(measurements.system_time)
-          assert is_atom(meta.scheme)
-          assert is_integer(meta.port)
-          assert is_binary(meta.host)
-          assert meta.name == finch_name
-          send(parent, {ref, :start})
-
-        [:finch, :connect, :stop] ->
-          assert is_integer(measurements.duration)
-          assert is_atom(meta.scheme)
-          assert is_integer(meta.port)
-          assert is_binary(meta.host)
-          assert meta.name == finch_name
-          send(parent, {ref, :stop})
-
-        _ ->
-          flunk("Unknown event")
-      end
-    end
-
-    :telemetry.attach_many(
-      to_string(finch_name),
-      [
-        [:finch, :connect, :start],
-        [:finch, :connect, :stop]
-      ],
-      handler,
-      nil
-    )
-
-    assert {:ok, %{status: 200}} =
-             Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
-
-    assert_receive {^ref, :start}
-    assert_receive {^ref, :stop}
 
     :telemetry.detach(to_string(finch_name))
   end

@@ -8,20 +8,19 @@ defmodule Finch.HTTP2.PoolMetricsTest do
   end
 
   test "do not start metrics when opt is false", %{test: finch_name, url: url} do
-    start_supervised!(
-      {Finch,
-       name: finch_name,
-       pools: %{
-         default: [
-           protocols: [:http2],
-           conn_opts: [
-             transport_opts: [
-               verify: :verify_none
-             ]
-           ],
-           start_pool_metrics?: false
-         ]
-       }}
+    Finch.TestHelper.start_finch!(
+      name: finch_name,
+      pools: %{
+        url => [
+          protocols: [:http2],
+          conn_opts: [
+            transport_opts: [
+              verify: :verify_none
+            ]
+          ],
+          start_pool_metrics?: false
+        ]
+      }
     )
 
     {:ok, %{status: 200, body: "Hello world!"}} =
@@ -34,20 +33,19 @@ defmodule Finch.HTTP2.PoolMetricsTest do
   test "get pool status async requests", %{test: finch_name, url: url} do
     parent = self()
 
-    start_supervised!(
-      {Finch,
-       name: finch_name,
-       pools: %{
-         default: [
-           protocols: [:http2],
-           conn_opts: [
-             transport_opts: [
-               verify: :verify_none
-             ]
-           ],
-           start_pool_metrics?: true
-         ]
-       }}
+    Finch.TestHelper.start_finch!(
+      name: finch_name,
+      pools: %{
+        url => [
+          protocols: [:http2],
+          conn_opts: [
+            transport_opts: [
+              verify: :verify_none
+            ]
+          ],
+          start_pool_metrics?: true
+        ]
+      }
     )
 
     refs =
@@ -85,20 +83,19 @@ defmodule Finch.HTTP2.PoolMetricsTest do
   end
 
   test "get pool status sync requests", %{test: finch_name, url: url} do
-    start_supervised!(
-      {Finch,
-       name: finch_name,
-       pools: %{
-         default: [
-           protocols: [:http2],
-           conn_opts: [
-             transport_opts: [
-               verify: :verify_none
-             ]
-           ],
-           start_pool_metrics?: true
-         ]
-       }}
+    Finch.TestHelper.start_finch!(
+      name: finch_name,
+      pools: %{
+        url => [
+          protocols: [:http2],
+          conn_opts: [
+            transport_opts: [
+              verify: :verify_none
+            ]
+          ],
+          start_pool_metrics?: true
+        ]
+      }
     )
 
     refs =
@@ -135,21 +132,20 @@ defmodule Finch.HTTP2.PoolMetricsTest do
   test "multi pool", %{test: finch_name, url: url} do
     parent = self()
 
-    start_supervised!(
-      {Finch,
-       name: finch_name,
-       pools: %{
-         default: [
-           protocols: [:http2],
-           conn_opts: [
-             transport_opts: [
-               verify: :verify_none
-             ]
-           ],
-           count: 2,
-           start_pool_metrics?: true
-         ]
-       }}
+    Finch.TestHelper.start_finch!(
+      name: finch_name,
+      pools: %{
+        url => [
+          protocols: [:http2],
+          conn_opts: [
+            transport_opts: [
+              verify: :verify_none
+            ]
+          ],
+          count: 2,
+          start_pool_metrics?: true
+        ]
+      }
     )
 
     refs =

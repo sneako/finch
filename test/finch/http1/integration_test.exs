@@ -2,8 +2,6 @@ defmodule Finch.HTTP1.IntegrationTest do
   use ExUnit.Case, async: false
   import ExUnit.CaptureLog
 
-  require Logger
-
   alias Finch.HTTPS1Server
   alias Finch.TestHelper
 
@@ -34,9 +32,23 @@ defmodule Finch.HTTP1.IntegrationTest do
        }}
     )
 
+    test_pid = self()
+    ref = make_ref()
+
+    :telemetry.attach(
+      "h2-connect-fail",
+      [:finch, :connect, :stop],
+      fn _, _, %{error: _}, _ -> send(test_pid, ref) end,
+      nil
+    )
+
     assert capture_log(fn ->
              {:error, _} = Finch.build(:get, url) |> Finch.request(H2Finch)
+             assert_receive ^ref, 5_000
+             Logger.flush()
            end) =~ "No application protocol"
+
+    :telemetry.detach("h2-connect-fail")
   end
 
   @tag :capture_log
@@ -107,9 +119,7 @@ defmodule Finch.HTTP1.IntegrationTest do
       :ok = transport.send(socket, data)
     end
 
-    {:ok, socket} = Finch.MockSocketServer.start(socket: {nil, []}, handler: handler)
-    {:ok, port} = :inet.port(socket)
-    url = "http://localhost:#{port}"
+    {:ok, %{url: url}} = Finch.MockSocketServer.start(socket: {nil, []}, handler: handler)
 
     start_supervised!(
       {Finch,

@@ -14,6 +14,7 @@ defmodule Finch.Request do
     :body,
     :query,
     :unix_socket,
+    pool_tag: :default,
     private: %{}
   ]
 
@@ -58,7 +59,15 @@ defmodule Finch.Request do
   @typedoc """
   Optional request body.
   """
-  @type body() :: iodata() | {:stream, Enumerable.t()} | nil
+  @type body() ::
+          iodata() | {:stream, Enumerable.t()} | {:stream, Finch.req_body_fun(term())} | nil
+
+  @type build_opt() :: {:unix_socket, String.t()} | {:pool_tag, Finch.Pool.pool_tag()}
+
+  @typedoc """
+  Options used by `build/5`.
+  """
+  @type build_opts() :: [build_opt()]
 
   @type private_metadata() :: %{optional(atom()) => term()}
 
@@ -72,6 +81,7 @@ defmodule Finch.Request do
           body: body(),
           query: String.t() | nil,
           unix_socket: String.t() | nil,
+          pool_tag: Finch.Pool.pool_tag(),
           private: private_metadata()
         }
 
@@ -98,8 +108,11 @@ defmodule Finch.Request do
   def request_path(%{path: path, query: query}), do: "#{path}?#{query}"
 
   @doc false
+  @spec build(method(), url(), headers(), body(), build_opts()) :: t()
   def build(method, url, headers, body, opts) do
+    Keyword.validate!(opts, [:unix_socket, :pool_tag])
     unix_socket = Keyword.get(opts, :unix_socket)
+    pool_tag = Keyword.get(opts, :pool_tag, :default)
     {scheme, host, port, path, query} = parse_url(url)
 
     %Finch.Request{
@@ -111,7 +124,8 @@ defmodule Finch.Request do
       headers: headers,
       body: body,
       query: query,
-      unix_socket: unix_socket
+      unix_socket: unix_socket,
+      pool_tag: pool_tag
     }
   end
 

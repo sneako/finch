@@ -4,6 +4,7 @@ defmodule Finch.HTTP1.PoolMetrics do
 
   Available metrics:
 
+    * `:pid` - The pid of the pool worker process
     * `:pool_index` - Index of the pool
     * `:pool_size` - Total number of connections of the pool
     * `:available_connections` - Number of available connections
@@ -12,8 +13,8 @@ defmodule Finch.HTTP1.PoolMetrics do
   Caveats:
 
     * A given number X of `available_connections` does not mean that currently
-    exists X connections to the server sitting on the pool. Because Finch uses 
-    a lazy strategy for workers initialization, every pool starts with it's 
+    exists X connections to the server sitting on the pool. Because Finch uses
+    a lazy strategy for workers initialization, every pool starts with it's
     size as available connections even if they are not started yet. In practice
     this means that `available_connections` may be connections sitting on the pool
     or available space on the pool for a new one if required.
@@ -22,60 +23,46 @@ defmodule Finch.HTTP1.PoolMetrics do
   @type t :: %__MODULE__{}
 
   defstruct [
+    :pid,
     :pool_index,
     :pool_size,
     :available_connections,
     :in_use_connections
   ]
 
-  @atomic_idx [
-    pool_idx: 1,
-    pool_size: 2,
-    in_use_connections: 3
-  ]
+  alias Finch.PoolMetrics
 
-  def init(registry, shp, pool_idx, pool_size) do
-    ref = :atomics.new(length(@atomic_idx), [])
-    :atomics.add(ref, @atomic_idx[:pool_idx], pool_idx)
-    :atomics.add(ref, @atomic_idx[:pool_size], pool_size)
+  # Row layout: {{pool_name, pool_idx}, pool_size, in_use_connections, pid}
+  @pos_in_use 3
 
-    :persistent_term.put({__MODULE__, registry, shp, pool_idx}, ref)
-    {:ok, ref}
+  def init(finch_name, pool_name, pool_idx, pool_size) do
+    table = PoolMetrics.table_name(finch_name)
+    PoolMetrics.insert(table, pool_name, pool_idx, [pool_size, 0, self()])
+    {:ok, {table, pool_name, pool_idx}}
   end
 
-  def maybe_add(nil, _metrics_list), do: :ok
+  def maybe_add(nil, _, _), do: :ok
 
-  def maybe_add(ref, metrics_list) do
-    Enum.each(metrics_list, fn {metric_name, val} ->
-      :atomics.add(ref, @atomic_idx[metric_name], val)
-    end)
+  def maybe_add({table, pool_name, pool_idx}, :in_use_connections, delta) do
+    PoolMetrics.update(table, pool_name, pool_idx, @pos_in_use, delta)
   end
 
-  def get_pool_status(name, shp, pool_idx) do
-    {__MODULE__, name, shp, pool_idx}
-    |> :persistent_term.get(nil)
-    |> get_pool_status()
-  end
+  def get_pool_status(finch_name, pool_name) do
+    case PoolMetrics.get_all_rows(finch_name, pool_name) do
+      [] ->
+        {:error, :not_found}
 
-  def get_pool_status(nil), do: {:error, :not_found}
-
-  def get_pool_status(ref) do
-    %{
-      pool_idx: pool_idx,
-      pool_size: pool_size,
-      in_use_connections: in_use_connections
-    } =
-      @atomic_idx
-      |> Enum.map(fn {k, idx} -> {k, :atomics.get(ref, idx)} end)
-      |> Map.new()
-
-    result = %__MODULE__{
-      pool_index: pool_idx,
-      pool_size: pool_size,
-      available_connections: pool_size - in_use_connections,
-      in_use_connections: in_use_connections
-    }
-
-    {:ok, result}
+      rows ->
+        {:ok,
+         Enum.map(rows, fn {{_pool_name, pool_idx}, pool_size, in_use, pid} ->
+           %__MODULE__{
+             pid: pid,
+             pool_index: pool_idx,
+             pool_size: pool_size,
+             available_connections: pool_size - in_use,
+             in_use_connections: in_use
+           }
+         end)}
+    end
   end
 end
