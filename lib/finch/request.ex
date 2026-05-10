@@ -153,7 +153,15 @@ defmodule Finch.Request do
                 "invalid scheme \"#{scheme}\" for url: #{URI.to_string(parsed_uri)}"
       end
 
-    {scheme, parsed_uri.host, parsed_uri.port, normalized_path, parsed_uri.query}
+    {scheme, validate_host!(parsed_uri), parsed_uri.port, normalized_path, parsed_uri.query}
+  end
+
+  defp validate_host!(%URI{host: host}) when is_binary(host) and byte_size(host) > 0 do
+    host
+  end
+
+  defp validate_host!(%URI{} = parsed_uri) do
+    raise ArgumentError, "host is required for url: #{URI.to_string(parsed_uri)}"
   end
 
   defp build_method(method) when is_binary(method), do: method

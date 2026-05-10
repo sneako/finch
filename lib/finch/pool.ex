@@ -99,10 +99,10 @@ defmodule Finch.Pool do
 
     case parsed.scheme do
       "https" ->
-        %__MODULE__{scheme: :https, host: parsed.host, port: parsed.port, tag: tag}
+        %__MODULE__{scheme: :https, host: validate_host!(parsed), port: parsed.port, tag: tag}
 
       "http" ->
-        %__MODULE__{scheme: :http, host: parsed.host, port: parsed.port, tag: tag}
+        %__MODULE__{scheme: :http, host: validate_host!(parsed), port: parsed.port, tag: tag}
 
       "https+unix" ->
         %__MODULE__{scheme: :https, host: {:local, parsed.path}, port: 0, tag: tag}
@@ -116,6 +116,14 @@ defmodule Finch.Pool do
       scheme ->
         raise ArgumentError, "invalid scheme \"#{scheme}\" for url: #{URI.to_string(parsed)}"
     end
+  end
+
+  defp validate_host!(%URI{host: host}) when is_binary(host) and byte_size(host) > 0 do
+    host
+  end
+
+  defp validate_host!(%URI{} = parsed) do
+    raise ArgumentError, "host is required for url: #{URI.to_string(parsed)}"
   end
 
   @doc false
