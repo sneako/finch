@@ -40,7 +40,7 @@
 - Clean up pool metrics when pools terminate or resize #362
 - Prevent atom creation for non-existent Finch instances #342
 - Make flaky CI assertions more reliable #340
-- Track fresh HTTP/1 checkouts in pool idle activity accounting #372
+- Prevent HTTP/1 pools from being considered idle immediately after fresh checkouts #372
 
 ### Other
 
