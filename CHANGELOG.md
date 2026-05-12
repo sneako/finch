@@ -1,36 +1,51 @@
 # Changelog
 
-## main
+## v0.22.0 (2026-05-12)
 
 ### Added
 
-- New `:http2` configuration section with support for
-  - `wait_for_server_settings?` adds blocking until settings are negotiated
-  - `ping_interval` adds automatic HTTP/2 PING frames on an interval of inactivity
+- Add a new `:http2` configuration section with `:wait_for_server_settings?`, `:ping_interval`, `:max_connection_age`, and `:max_connection_age_jitter` support #354 #355 #364
 - Add `http+unix://` and `https+unix://` URL scheme support for cleaner Unix socket pool configuration #351
-- Add pool tagging support for connection pool isolation #345
-- Add `Finch.find_pool/2` to look up a pool by configuration and return its pid
-- Add `Finch.start_pool/3` to start a pool under Finch's internal supervision tree
-- Add `Finch.Pool.child_spec/1` for user-managed pools under your own supervision tree
-- Encapsulate pool identity using a Pool struct #338
+- Add pool tagging support for connection pool isolation #342
+- Add dynamic and user-managed pool APIs with `Finch.start_pool/3`, `Finch.find_pool/2`, and `Finch.Pool.child_spec/1` #352
+- Add `Finch.is_request_ref/1` for matching async request refs in guards #350
+- Add configurable pool worker selection strategies via `:pool_strategy` #359
+- Add runtime pool resizing with `Finch.get_pool_count/2` and `Finch.set_pool_count/3` #362
+- Add `pid`, `max_concurrent_streams`, and `available_connections` to pool metrics #362 #368
+- Support `{:stream, req_body_fun}` request bodies in `Finch.stream_while/5` on HTTP/1 #357 #360
+- Encapsulate pool identity using a `Finch.Pool` struct #338
 - Add Elixir 1.20 support #346
 
 ### Changed
 
-- Pool metrics now return `Finch.Pool.t()` structs as keys
+- Require Elixir v1.15 #358
+- Refactor pool management to use per-pool supervisors and registry-backed tracking #344
+- Pool metrics now return `Finch.Pool.t()` structs as keys and use ordered-set ETS tables for prefix lookups #342 #368
+- Register only ready HTTP/2 connections, returning `:pool_not_available` when no connected pool is available #356
+- Standardize error handling with `Finch.error()`, `Finch.HTTPError`, and `Finch.TransportError` #341
+- Validate keyword options in `Finch.build/5` and `Finch.request/3` #365
+- Use Mint 1.8 #341
 
 ### Deprecated
 
-- Deprecate `{scheme, {:local, path}}` tuple form in `:pools`, use URL strings (e.g. `"http+unix:///path"`) instead #349
+- Deprecate `{scheme, {:local, path}}` tuple form in `:pools`, use URL strings (e.g. `"http+unix:///path"`) instead #351
 
 ### Removed
 
-- Remove deprecated `Finch.request/6` function #348
-- Remove deprecated pool configuration options #348
+- Remove deprecated `Finch.request/6` function, pool configuration options, and `:max_idle_time_exceeded` telemetry event #348
 
 ### Fixed
 
 - Do not exceed max failure count to stop overflows #343
+- Clean up pool metrics when pools terminate or resize #362
+- Prevent atom creation for non-existent Finch instances #342
+- Make flaky CI assertions more reliable #340
+
+### Other
+
+- Improve documentation around pool `:count`, `:size`, and strategies #361
+- Document `Finch.build/5` options #347
+- CI: update the Elixir 1.20 release candidate to `1.20.0-rc.4`
 
 ## v0.21.0 (2026-01-22)
 
