@@ -182,7 +182,7 @@ defmodule Finch.HTTP1.Pool do
   def handle_checkout(:checkout, _, %{mint: nil} = conn, %__MODULE__.State{} = pool_state) do
     idle_time = System.monotonic_time() - conn.last_checkin
     PoolMetrics.maybe_add(pool_state.metric_ref, :in_use_connections, 1)
-    {:ok, {:fresh, conn, idle_time}, conn, pool_state}
+    {:ok, {:fresh, conn, idle_time}, conn, update_activity_info(:checkout, pool_state)}
   end
 
   def handle_checkout(:checkout, _from, conn, %__MODULE__.State{} = pool_state) do

@@ -112,14 +112,14 @@ defmodule Finch.HTTP1.PoolTest do
     assert [{pool, _pool_mod}] = Registry.lookup(finch_name, Finch.Pool.to_name(pool_key))
 
     Process.monitor(pool)
-    refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
+    refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 100
 
     ref3 = make_ref()
     Task.async(fn -> assert {:ok, %{status: 200}} = delay_exec.(ref3, 10) end)
     assert_receive {^ref3, :done}, 300
 
-    refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
-    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
+    refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 100
+    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 300
     assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}
   end
 
