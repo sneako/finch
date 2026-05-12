@@ -1,6 +1,8 @@
 defmodule Finch.MockHTTP2Server do
   @moduledoc false
   import ExUnit.Assertions
+  import Mint.HTTP2.Frame, only: [settings: 1]
+
   alias Mint.HTTP2.Frame
 
   defstruct [
@@ -157,8 +159,6 @@ defmodule Finch.MockHTTP2Server do
   connection_preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
   defp perform_http2_handshake_deferred(socket) do
-    import Mint.HTTP2.Frame, only: [settings: 1]
-
     no_flags = Frame.set_flags(:settings, [])
 
     # Receive connection preface (and possibly client SETTINGS in same packet).
@@ -211,8 +211,6 @@ defmodule Finch.MockHTTP2Server do
   defp connection_window_update?(_frame), do: false
 
   defp perform_http2_handshake(socket, server_settings) do
-    import Mint.HTTP2.Frame, only: [settings: 1]
-
     no_flags = Frame.set_flags(:settings, [])
     ack_flags = Frame.set_flags(:settings, [:ack])
 
@@ -237,8 +235,6 @@ defmodule Finch.MockHTTP2Server do
   end
 
   defp recv_settings_ack(socket, ack_flags, buffer \\ "") do
-    import Mint.HTTP2.Frame, only: [settings: 1]
-
     {frame, rest} = recv_frame(socket, buffer, 100)
 
     case frame do
@@ -259,8 +255,6 @@ defmodule Finch.MockHTTP2Server do
   @spec send_server_settings(%__MODULE__{}) :: :ok
   def send_server_settings(%__MODULE__{socket: socket, pending_settings: settings})
       when is_list(settings) do
-    import Mint.HTTP2.Frame, only: [settings: 1]
-
     ack_flags = Frame.set_flags(:settings, [:ack])
 
     :ok = :ssl.send(socket, Frame.encode(settings(params: settings)))
