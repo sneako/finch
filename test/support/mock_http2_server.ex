@@ -173,23 +173,42 @@ defmodule Finch.MockHTTP2Server do
       )
 
     # Receive and decode the client SETTINGS frame (may need more data).
-    {frame, _rest} = recv_settings_frame(socket, rest)
+    {frame, rest} = recv_settings_frame(socket, rest)
     assert settings(flags: ^no_flags, params: _params) = frame
+    assert_only_connection_window_updates(socket, rest)
 
     # We do not send our SETTINGS yet; the test will call send_server_settings/1 later.
     :ok
   end
 
   defp recv_settings_frame(socket, buffer) do
+    recv_frame(socket, buffer, 5_000)
+  end
+
+  defp recv_frame(socket, buffer, timeout) do
     case Frame.decode_next(buffer) do
       {:ok, frame, rest} ->
         {frame, rest}
 
       :more ->
-        {:ok, more} = :ssl.recv(socket, 0, 5_000)
-        recv_settings_frame(socket, buffer <> more)
+        {:ok, more} = :ssl.recv(socket, 0, timeout)
+        recv_frame(socket, buffer <> more, timeout)
+
+      other ->
+        flunk("Error decoding frame: #{inspect(other)}")
     end
   end
+
+  defp assert_only_connection_window_updates(_socket, ""), do: :ok
+
+  defp assert_only_connection_window_updates(socket, buffer) do
+    {frame, rest} = recv_frame(socket, buffer, 100)
+    assert connection_window_update?(frame)
+    assert_only_connection_window_updates(socket, rest)
+  end
+
+  defp connection_window_update?({:window_update, 0, _flags, _window_size_increment}), do: true
+  defp connection_window_update?(_frame), do: false
 
   defp perform_http2_handshake(socket, server_settings) do
     import Mint.HTTP2.Frame, only: [settings: 1]
@@ -201,21 +220,35 @@ defmodule Finch.MockHTTP2Server do
     {:ok, unquote(connection_preface) <> rest} = :ssl.recv(socket, 0, 100)
 
     # Then we get a SETTINGS frame.
-    assert {:ok, frame, ""} = Frame.decode_next(rest)
+    {frame, rest} = recv_frame(socket, rest, 100)
     assert settings(flags: ^no_flags, params: _params) = frame
+    assert_only_connection_window_updates(socket, rest)
 
     # We reply with our SETTINGS.
     :ok = :ssl.send(socket, Frame.encode(settings(params: server_settings)))
 
     # We get the SETTINGS ack.
-    {:ok, data} = :ssl.recv(socket, 0, 100)
-    assert {:ok, frame, ""} = Frame.decode_next(data)
-    assert settings(flags: ^ack_flags, params: []) = frame
+    :ok = recv_settings_ack(socket, ack_flags)
 
     # We send the SETTINGS ack back.
     :ok = :ssl.send(socket, Frame.encode(settings(flags: ack_flags, params: [])))
 
     :ok
+  end
+
+  defp recv_settings_ack(socket, ack_flags, buffer \\ "") do
+    import Mint.HTTP2.Frame, only: [settings: 1]
+
+    {frame, rest} = recv_frame(socket, buffer, 100)
+
+    case frame do
+      settings(flags: ^ack_flags, params: []) ->
+        assert_only_connection_window_updates(socket, rest)
+
+      _ ->
+        assert connection_window_update?(frame)
+        recv_settings_ack(socket, ack_flags, rest)
+    end
   end
 
   @doc """
@@ -233,8 +266,7 @@ defmodule Finch.MockHTTP2Server do
     :ok = :ssl.send(socket, Frame.encode(settings(params: settings)))
 
     assert_receive {:ssl, ^socket, data}, 1_000
-    assert {:ok, frame, ""} = Frame.decode_next(data)
-    assert settings(flags: ^ack_flags, params: []) = frame
+    :ok = recv_settings_ack(socket, ack_flags, data)
 
     :ok = :ssl.send(socket, Frame.encode(settings(flags: ack_flags, params: [])))
 
