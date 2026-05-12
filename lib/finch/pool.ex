@@ -47,6 +47,17 @@ defmodule Finch.Pool do
   """
   @type pool_tag() :: term()
 
+  @doc false
+  @callback request(
+              pid(),
+              Finch.Request.t(),
+              acc,
+              Finch.stream(acc),
+              Finch.name(),
+              list()
+            ) :: {:ok, acc} | {:error, Finch.error(), acc}
+            when acc: term()
+
   @doc """
   Creates a new pool struct from a URL.
 

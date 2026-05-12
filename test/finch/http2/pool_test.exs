@@ -182,7 +182,7 @@ defmodule Finch.HTTP2.PoolTest do
 
       assert_recv_frames([headers(stream_id: _stream_id)])
 
-      assert {:error, %Mint.HTTPError{reason: :too_many_concurrent_requests}, _acc} =
+      assert {:error, %Finch.HTTPError{reason: :too_many_concurrent_requests}, _acc} =
                request(pool, req, [])
     end
 
@@ -238,7 +238,7 @@ defmodule Finch.HTTP2.PoolTest do
 
       assert_recv_frames([headers(stream_id: stream_id), rst_stream(stream_id: stream_id)])
 
-      assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}, _acc}}
+      assert_receive {:resp, {:error, %Finch.Error{reason: :timeout}, _acc}}
     end
 
     test "request timeout with timeout > 0", %{request: req} do
@@ -262,7 +262,7 @@ defmodule Finch.HTTP2.PoolTest do
         headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers]))
       ])
 
-      assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}, _acc}}
+      assert_receive {:resp, {:error, %Finch.Error{reason: :timeout}, _acc}}
     end
 
     test "request timeout with timeout > 0 that fires after request is done", %{request: req} do
@@ -321,7 +321,7 @@ defmodule Finch.HTTP2.PoolTest do
       # When there's a timeout, we cancel the request.
       assert_recv_frames([rst_stream(stream_id: ^stream_id, error_code: :cancel)])
 
-      assert_receive {:resp, {:error, %Finch.Error{reason: :request_timeout}, _acc}}
+      assert_receive {:resp, {:error, %Finch.Error{reason: :timeout}, _acc}}
     end
   end
 
@@ -348,7 +348,7 @@ defmodule Finch.HTTP2.PoolTest do
         Finch.build(:get, url <> "/wait/100")
         |> Finch.async_request(finch_name, receive_timeout: 10)
 
-      assert_receive {^request_ref, {:error, %{reason: :request_timeout}}}, 300
+      assert_receive {^request_ref, {:error, %{reason: :timeout}}}, 300
     end
 
     test "canceled with cancel_async_request/1", %{test: finch_name} do

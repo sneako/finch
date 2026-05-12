@@ -216,6 +216,18 @@ defmodule Finch do
   @type request_opts() :: [request_opt()]
 
   @typedoc """
+  Errors returned by Finch request functions.
+  """
+  @type error() :: Finch.Error.t() | Finch.HTTPError.t() | Finch.TransportError.t()
+
+  @doc """
+  Returns true if the term is any Finch error struct (`Finch.error()`).
+  """
+  defguard is_finch_error(term)
+           when is_struct(term, Finch.Error) or is_struct(term, Finch.HTTPError) or
+                  is_struct(term, Finch.TransportError)
+
+  @typedoc """
   The reference used to identify a request sent using `async_request/3`.
 
   Use the `is_request_ref/1` guard when matching on async response messages in
@@ -680,7 +692,7 @@ defmodule Finch do
       File.close(file)
   """
   @spec stream(Request.t(), name(), acc, stream(acc), request_opts()) ::
-          {:ok, acc} | {:error, Exception.t(), acc}
+          {:ok, acc} | {:error, Finch.error(), acc}
         when acc: term()
   def stream(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
     validate_no_req_body_fun!(req, "Finch.stream/5")
@@ -801,7 +813,7 @@ defmodule Finch do
       File.close(file)
   """
   @spec stream_while(Request.t(), name(), acc, stream_while(acc), request_opts()) ::
-          {:ok, acc} | {:error, Exception.t(), acc}
+          {:ok, acc} | {:error, Finch.error(), acc}
         when acc: term()
   def stream_while(%Request{} = req, name, acc, fun, opts \\ []) when is_function(fun, 2) do
     request_span req, name do
@@ -859,7 +871,7 @@ defmodule Finch do
   """
   @spec request(Request.t(), name(), request_opts()) ::
           {:ok, Response.t()}
-          | {:error, Exception.t()}
+          | {:error, Finch.error()}
   def request(req, name, opts \\ [])
 
   def request(%Request{} = req, name, opts) do

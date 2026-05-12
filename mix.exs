@@ -33,7 +33,7 @@ defmodule Finch.MixProject do
 
   defp deps do
     [
-      {:mint, "~> 1.6.2 or ~> 1.7"},
+      {:mint, "~> 1.8"},
       {:nimble_pool, "~> 1.1"},
       {:nimble_options, "~> 0.4 or ~> 1.0"},
       {:telemetry, "~> 0.4 or ~> 1.0"},
