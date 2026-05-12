@@ -32,6 +32,9 @@ defmodule Finch.Pool.Manager do
   @callback cancel_async_request(request_ref()) :: :ok
 
   @doc false
+  @callback stream(pid(), Finch.Request.t(), Finch.name(), list()) :: {:ok, Enumerable.t()} | {:error, any()}
+
+  @doc false
   @callback get_pool_status(finch_name :: atom(), pool_name()) ::
               {:ok, list(map)} | {:error, :not_found}
 
