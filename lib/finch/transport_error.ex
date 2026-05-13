@@ -5,7 +5,7 @@ defmodule Finch.TransportError do
 
   @type reason() :: Mint.TransportError.reason()
 
-  @type t() :: %__MODULE__{reason: reason(), source: Mint.TransportError.t() | nil}
+  @type t() :: %__MODULE__{reason: reason(), source: Exception.t() | nil}
 
   defexception [:reason, :source]
 

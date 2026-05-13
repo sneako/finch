@@ -8,7 +8,7 @@ defmodule Finch.HTTPError do
   @type t() :: %__MODULE__{
           reason: reason(),
           module: module() | nil,
-          source: Mint.HTTPError.t() | nil
+          source: Exception.t() | nil
         }
 
   defexception [:reason, :module, :source]
