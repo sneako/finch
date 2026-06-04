@@ -49,10 +49,13 @@ defmodule Finch.Pool.Manager do
   @mint_tls_opts [
     :cacertfile,
     :cacerts,
+    :certs_keys,
+    :certfile,
     :ciphers,
     :depth,
     :eccs,
     :hibernate_after,
+    :keyfile,
     :partial_chain,
     :reuse_sessions,
     :secure_renegotiate,
