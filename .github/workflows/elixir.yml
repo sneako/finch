@@ -20,8 +20,8 @@ jobs:
               elixir: "1.19"
               otp: "28.4"
           - pair:
-              elixir: "1.20.0-rc.4"
-              otp: "28.4"
+              elixir: "1.20.1"
+              otp: "29.0.2"
               version-type: strict
             lint: lint
     steps:
