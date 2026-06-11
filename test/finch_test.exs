@@ -131,6 +131,15 @@ defmodule FinchTest do
           }
         )
       end)
+
+      assert_raise(ArgumentError, ~r/host is required for url: http:\/\//, fn ->
+        Finch.start_link(
+          name: finch_name,
+          pools: %{
+            "http://" => [count: 5, size: 5]
+          }
+        )
+      end)
     end
 
     test "impossible to accidentally start multiple pools when they are dynamically started",
@@ -169,6 +178,14 @@ defmodule FinchTest do
     test "raises when requesting a URL with an invalid scheme" do
       assert_raise ArgumentError, ~r"invalid scheme \"ftp\" for url: ftp://example.com", fn ->
         Finch.build(:get, "ftp://example.com")
+      end
+    end
+
+    test "raises when requesting a URL with a missing host" do
+      for url <- ["http:/", "http://", "https://"] do
+        assert_raise ArgumentError, "host is required for url: #{url}", fn ->
+          Finch.build(:get, url)
+        end
       end
     end
 
