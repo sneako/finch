@@ -46,7 +46,7 @@ defmodule Finch.HTTP1.IntegrationTest do
              {:error, _} = Finch.build(:get, url) |> Finch.request(H2Finch)
              assert_receive ^ref, 5_000
              Logger.flush()
-           end) =~ "No application protocol"
+           end) =~ ~r/no application protocol/i
 
     :telemetry.detach("h2-connect-fail")
   end
