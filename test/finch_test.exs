@@ -148,13 +148,15 @@ defmodule FinchTest do
 
       expect_any(bypass)
 
-      Task.async_stream(
-        1..50,
-        fn _ -> Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name) end,
-        max_concurrency: 50
-      )
-      |> Stream.run()
+      results =
+        Task.async_stream(
+          1..50,
+          fn _ -> Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name) end,
+          max_concurrency: 50
+        )
+        |> Enum.to_list()
 
+      assert Enum.all?(results, &match?({:ok, {:ok, %Response{status: 200}}}, &1))
       assert get_pools(finch_name, pool(bypass)) |> length() == 5
     end
   end
