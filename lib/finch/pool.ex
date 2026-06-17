@@ -99,10 +99,20 @@ defmodule Finch.Pool do
 
     case parsed.scheme do
       "https" ->
-        %__MODULE__{scheme: :https, host: Finch.URI.fetch_host!(parsed), port: parsed.port, tag: tag}
+        %__MODULE__{
+          scheme: :https,
+          host: Finch.URI.fetch_host!(parsed),
+          port: parsed.port,
+          tag: tag
+        }
 
       "http" ->
-        %__MODULE__{scheme: :http, host: Finch.URI.fetch_host!(parsed), port: parsed.port, tag: tag}
+        %__MODULE__{
+          scheme: :http,
+          host: Finch.URI.fetch_host!(parsed),
+          port: parsed.port,
+          tag: tag
+        }
 
       "https+unix" ->
         %__MODULE__{scheme: :https, host: {:local, parsed.path}, port: 0, tag: tag}
