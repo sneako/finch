@@ -153,7 +153,8 @@ defmodule Finch.Request do
                 "invalid scheme \"#{scheme}\" for url: #{URI.to_string(parsed_uri)}"
       end
 
-    {scheme, parsed_uri.host, parsed_uri.port, normalized_path, parsed_uri.query}
+    {scheme, Finch.URI.fetch_host!(parsed_uri), parsed_uri.port, normalized_path,
+     parsed_uri.query}
   end
 
   defp build_method(method) when is_binary(method), do: method
