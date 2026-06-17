@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.23.0 (2026-06-17)
+
+### Fixed
+
+- Reject `http` and `https` request and pool URLs without hosts before attempting requests #371, fixes #186
+- Drop `:certs_keys`, `:certfile`, and `:keyfile` from TCP transport options for HTTP requests to avoid `:badarg` errors #377
+- Fix a race condition when dynamically starting pool supervisors that could return `:pool_not_available` while workers were still registering #379
+- Make the HTTP/2 ALPN negotiation failure assertion compatible with OTP 29 TLS alert capitalization #378
+
+### Other
+
+- Update development and test dependencies, including Mint 1.9 #378
+- CI: update to Elixir 1.20.1 and Erlang/OTP 29.0.2 and fix Credo issues #378
+
 ## v0.22.0 (2026-05-12)
 
 ### Added
