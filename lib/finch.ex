@@ -548,7 +548,8 @@ defmodule Finch do
       |> Keyword.put(:enable_push, false)
 
     ssl_key_log_file =
-      Keyword.get(conn_opts, :ssl_key_log_file) || System.get_env("SSLKEYLOGFILE")
+      (Keyword.get(conn_opts, :ssl_key_log_file) || System.get_env("SSLKEYLOGFILE"))
+      |> normalize_ssl_key_log_file()
 
     ssl_key_log_file_device = ssl_key_log_file && File.open!(ssl_key_log_file, [:append])
 
@@ -580,6 +581,16 @@ defmodule Finch do
       max_connection_age_jitter: valid[:http2][:max_connection_age_jitter]
     }
   end
+
+  defp normalize_ssl_key_log_file(value) when is_binary(value) do
+    if String.trim(value) == "" do
+      nil
+    else
+      value
+    end
+  end
+
+  defp normalize_ssl_key_log_file(value), do: value
 
   defp to_native(:infinity), do: :infinity
   defp to_native(time), do: System.convert_time_unit(time, :millisecond, :native)
