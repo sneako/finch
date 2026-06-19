@@ -18,6 +18,7 @@ defmodule Finch do
   @pool_config_schema [
     protocols: [
       type: {:list, {:in, [:http1, :http2]}},
+      type_spec: quote(do: [:http1 | :http2]),
       doc: """
       The type of connections to support.
 
@@ -156,6 +157,8 @@ defmodule Finch do
     ]
   ]
 
+  @pool_schema NimbleOptions.new!(@pool_config_schema)
+
   @typedoc """
   The `:name` provided to Finch in `start_link/1`.
   """
@@ -214,6 +217,13 @@ defmodule Finch do
   Options used by request functions.
   """
   @type request_opts() :: [request_opt()]
+
+  @type pool_opt() :: unquote(NimbleOptions.option_typespec(@pool_schema))
+
+  @typedoc """
+  Options used to configure a pool in `start_link/1`.
+  """
+  @type pool_opts() :: [pool_opt()]
 
   @typedoc """
   Errors returned by Finch request functions.
@@ -368,6 +378,9 @@ defmodule Finch do
 
   #{NimbleOptions.docs(@pool_config_schema)}
   """
+  @spec start_link(opts) :: Supervisor.on_start()
+        when opts: [{:name, atom()} | {:pools, pools}],
+             pools: %{(pool_identifier() | :default) => pool_opts()}
   def start_link(opts) do
     name = finch_name!(opts)
     pools = Keyword.get(opts, :pools, []) |> pool_options!()
