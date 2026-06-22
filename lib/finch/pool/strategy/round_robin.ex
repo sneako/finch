@@ -24,7 +24,7 @@ defmodule Finch.Pool.Strategy.RoundRobin do
   @impl Finch.Pool.Strategy
   def select(entries, counter) do
     idx = :atomics.add_get(counter, 1, 1)
-    next = rem(idx - 1, length(entries))
-    Enum.at(entries, next)
+    tuple = :erlang.list_to_tuple(entries)
+    elem(tuple, rem(idx - 1, tuple_size(tuple)))
   end
 end
