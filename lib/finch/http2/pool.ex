@@ -842,7 +842,7 @@ defmodule Finch.HTTP2.Pool do
 
     if request do
       send(request.from_pid, {request.request_ref, :done})
-      Telemetry.stop(:recv, request.telemetry.recv, request.telemetry.metadata)
+      stop_response_telemetry(request)
     end
 
     {data, [cancel_request_timeout_action(ref) | actions]}
@@ -881,6 +881,19 @@ defmodule Finch.HTTP2.Pool do
       %{send: send_start} ->
         reply(request, {:error, error})
         Telemetry.stop(:send, send_start, metadata)
+    end
+  end
+
+  # The server may send a terminal response before the client finishes
+  # streaming its own request body (e.g. an early 413 rejection) this is
+  # valid, spec-sanctioned HTTP/2 behavior (RFC 9113). In that case `:recv`
+  # was never started, since it's only set in `complete_request_if_done/3`
+  # once sending completes. Stop whichever span actually started instead of
+  # assuming `:recv` exists, to avoid `KeyError: key :recv not found`.
+  defp stop_response_telemetry(%{telemetry: telemetry}) do
+    case telemetry do
+      %{recv: recv_start} -> Telemetry.stop(:recv, recv_start, telemetry.metadata)
+      %{send: send_start} -> Telemetry.stop(:send, send_start, telemetry.metadata)
     end
   end
 
