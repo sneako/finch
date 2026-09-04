@@ -92,6 +92,13 @@ defmodule Finch.HTTP2.Pool do
   @impl Finch.Pool.Manager
   defdelegate get_pool_status(finch_name, pool_name), to: PoolMetrics
 
+  @impl Finch.Pool.Manager
+  def ready?(pool) do
+    :gen_statem.call(pool, :ready?)
+  catch
+    :exit, _reason -> false
+  end
+
   defp make_request_ref(pool) do
     {__MODULE__, {pool, make_ref()}}
   end
@@ -237,6 +244,10 @@ defmodule Finch.HTTP2.Pool do
     :keep_state_and_data
   end
 
+  def disconnected({:call, from}, :ready?, _data) do
+    {:keep_state_and_data, {:reply, from, false}}
+  end
+
   # When entering a disconnected state we need to fail all of the pending
   # requests
   def disconnected(:enter, _, data) do
@@ -368,6 +379,10 @@ defmodule Finch.HTTP2.Pool do
 
   def connecting(:enter, _old_state, _data), do: :keep_state_and_data
 
+  def connecting({:call, from}, :ready?, _data) do
+    {:keep_state_and_data, {:reply, from, false}}
+  end
+
   def connecting({:call, from}, {:request, _, _, _}, _data),
     do: {:keep_state_and_data, {:reply, from, {:error, Error.exception(:connection_not_ready)}}}
 
@@ -419,6 +434,10 @@ defmodule Finch.HTTP2.Pool do
     {:ok, _} = Registry.register(data.finch_name, data.pool_name, __MODULE__)
     update_max_concurrent_streams(data)
     {:keep_state_and_data, [ping_action(data) | connection_age_action(data)]}
+  end
+
+  def connected({:call, from}, :ready?, _data) do
+    {:keep_state_and_data, {:reply, from, true}}
   end
 
   # Issue request to the upstream server. We store a ref to the request so we
@@ -576,6 +595,10 @@ defmodule Finch.HTTP2.Pool do
       end)
 
     {:keep_state, data}
+  end
+
+  def connected_read_only({:call, from}, :ready?, _data) do
+    {:keep_state_and_data, {:reply, from, false}}
   end
 
   # If we're in a read only state then respond with an error immediately

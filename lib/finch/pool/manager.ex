@@ -36,6 +36,9 @@ defmodule Finch.Pool.Manager do
               {:ok, list(map)} | {:error, :not_found}
 
   @doc false
+  @callback ready?(pid()) :: boolean()
+
+  @doc false
   defguard is_request_ref(ref) when tuple_size(ref) == 2 and is_atom(elem(ref, 0))
 
   @type config() :: %{
@@ -131,11 +134,26 @@ defmodule Finch.Pool.Manager do
           {pid(), module()} | :not_found | :not_ready
   defp maybe_start_pool(registry_name, pool, pool_name, opts) do
     {:ok, config} = Registry.meta(registry_name, :config)
-    start_pool(pool, pool_name, config)
+    {pool_supervisor, pool_mod} = start_pool(pool, pool_name, config)
 
     case lookup_pool(registry_name, pool_name, opts) do
-      [] -> :not_ready
-      pool -> pool
+      [] ->
+        wait_for_pool_initialization(pool_supervisor, pool_mod)
+
+        case lookup_pool(registry_name, pool_name, opts) do
+          [] -> :not_ready
+          pool -> pool
+        end
+
+      pool ->
+        pool
+    end
+  end
+
+  defp wait_for_pool_initialization(pool_supervisor, pool_mod) do
+    case Supervisor.which_children(pool_supervisor) do
+      [{_id, pool, :worker, _modules} | _] when is_pid(pool) -> pool_mod.ready?(pool)
+      _ -> false
     end
   end
 
@@ -224,8 +242,8 @@ defmodule Finch.Pool.Manager do
     )
     # In case of races, it will return it has already been started
     |> case do
-      {:ok, _} -> :ok
-      {:error, {:already_started, _}} -> :ok
+      {:ok, pid} -> {pid, pool_config.mod}
+      {:error, {:already_started, pid}} -> {pid, pool_config.mod}
     end
   end
 

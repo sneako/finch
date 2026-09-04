@@ -29,6 +29,45 @@ defmodule Finch.HTTP2.IntegrationTest do
     assert response.body == "Hello world!"
   end
 
+  test "sends the first request through a dynamically started pool", %{url: url} do
+    start_supervised!(
+      {Finch,
+       name: TestFinch,
+       pools: %{
+         default: [
+           protocols: [:http2],
+           conn_opts: [transport_opts: [verify: :verify_none]]
+         ]
+       }}
+    )
+
+    assert {:ok, response} = Finch.build(:get, url) |> Finch.request(TestFinch)
+    assert response.body == "Hello world!"
+  end
+
+  test "sends concurrent first requests through a dynamically started pool", %{url: url} do
+    start_supervised!(
+      {Finch,
+       name: TestFinch,
+       pools: %{
+         default: [
+           protocols: [:http2],
+           conn_opts: [transport_opts: [verify: :verify_none]]
+         ]
+       }}
+    )
+
+    results =
+      Task.async_stream(
+        1..10,
+        fn _ -> Finch.build(:get, url) |> Finch.request(TestFinch) end,
+        max_concurrency: 10
+      )
+      |> Enum.to_list()
+
+    assert Enum.all?(results, &match?({:ok, {:ok, %Finch.Response{status: 200}}}, &1))
+  end
+
   test "sends the query string", %{url: url} do
     TestHelper.start_finch!(
       name: TestFinch,
