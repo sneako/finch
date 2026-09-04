@@ -322,7 +322,7 @@ defmodule Finch.HTTP2.Pool do
 
   # Ignore cancel requests if we are disconnected
   def disconnected({:call, from}, {:cancel, _request_ref}, _data) do
-    {:keep_state_and_data, {:reply, from, {:error, Error.exception(:disconnected)}}}
+    {:keep_state_and_data, {:reply, from, :ok}}
   end
 
   def disconnected({:call, from}, :ping, _data) do

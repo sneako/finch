@@ -429,6 +429,21 @@ defmodule Finch.HTTP2.PoolTest do
       assert refs == %{}
     end
 
+    test "cancel_async_request/1 returns :ok when the pool is disconnected", %{request: req} do
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      ref = Pool.async_request(pool, req, self(), [])
+
+      # Force the connection to disconnect.
+      :ok = :ssl.close(server_socket())
+      Process.sleep(50)
+
+      assert :ok = Pool.cancel_async_request(ref)
+    end
+
     test "if server sends GOAWAY and then replies, we get the replies but are closed for writing",
          %{request: req} do
       {:ok, pool} =
