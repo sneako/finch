@@ -148,7 +148,7 @@ defmodule Finch.HTTP1.Pool do
   defdelegate get_pool_status(finch_name, pool_name), to: PoolMetrics
 
   @impl Finch.Pool.Manager
-  def ready?(_pool), do: true
+  def ready?(_pool, _timeout), do: true
 
   @impl NimblePool
   def init_pool({pool, pool_name, registry, pool_config, pool_idx}) do

@@ -2,6 +2,8 @@ defmodule Finch.Pool.Manager do
   @moduledoc false
   use GenServer
 
+  @default_pool_timeout 5_000
+
   @typedoc false
   @type request_ref :: {pool_mod :: module(), cancel_ref :: term()}
 
@@ -36,7 +38,7 @@ defmodule Finch.Pool.Manager do
               {:ok, list(map)} | {:error, :not_found}
 
   @doc false
-  @callback ready?(pid()) :: boolean()
+  @callback ready?(pid(), timeout()) :: boolean()
 
   @doc false
   defguard is_request_ref(ref) when tuple_size(ref) == 2 and is_atom(elem(ref, 0))
@@ -138,7 +140,8 @@ defmodule Finch.Pool.Manager do
 
     case lookup_pool(registry_name, pool_name, opts) do
       [] ->
-        wait_for_pool_initialization(pool_supervisor, pool_mod)
+        timeout = Access.get(opts, :pool_timeout, @default_pool_timeout)
+        wait_for_pool_initialization(pool_supervisor, pool_mod, timeout)
 
         case lookup_pool(registry_name, pool_name, opts) do
           [] -> :not_ready
@@ -150,9 +153,9 @@ defmodule Finch.Pool.Manager do
     end
   end
 
-  defp wait_for_pool_initialization(pool_supervisor, pool_mod) do
+  defp wait_for_pool_initialization(pool_supervisor, pool_mod, timeout) do
     case Supervisor.which_children(pool_supervisor) do
-      [{_id, pool, :worker, _modules} | _] when is_pid(pool) -> pool_mod.ready?(pool)
+      [{_id, pool, :worker, _modules} | _] when is_pid(pool) -> pool_mod.ready?(pool, timeout)
       _ -> false
     end
   end
