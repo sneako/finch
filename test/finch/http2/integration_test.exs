@@ -1,6 +1,7 @@
 defmodule Finch.HTTP2.IntegrationTest do
   use ExUnit.Case, async: false
 
+  alias Finch.MockHTTP2Server
   alias Finch.TestHelper
 
   @moduletag :capture_log
@@ -27,6 +28,89 @@ defmodule Finch.HTTP2.IntegrationTest do
 
     assert {:ok, response} = Finch.build(:get, url) |> Finch.request(TestFinch)
     assert response.body == "Hello world!"
+  end
+
+  test "sends the first request through a dynamically started pool", %{url: url} do
+    start_supervised!(
+      {Finch,
+       name: TestFinch,
+       pools: %{
+         default: [
+           protocols: [:http2],
+           conn_opts: [transport_opts: [verify: :verify_none]]
+         ]
+       }}
+    )
+
+    assert {:ok, response} = Finch.build(:get, url) |> Finch.request(TestFinch)
+    assert response.body == "Hello world!"
+  end
+
+  test "sends concurrent first requests through a dynamically started pool", %{url: url} do
+    start_supervised!(
+      {Finch,
+       name: TestFinch,
+       pools: %{
+         default: [
+           protocols: [:http2],
+           conn_opts: [transport_opts: [verify: :verify_none]]
+         ]
+       }}
+    )
+
+    results =
+      Task.async_stream(
+        1..10,
+        fn _ -> Finch.build(:get, url) |> Finch.request(TestFinch) end,
+        max_concurrency: 10
+      )
+      |> Enum.to_list()
+
+    assert Enum.all?(results, &match?({:ok, {:ok, %Finch.Response{status: 200}}}, &1))
+  end
+
+  test "releases all callers when a dynamically started pool receives server settings" do
+    start_finch_waiting_for_server_settings!()
+
+    {request_tasks, server} =
+      MockHTTP2Server.start_and_connect_with([defer_settings: true], fn port ->
+        pool = Finch.Pool.new("https://localhost:#{port}")
+
+        Enum.map(1..10, fn _ ->
+          Task.async(fn ->
+            Finch.Pool.Manager.get_pool(TestFinch, pool, pool_timeout: 1_000)
+          end)
+        end)
+      end)
+
+    Enum.each(request_tasks, fn task -> refute Task.yield(task, 20) end)
+    :ok = MockHTTP2Server.send_server_settings(server)
+
+    Enum.each(request_tasks, fn task ->
+      assert {pool, Finch.HTTP2.Pool} = Task.await(task, 1_000)
+      assert is_pid(pool)
+    end)
+  end
+
+  test "times out waiting for a dynamically started pool" do
+    start_finch_waiting_for_server_settings!()
+
+    {request_task, _server} =
+      MockHTTP2Server.start_and_connect_with([defer_settings: true], fn port ->
+        request = Finch.build(:get, "https://localhost:#{port}")
+
+        Task.async(fn ->
+          started = System.monotonic_time(:millisecond)
+          result = Finch.request(request, TestFinch, pool_timeout: 50)
+          elapsed = System.monotonic_time(:millisecond) - started
+          {result, elapsed}
+        end)
+      end)
+
+    assert {{:error, %Finch.Error{reason: :pool_not_available}}, elapsed} =
+             Task.await(request_task, 1_000)
+
+    assert elapsed >= 40
   end
 
   test "sends the query string", %{url: url} do
@@ -180,5 +264,19 @@ defmodule Finch.HTTP2.IntegrationTest do
            ) == :error
 
     refute_receive _
+  end
+
+  defp start_finch_waiting_for_server_settings! do
+    start_supervised!(
+      {Finch,
+       name: TestFinch,
+       pools: %{
+         default: [
+           protocols: [:http2],
+           conn_opts: [transport_opts: [verify: :verify_none]],
+           http2: [wait_for_server_settings?: true]
+         ]
+       }}
+    )
   end
 end

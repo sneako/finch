@@ -879,8 +879,8 @@ defmodule Finch do
 
   ## Options
 
-    * `:pool_timeout` - This timeout is applied when we check out a connection from the pool.
-      Default value is `5_000`.
+    * `:pool_timeout` - The maximum time to wait for a dynamically started pool to become
+      available and, for HTTP/1, to check out a connection from the pool. Default value is `5_000`.
 
     * `:receive_timeout` - The maximum time to wait for each chunk to be received before returning an error.
       Default value is `15_000`.

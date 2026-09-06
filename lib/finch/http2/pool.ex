@@ -92,6 +92,32 @@ defmodule Finch.HTTP2.Pool do
   @impl Finch.Pool.Manager
   defdelegate get_pool_status(finch_name, pool_name), to: PoolMetrics
 
+  @impl Finch.Pool.Manager
+  def ready?(pool, timeout) do
+    ref = make_ref()
+
+    try do
+      :gen_statem.call(pool, {:ready?, ref}, timeout)
+    catch
+      :exit, _reason ->
+        :gen_statem.cast(pool, {:cancel_ready, ref})
+        false
+    end
+  end
+
+  defp await_ready(data, ref, from) do
+    update_in(data.awaiting_ready, &[{ref, from} | &1])
+  end
+
+  defp cancel_ready(data, ref) do
+    update_in(data.awaiting_ready, &List.keydelete(&1, ref, 0))
+  end
+
+  defp reply_to_awaiting_ready(data) do
+    Enum.each(data.awaiting_ready, fn {_ref, from} -> :gen_statem.reply(from, true) end)
+    %{data | awaiting_ready: []}
+  end
+
   defp make_request_ref(pool) do
     {__MODULE__, {pool, make_ref()}}
   end
@@ -215,6 +241,7 @@ defmodule Finch.HTTP2.Pool do
       requests: %{},
       refs: %{},
       requests_by_pid: %{},
+      awaiting_ready: [],
       backoff_base: @backoff_base,
       backoff_max: @backoff_max,
       connect_opts: pool_config.conn_opts,
@@ -235,6 +262,14 @@ defmodule Finch.HTTP2.Pool do
 
   def disconnected(:enter, :disconnected, _) do
     :keep_state_and_data
+  end
+
+  def disconnected({:call, from}, {:ready?, ref}, data) do
+    {:keep_state, await_ready(data, ref, from)}
+  end
+
+  def disconnected(:cast, {:cancel_ready, ref}, data) do
+    {:keep_state, cancel_ready(data, ref)}
   end
 
   # When entering a disconnected state we need to fail all of the pending
@@ -368,6 +403,14 @@ defmodule Finch.HTTP2.Pool do
 
   def connecting(:enter, _old_state, _data), do: :keep_state_and_data
 
+  def connecting({:call, from}, {:ready?, ref}, data) do
+    {:keep_state, await_ready(data, ref, from)}
+  end
+
+  def connecting(:cast, {:cancel_ready, ref}, data) do
+    {:keep_state, cancel_ready(data, ref)}
+  end
+
   def connecting({:call, from}, {:request, _, _, _}, _data),
     do: {:keep_state_and_data, {:reply, from, {:error, Error.exception(:connection_not_ready)}}}
 
@@ -418,7 +461,16 @@ defmodule Finch.HTTP2.Pool do
   def connected(:enter, _old_state, data) do
     {:ok, _} = Registry.register(data.finch_name, data.pool_name, __MODULE__)
     update_max_concurrent_streams(data)
-    {:keep_state_and_data, [ping_action(data) | connection_age_action(data)]}
+    data = reply_to_awaiting_ready(data)
+    {:keep_state, data, [ping_action(data) | connection_age_action(data)]}
+  end
+
+  def connected({:call, from}, {:ready?, _ref}, _data) do
+    {:keep_state_and_data, {:reply, from, true}}
+  end
+
+  def connected(:cast, {:cancel_ready, _ref}, _data) do
+    :keep_state_and_data
   end
 
   # Issue request to the upstream server. We store a ref to the request so we
@@ -576,6 +628,14 @@ defmodule Finch.HTTP2.Pool do
       end)
 
     {:keep_state, data}
+  end
+
+  def connected_read_only({:call, from}, {:ready?, _ref}, _data) do
+    {:keep_state_and_data, {:reply, from, false}}
+  end
+
+  def connected_read_only(:cast, {:cancel_ready, _ref}, _data) do
+    :keep_state_and_data
   end
 
   # If we're in a read only state then respond with an error immediately
