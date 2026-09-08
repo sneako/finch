@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Avoid copying default and configured connection options, including CA certificates, into each pool supervisor and supervisor registry entry #385
+
 ## v0.23.0 (2026-06-17)
 
 ### Fixed

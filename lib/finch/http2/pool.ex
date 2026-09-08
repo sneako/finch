@@ -217,6 +217,7 @@ defmodule Finch.HTTP2.Pool do
   @impl :gen_statem
   def init({pool, pool_name, registry, pool_config, pool_idx}) do
     Process.flag(:trap_exit, true)
+    pool_config = Finch.Pool.Manager.resolve_pool_config(pool_config, pool, registry)
 
     {:ok, metrics_ref} =
       if pool_config.start_pool_metrics?,

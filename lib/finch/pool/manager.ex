@@ -88,6 +88,16 @@ defmodule Finch.Pool.Manager do
 
   @impl true
   def init(config) do
+    default = store_pool_config(config.registry_name, :default, config.default_pool_config)
+
+    pools =
+      Map.new(config.pools, fn {pool, pool_config} ->
+        {pool, store_pool_config(config.registry_name, pool, pool_config)}
+      end)
+
+    config = %{config | default_pool_config: default, pools: pools}
+    Registry.put_meta(config.registry_name, :config, config)
+
     Enum.each(config.pools, fn {pool, _} ->
       pool_name = Finch.Pool.to_name(pool)
       start_pool(pool, pool_name, config)
@@ -259,7 +269,7 @@ defmodule Finch.Pool.Manager do
   ## Callbacks
 
   defp start_pool(pool, pool_name, config) do
-    pool_config = pool_config(config, pool)
+    pool_config = Map.get(config.pools, pool, config.default_pool_config)
     track_default? = pool_config.start_pool_metrics? and not Map.has_key?(config.pools, pool)
 
     data = {pool_config.mod, pool_config.count, pool_config}
@@ -276,10 +286,29 @@ defmodule Finch.Pool.Manager do
     end
   end
 
-  defp pool_config(%{pools: config, default_pool_config: default}, %Finch.Pool{} = pool) do
-    config
-    |> Map.get(pool, default)
-    |> sanitize_pool_config(pool)
+  defp store_pool_config(registry_name, key, pool_config) do
+    # Keep large connection options (especially decoded CA certificates) in the
+    # registry once per configured pool, rather than copying them into every
+    # supervisor child spec and supervisor registry entry for each destination.
+    key = {__MODULE__, key}
+    Registry.put_meta(registry_name, key, pool_config.conn_opts)
+    %{pool_config | conn_opts: {:registry, key}}
+  end
+
+  @doc false
+  @spec resolve_pool_config(map(), Finch.Pool.t(), Finch.name()) :: map()
+  def resolve_pool_config(pool_config, pool, registry_name) do
+    pool_config =
+      case pool_config.conn_opts do
+        {:registry, key} ->
+          {:ok, conn_opts} = Registry.meta(registry_name, key)
+          %{pool_config | conn_opts: conn_opts}
+
+        _inline_opts ->
+          pool_config
+      end
+
+    sanitize_pool_config(pool_config, pool)
   end
 
   defp sanitize_pool_config(pool_config, pool) do

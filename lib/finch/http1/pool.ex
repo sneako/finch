@@ -152,6 +152,8 @@ defmodule Finch.HTTP1.Pool do
 
   @impl NimblePool
   def init_pool({pool, pool_name, registry, pool_config, pool_idx}) do
+    pool_config = Finch.Pool.Manager.resolve_pool_config(pool_config, pool, registry)
+
     {:ok, metric_ref} =
       if pool_config.start_pool_metrics?,
         do: PoolMetrics.init(registry, pool_name, pool_idx, pool_config.size),
