@@ -1066,11 +1066,9 @@ defmodule Finch.HTTP2.Pool do
   end
 
   @impl :gen_statem
-  def terminate(_reason, _state, %{metrics_ref: {table, pool_name, pool_idx}}) do
-    Finch.PoolMetrics.delete(table, pool_name, pool_idx)
+  def terminate(_reason, _state, data) do
+    Finch.Pool.cleanup(data.finch_name, data.pool_name, data.metrics_ref)
   end
-
-  def terminate(_reason, _state, _data), do: :ok
 
   defp update_max_concurrent_streams(%{metrics_ref: nil}), do: :ok
 

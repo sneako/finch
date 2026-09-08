@@ -305,14 +305,9 @@ defmodule Finch.HTTP1.Pool do
   def handle_cancelled(:queued, _pool_state), do: :ok
 
   @impl NimblePool
-  def terminate_pool(_reason, %{
-        state: %__MODULE__.State{metric_ref: {table, pool_name, pool_idx}}
-      }) do
-    Finch.PoolMetrics.delete(table, pool_name, pool_idx)
-    :ok
+  def terminate_pool(_reason, %{state: %__MODULE__.State{} = state}) do
+    Finch.Pool.cleanup(state.registry, Finch.Pool.to_name(state.pool), state.metric_ref)
   end
-
-  def terminate_pool(_reason, _pool_state), do: :ok
 
   defp transfer_if_open(conn, state, {pid, _} = from) do
     if Conn.open?(conn) do

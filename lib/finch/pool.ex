@@ -142,6 +142,19 @@ defmodule Finch.Pool do
   # so all name management belongs to a single place.
   def to_name(%__MODULE__{scheme: s, host: h, port: p, tag: tag}), do: {s, h, p, tag}
 
+  @doc false
+  def cleanup(registry, pool_name, metrics_ref) do
+    # Remove the entry before shutdown completes; Registry's exit cleanup is asynchronous.
+    Registry.unregister(registry, pool_name)
+
+    case metrics_ref do
+      {table, name, index} -> Finch.PoolMetrics.delete(table, name, index)
+      nil -> :ok
+    end
+
+    :ok
+  end
+
   @doc """
   Returns a child specification for starting a pool under your own supervision tree.
 
