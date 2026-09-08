@@ -66,61 +66,43 @@ defmodule Finch.HTTP1.PoolTest do
     bypass: bypass,
     finch_name: finch_name
   } do
-    parent = self()
+    idle_timeout = 60_000
 
     start_supervised!(
       {Finch,
        name: finch_name,
        pools: %{
-         default: [count: 1, size: 2, pool_max_idle_time: 200]
+         default: [count: 1, size: 2, pool_max_idle_time: idle_timeout]
        }}
     )
 
-    Bypass.expect(bypass, fn conn ->
-      {"delay", str_delay} =
-        Enum.find(conn.req_headers, fn h -> match?({"delay", _}, h) end)
+    Bypass.expect(bypass, &Plug.Conn.send_resp(&1, 200, "OK"))
+    request = Finch.build(:get, endpoint(bypass))
+    assert {:ok, %{status: 200}} = Finch.request(request, finch_name, receive_timeout: 5_000)
 
-      Process.sleep(String.to_integer(str_delay))
-      Plug.Conn.send_resp(conn, 200, "OK")
-    end)
-
-    delay_exec = fn ref, delay ->
-      send(parent, {ref, :start})
-
-      resp =
-        Finch.build(:get, endpoint(bypass), [{"delay", "#{delay}"}])
-        |> Finch.request(finch_name)
-
-      send(parent, {ref, :done})
-      resp
-    end
-
-    ref1 = make_ref()
-    Task.async(fn -> delay_exec.(ref1, 10) end)
-
-    ref2 = make_ref()
-    Task.async(fn -> delay_exec.(ref2, 10) end)
-
-    assert_receive {^ref1, :done}, 300
-    assert_receive {^ref2, :done}, 300
-
-    [{_, supervisor, _, _}] = DynamicSupervisor.which_children(:"#{finch_name}.PoolSupervisor")
-    Process.monitor(supervisor)
-
-    # after here the next idle termination will trigger in =~  ms
     pool_key = pool(bypass)
     assert [{pool, _pool_mod}] = Registry.lookup(finch_name, Finch.Pool.to_name(pool_key))
 
-    Process.monitor(pool)
-    refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 100
+    # Age the previous checkout explicitly instead of racing real idle timers.
+    # This call also waits for the request's checkin to be processed.
+    old_checkout = System.monotonic_time(:millisecond) - 2 * idle_timeout
 
-    ref3 = make_ref()
-    Task.async(fn -> assert {:ok, %{status: 200}} = delay_exec.(ref3, 10) end)
-    assert_receive {^ref3, :done}, 300
+    old_state =
+      :sys.replace_state(pool, fn state ->
+        put_in(state.state.activity_info.last_checkout_ts, old_checkout)
+      end)
 
-    refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 100
-    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 300
-    assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}
+    [{conn, _metadata}] = :queue.to_list(old_state.resources)
+    assert old_state.state.activity_info.in_use_count == 0
+    assert {:stop, :idle_timeout} = Finch.HTTP1.Pool.handle_ping(conn, old_state.state)
+
+    assert {:ok, %{status: 200}} = Finch.request(request, finch_name, receive_timeout: 5_000)
+    new_state = :sys.get_state(pool).state
+    assert new_state.activity_info.in_use_count == 0
+    assert new_state.activity_info.last_checkout_ts > old_checkout
+
+    # An idle connection must not stop the pool after another checkout refreshed it.
+    assert {:ok, ^conn} = Finch.HTTP1.Pool.handle_ping(conn, new_state)
   end
 
   # @tag capture_log: true
