@@ -1067,13 +1067,7 @@ defmodule Finch.HTTP2.Pool do
 
   @impl :gen_statem
   def terminate(_reason, _state, data) do
-    # Remove the entry before shutdown completes; Registry's exit cleanup is asynchronous.
-    Registry.unregister(data.finch_name, data.pool_name)
-
-    case data.metrics_ref do
-      {table, pool_name, pool_idx} -> Finch.PoolMetrics.delete(table, pool_name, pool_idx)
-      nil -> :ok
-    end
+    Finch.Pool.cleanup(data.finch_name, data.pool_name, data.metrics_ref)
   end
 
   defp update_max_concurrent_streams(%{metrics_ref: nil}), do: :ok

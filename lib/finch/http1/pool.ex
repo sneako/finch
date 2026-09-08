@@ -306,15 +306,7 @@ defmodule Finch.HTTP1.Pool do
 
   @impl NimblePool
   def terminate_pool(_reason, %{state: %__MODULE__.State{} = state}) do
-    # Remove the entry before shutdown completes; Registry's exit cleanup is asynchronous.
-    Registry.unregister(state.registry, Finch.Pool.to_name(state.pool))
-
-    case state.metric_ref do
-      {table, pool_name, pool_idx} -> Finch.PoolMetrics.delete(table, pool_name, pool_idx)
-      nil -> :ok
-    end
-
-    :ok
+    Finch.Pool.cleanup(state.registry, Finch.Pool.to_name(state.pool), state.metric_ref)
   end
 
   defp transfer_if_open(conn, state, {pid, _} = from) do
