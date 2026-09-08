@@ -94,27 +94,18 @@ defmodule Finch.HTTP2.Pool do
 
   @impl Finch.Pool.Manager
   def ready?(pool, timeout) do
-    ref = make_ref()
-
-    try do
-      :gen_statem.call(pool, {:ready?, ref}, timeout)
-    catch
-      :exit, _reason ->
-        :gen_statem.cast(pool, {:cancel_ready, ref})
-        false
-    end
+    :gen_statem.call(pool, :ready?, timeout)
+  catch
+    :exit, {:timeout, _} -> false
+    :exit, _reason -> :retry
   end
 
-  defp await_ready(data, ref, from) do
-    update_in(data.awaiting_ready, &[{ref, from} | &1])
-  end
-
-  defp cancel_ready(data, ref) do
-    update_in(data.awaiting_ready, &List.keydelete(&1, ref, 0))
+  defp await_ready(data, from) do
+    update_in(data.awaiting_ready, &[from | &1])
   end
 
   defp reply_to_awaiting_ready(data) do
-    Enum.each(data.awaiting_ready, fn {_ref, from} -> :gen_statem.reply(from, true) end)
+    Enum.each(data.awaiting_ready, &:gen_statem.reply(&1, true))
     %{data | awaiting_ready: []}
   end
 
@@ -264,12 +255,8 @@ defmodule Finch.HTTP2.Pool do
     :keep_state_and_data
   end
 
-  def disconnected({:call, from}, {:ready?, ref}, data) do
-    {:keep_state, await_ready(data, ref, from)}
-  end
-
-  def disconnected(:cast, {:cancel_ready, ref}, data) do
-    {:keep_state, cancel_ready(data, ref)}
+  def disconnected({:call, from}, :ready?, data) do
+    {:keep_state, await_ready(data, from)}
   end
 
   # When entering a disconnected state we need to fail all of the pending
@@ -403,12 +390,8 @@ defmodule Finch.HTTP2.Pool do
 
   def connecting(:enter, _old_state, _data), do: :keep_state_and_data
 
-  def connecting({:call, from}, {:ready?, ref}, data) do
-    {:keep_state, await_ready(data, ref, from)}
-  end
-
-  def connecting(:cast, {:cancel_ready, ref}, data) do
-    {:keep_state, cancel_ready(data, ref)}
+  def connecting({:call, from}, :ready?, data) do
+    {:keep_state, await_ready(data, from)}
   end
 
   def connecting({:call, from}, {:request, _, _, _}, _data),
@@ -465,12 +448,8 @@ defmodule Finch.HTTP2.Pool do
     {:keep_state, data, [ping_action(data) | connection_age_action(data)]}
   end
 
-  def connected({:call, from}, {:ready?, _ref}, _data) do
+  def connected({:call, from}, :ready?, _data) do
     {:keep_state_and_data, {:reply, from, true}}
-  end
-
-  def connected(:cast, {:cancel_ready, _ref}, _data) do
-    :keep_state_and_data
   end
 
   # Issue request to the upstream server. We store a ref to the request so we
@@ -630,12 +609,8 @@ defmodule Finch.HTTP2.Pool do
     {:keep_state, data}
   end
 
-  def connected_read_only({:call, from}, {:ready?, _ref}, _data) do
+  def connected_read_only({:call, from}, :ready?, _data) do
     {:keep_state_and_data, {:reply, from, false}}
-  end
-
-  def connected_read_only(:cast, {:cancel_ready, _ref}, _data) do
-    :keep_state_and_data
   end
 
   # If we're in a read only state then respond with an error immediately

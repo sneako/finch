@@ -223,6 +223,82 @@ defmodule Finch.HTTP2.PoolTest do
       assert_receive {:result, {:ok, {200, [], "ok"}}}
     end
 
+    test "ready? returns immediately when the pool is connected" do
+      {:ok, pool} =
+        start_server_and_connect_with(fn port -> start_pool(port) end)
+
+      assert Pool.ready?(pool, 100)
+    end
+
+    test "ready? tolerates exited callers when the pool connects" do
+      {:ok, pool} =
+        start_server_and_connect_with(
+          [assert_registered: false, defer_settings: true],
+          fn port -> start_pool(port, wait_for_server_settings?: true) end
+        )
+
+      {caller, ref} = spawn_monitor(fn -> Pool.ready?(pool, :infinity) end)
+
+      assert eventually(fn -> ready_waiter_count(pool) == 1 end)
+      Process.exit(caller, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^caller, :killed}
+
+      server_send_settings()
+      assert_registered()
+      assert ready_waiter_count(pool) == 0
+      assert Pool.ready?(pool, 100)
+    end
+
+    test "ready? clears timed-out waiters when the pool connects" do
+      {:ok, pool} =
+        start_server_and_connect_with(
+          [assert_registered: false, defer_settings: true],
+          fn port -> start_pool(port, wait_for_server_settings?: true) end
+        )
+
+      monitors = Process.info(self(), :monitors)
+      refute Pool.ready?(pool, 10)
+      assert Process.info(self(), :monitors) == monitors
+
+      server_send_settings()
+      assert_registered()
+      assert ready_waiter_count(pool) == 0
+    end
+
+    test "ready? retries dead pools without consuming unrelated monitor messages" do
+      {pool, ref} = spawn_monitor(fn -> :ok end)
+      assert_receive {:DOWN, ^ref, :process, ^pool, :normal} = down
+      send(self(), down)
+      monitors = Process.info(self(), :monitors)
+
+      assert :retry = Pool.ready?(pool, 100)
+      assert_receive ^down
+      assert Process.info(self(), :monitors) == monitors
+    end
+
+    test "ready? does not leave late replies in the caller mailbox" do
+      {:ok, pool} = start_server_and_connect_with(fn port -> start_pool(port) end)
+      :sys.suspend(pool)
+      parent = self()
+
+      task =
+        Task.async(fn ->
+          result = Pool.ready?(pool, 10)
+          send(parent, :timed_out)
+
+          receive do
+            :inspect -> {result, Process.info(self(), :messages), Process.info(self(), :monitors)}
+          end
+        end)
+
+      assert_receive :timed_out
+      :sys.resume(pool)
+      :sys.get_state(pool)
+      send(task.pid, :inspect)
+
+      assert {false, {:messages, []}, {:monitors, []}} = Task.await(task)
+    end
+
     test "request timeout with timeout of 0", %{request: req} do
       us = self()
 
@@ -896,6 +972,23 @@ defmodule Finch.HTTP2.PoolTest do
     end
 
     Pool.request(pool, req, acc, fun, nil, opts)
+  end
+
+  defp ready_waiter_count(pool) do
+    {_state, data} = :sys.get_state(pool)
+    length(data.awaiting_ready)
+  end
+
+  defp eventually(fun, attempts \\ 100)
+  defp eventually(fun, 0), do: fun.()
+
+  defp eventually(fun, attempts) do
+    if fun.() do
+      true
+    else
+      Process.sleep(1)
+      eventually(fun, attempts - 1)
+    end
   end
 
   defp start_server_and_connect_with(opts \\ [], fun) do

@@ -113,6 +113,55 @@ defmodule Finch.HTTP2.IntegrationTest do
     assert elapsed >= 40
   end
 
+  for timeout <- [1_000, :infinity] do
+    test "waits for a replacement pool with pool_timeout #{inspect(timeout)}" do
+      start_finch_waiting_for_server_settings!()
+
+      {{task, pool}, server} =
+        MockHTTP2Server.start_and_connect_with([defer_settings: true], fn port ->
+          pool = Finch.Pool.new("https://localhost:#{port}")
+
+          task =
+            Task.async(fn ->
+              Finch.Pool.Manager.get_pool(TestFinch, pool, pool_timeout: unquote(timeout))
+            end)
+
+          {task, pool}
+        end)
+
+      old_pool = waiting_pool(pool)
+      Process.exit(old_pool, :kill)
+      _server = MockHTTP2Server.accept_socket(server)
+
+      assert {new_pool, Finch.HTTP2.Pool} = Task.await(task, 500)
+      assert new_pool != old_pool
+    end
+  end
+
+  test "pool restarts do not reset the readiness timeout" do
+    start_finch_waiting_for_server_settings!()
+
+    {{task, pool}, _server} =
+      MockHTTP2Server.start_and_connect_with([defer_settings: true], fn port ->
+        pool = Finch.Pool.new("https://localhost:#{port}")
+
+        task =
+          Task.async(fn ->
+            Finch.Pool.Manager.get_pool(TestFinch, pool, pool_timeout: 1_000)
+          end)
+
+        {task, pool}
+      end)
+
+    old_pool = waiting_pool(pool)
+    refute Task.yield(task, 750)
+    Process.exit(old_pool, :kill)
+
+    # Leave the replacement waiting for its handshake. Only the time remaining
+    # from the original timeout should be available to it.
+    assert :not_ready = Task.await(task, 500)
+  end
+
   test "sends the query string", %{url: url} do
     TestHelper.start_finch!(
       name: TestFinch,
@@ -264,6 +313,30 @@ defmodule Finch.HTTP2.IntegrationTest do
            ) == :error
 
     refute_receive _
+  end
+
+  defp waiting_pool(pool) do
+    {supervisor, _, _, _, _} = Finch.Pool.Manager.get_pool_supervisor(TestFinch, pool)
+    [{_, pid, _, _}] = Supervisor.which_children(supervisor)
+
+    assert eventually(fn ->
+             {_, data} = :sys.get_state(pid)
+             length(data.awaiting_ready) == 1
+           end)
+
+    pid
+  end
+
+  defp eventually(fun, attempts \\ 100)
+  defp eventually(fun, 0), do: fun.()
+
+  defp eventually(fun, attempts) do
+    if fun.() do
+      true
+    else
+      Process.sleep(5)
+      eventually(fun, attempts - 1)
+    end
   end
 
   defp start_finch_waiting_for_server_settings! do
