@@ -288,10 +288,12 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
-  # On terminate, effectively close it.
-  # This will succeed even if it was already closed or if we don't own it.
+  # Closing succeeds even if the connection was already closed or we don't
+  # own it. It runs in its own process: closing a TLS socket waits up to 5 s
+  # for the peer's close_notify, and this callback runs in the pool process,
+  # where that wait would hold up every checkout.
   def terminate_worker(_reason, conn, %__MODULE__.State{} = pool_state) do
-    Conn.close(conn)
+    spawn(fn -> Conn.close(conn) end)
     {:ok, pool_state}
   end
 

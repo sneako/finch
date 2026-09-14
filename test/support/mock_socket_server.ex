@@ -35,7 +35,7 @@ defmodule Finch.MockSocketServer do
           "http://localhost:#{port}"
 
         {:ssl, nil} ->
-          {:ok, port} = :inet.port(socket)
+          {:ok, {_address, port}} = :ssl.sockname(socket)
           "https://localhost:#{port}"
 
         _ ->

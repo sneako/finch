@@ -3,6 +3,74 @@ defmodule Finch.HTTP1.PoolTest do
 
   alias Finch.HTTP1Server
 
+  defmodule SlowTransport do
+    def close(test_pid) do
+      send(test_pid, {:closing, self()})
+      Process.sleep(200)
+      :ok
+    end
+  end
+
+  # A TLS server behind a TCP relay that stops forwarding bytes 300 ms after
+  # accepting a connection but keeps both sockets open. Closing the client
+  # side then gets no answer, so :ssl.close/1 waits its full 5 s.
+  defmodule SilentPeer do
+    @fixtures_dir Path.expand("../../fixtures", __DIR__)
+
+    def start do
+      {:ok, tls_listen} =
+        :ssl.listen(0,
+          certfile: Path.join(@fixtures_dir, "selfsigned.pem"),
+          keyfile: Path.join(@fixtures_dir, "selfsigned_key.pem"),
+          reuseaddr: true,
+          active: false
+        )
+
+      {:ok, {_, tls_port}} = :ssl.sockname(tls_listen)
+      spawn_link(fn -> accept_tls(tls_listen) end)
+
+      {:ok, relay_listen} = :gen_tcp.listen(0, active: false, mode: :binary, reuseaddr: true)
+      {:ok, {_, relay_port}} = :inet.sockname(relay_listen)
+      spawn_link(fn -> accept_relay(relay_listen, tls_port) end)
+
+      "https://localhost:#{relay_port}"
+    end
+
+    defp accept_tls(listen) do
+      {:ok, transport} = :ssl.transport_accept(listen)
+
+      spawn_link(fn ->
+        {:ok, socket} = :ssl.handshake(transport)
+        {:ok, _request} = :ssl.recv(socket, 0, 5_000)
+        :ok = :ssl.send(socket, "HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n")
+        Process.sleep(:infinity)
+      end)
+
+      accept_tls(listen)
+    end
+
+    defp accept_relay(listen, tls_port) do
+      {:ok, client} = :gen_tcp.accept(listen)
+      {:ok, upstream} = :gen_tcp.connect(~c"localhost", tls_port, active: false, mode: :binary)
+      deadline = System.monotonic_time(:millisecond) + 300
+      spawn_link(fn -> relay(client, upstream, deadline) end)
+      spawn_link(fn -> relay(upstream, client, deadline) end)
+      accept_relay(listen, tls_port)
+    end
+
+    defp relay(from, to, deadline) do
+      left = deadline - System.monotonic_time(:millisecond)
+
+      with true <- left > 0,
+           {:ok, data} <- :gen_tcp.recv(from, 0, left),
+           :ok <- :gen_tcp.send(to, data) do
+        relay(from, to, deadline)
+      else
+        _ -> Process.sleep(:infinity)
+      end
+    end
+  end
+
   setup_all do
     port = 4005
     url = "http://localhost:#{port}"
@@ -10,6 +78,82 @@ defmodule Finch.HTTP1.PoolTest do
     start_supervised!({HTTP1Server, port: port})
 
     {:ok, url: url}
+  end
+
+  test "closing a connection whose peer went silent does not block checkouts",
+       %{finch_name: finch_name} do
+    url = SilentPeer.start()
+
+    start_supervised!(
+      {Finch,
+       name: finch_name,
+       pools: %{
+         url => [conn_max_idle_time: 10, conn_opts: [transport_opts: [verify: :verify_none]]]
+       }}
+    )
+
+    assert {:ok, %{status: 200}} = Finch.build(:get, url) |> Finch.request(finch_name)
+
+    # Long enough for the relay to have gone quiet and the connection to have
+    # exceeded conn_max_idle_time. The first checkout removes it, and the pool
+    # must keep serving the other while that connection is being closed.
+    Process.sleep(400)
+
+    results =
+      1..2
+      |> Enum.map(fn _ ->
+        Task.async(fn ->
+          Finch.build(:get, url) |> Finch.request(finch_name, pool_timeout: 500)
+        end)
+      end)
+      |> Task.await_many()
+
+    assert [{:ok, %{status: 200}}, {:ok, %{status: 200}}] = results
+  end
+
+  test "terminate_worker/3 does not wait for the connection to close" do
+    conn = %{mint: %Mint.HTTP1{state: :open, transport: SlowTransport, socket: self()}}
+    state = %Finch.HTTP1.Pool.State{}
+
+    started = System.monotonic_time(:millisecond)
+    assert {:ok, ^state} = Finch.HTTP1.Pool.terminate_worker(:closed, conn, state)
+    assert System.monotonic_time(:millisecond) - started < 100
+
+    assert_receive {:closing, closer}
+    refute closer == self()
+  end
+
+  test "closes a TLS connection removed for exceeding conn_max_idle_time", %{
+    finch_name: finch_name
+  } do
+    test = self()
+
+    handler = fn transport, socket ->
+      :ok = transport.send(socket, "HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n")
+      send(test, {:peer_saw, transport.recv(socket, 0, 5_000)})
+    end
+
+    {:ok, %{url: url}} = Finch.MockSocketServer.start(transport: :ssl, handler: handler)
+
+    start_supervised!(
+      {Finch,
+       name: finch_name,
+       pools: %{
+         url => [
+           conn_max_idle_time: 10,
+           conn_opts: [transport_opts: [verify: :verify_none, timeout: 200]]
+         ]
+       }}
+    )
+
+    assert {:ok, %{status: 200}} = Finch.build(:get, url) |> Finch.request(finch_name)
+    Process.sleep(50)
+
+    # The checkout finds the connection idle for too long and removes it. The
+    # server accepts one connection, so the request itself gets no answer.
+    _ = Finch.build(:get, url) |> Finch.request(finch_name)
+
+    assert_receive {:peer_saw, {:error, :closed}}, 5_000
   end
 
   @tag capture_log: true
