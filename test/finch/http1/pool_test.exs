@@ -111,6 +111,18 @@ defmodule Finch.HTTP1.PoolTest do
     assert [{:ok, %{status: 200}}, {:ok, %{status: 200}}] = results
   end
 
+  @tag bypass: false
+  test "a connection whose request timed out is not reused", %{finch_name: finch_name, url: url} do
+    start_supervised!({Finch, name: finch_name, pools: %{default: [size: 1, protocols: [:http1]]}})
+
+    assert {:error, %{reason: :timeout}} =
+             Finch.build(:get, url <> "/wait/200")
+             |> Finch.request(finch_name, receive_timeout: 50)
+
+    assert {:ok, %{status: 200, body: "Hello world!"}} =
+             Finch.build(:get, url) |> Finch.request(finch_name, receive_timeout: 1_000)
+  end
+
   test "terminate_worker/3 does not wait for the connection to close" do
     conn = %{mint: %Mint.HTTP1{state: :open, transport: SlowTransport, socket: self()}}
     state = %Finch.HTTP1.Pool.State{}

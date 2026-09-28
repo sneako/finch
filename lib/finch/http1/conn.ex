@@ -333,7 +333,10 @@ defmodule Finch.HTTP1.Conn do
           resp_metadata
         )
 
+      # Mint keeps the connection open on a receive timeout, but its unread
+      # response would reach the next request, so the connection can't be reused.
       {:error, mint, error, _responses} ->
+        {:ok, mint} = Mint.HTTP.close(mint)
         {:error, mint, error, acc, resp_metadata}
     end
   end
