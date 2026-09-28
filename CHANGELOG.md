@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Close HTTP/1 connections after request or response errors before returning them to the pool. Mint 1.11 keeps sockets open after receive timeouts; reusing an abandoned request's connection can otherwise deliver stale response references to the next request.
+
 ## v0.23.0 (2026-06-17)
 
 ### Fixed
