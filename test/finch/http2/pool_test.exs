@@ -399,6 +399,49 @@ defmodule Finch.HTTP2.PoolTest do
 
       assert_receive {:resp, {:error, %Finch.Error{reason: :timeout}, _acc}}
     end
+
+    test "a request after a timeout gets its own response on the same connection", %{
+      request: req
+    } do
+      us = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      assert {:error, %Finch.Error{reason: :timeout}, _acc} =
+               request(pool, req, receive_timeout: 10)
+
+      assert_recv_frames([
+        headers(stream_id: timed_out_stream_id),
+        rst_stream(stream_id: timed_out_stream_id, error_code: :cancel)
+      ])
+
+      spawn(fn ->
+        resp = request(pool, req, [])
+        send(us, {:resp, resp})
+      end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      server_send_frames([
+        headers(
+          stream_id: timed_out_stream_id,
+          hbf: server_encode_headers([{":status", "200"}]),
+          flags: set_flags(:headers, [:end_headers])
+        ),
+        data(stream_id: timed_out_stream_id, data: "stale", flags: set_flags(:data, [:end_stream])),
+        headers(
+          stream_id: stream_id,
+          hbf: server_encode_headers([{":status", "200"}]),
+          flags: set_flags(:headers, [:end_headers])
+        ),
+        data(stream_id: stream_id, data: "fresh", flags: set_flags(:data, [:end_stream]))
+      ])
+
+      assert_receive {:resp, {:ok, {200, [], "fresh"}}}
+    end
   end
 
   describe "async requests" do
