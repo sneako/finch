@@ -1,10 +1,27 @@
 # Changelog
 
-## Unreleased
+## v0.24.0 (2026-09-29)
+
+### Added
+
+- Support the HTTP `QUERY` method via the `:query` atom in `Finch.build/5` #396
+- Add `t:Finch.pool_opt/0` and `t:Finch.pool_opts/0` types and a typespec for `Finch.start_link/1` #382
 
 ### Fixed
 
-- Close HTTP/1 connections after request or response errors before returning them to the pool. Mint 1.11 keeps sockets open after receive timeouts; reusing an abandoned request's connection can otherwise deliver stale response references to the next request.
+- Close HTTP/1 connections after request or response errors before returning them to the pool, preventing stale response references from reaching subsequent requests after receive timeouts with Mint 1.11 #397
+- Close discarded HTTP/1 connections asynchronously so slow TLS shutdowns do not block pool checkouts #392
+- Wait for dynamically started HTTP/2 pools to become ready within `:pool_timeout`, avoiding `:pool_not_available` errors on initial requests #388
+- Return `:ok` when cancelling an async request while its HTTP/2 pool is disconnected, avoiding a `MatchError` #387
+- Unregister HTTP/1 and HTTP/2 pool workers before shutdown completes so resizing pools does not leave stale registry entries #391
+- Treat empty or whitespace-only `SSLKEYLOGFILE` and `:ssl_key_log_file` values as unset #381
+
+### Other
+
+- Update locked dependencies to Mint 1.11 and HPAX 1.1 #397
+- CI: update to Elixir 1.20.4 and Erlang/OTP 29.0.6 #389
+- Fix documentation warnings from references to the removed six-argument `Finch.request` function #389
+- Remove timing races from HTTP/1 pool idle-timeout tests #391
 
 ## v0.23.0 (2026-06-17)
 
