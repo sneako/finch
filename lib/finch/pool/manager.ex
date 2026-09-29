@@ -45,6 +45,7 @@ defmodule Finch.Pool.Manager do
 
   @type config() :: %{
           registry_name: atom(),
+          manager_name: atom(),
           supervisor_name: atom(),
           supervisor_registry_name: atom(),
           default_pool_config: map(),
@@ -75,6 +76,9 @@ defmodule Finch.Pool.Manager do
 
   @default_conn_hostname "localhost"
 
+  @spec manager_name(atom()) :: atom()
+  def manager_name(name), do: :"#{name}.PoolManager"
+
   @spec supervisor_name(atom()) :: atom()
   def supervisor_name(name), do: :"#{name}.PoolSupervisor"
 
@@ -83,17 +87,22 @@ defmodule Finch.Pool.Manager do
 
   @spec start_link(config()) :: GenServer.on_start()
   def start_link(config) do
-    GenServer.start_link(__MODULE__, config)
+    GenServer.start_link(__MODULE__, config, name: config.manager_name)
   end
 
   @impl true
   def init(config) do
     Enum.each(config.pools, fn {pool, _} ->
       pool_name = Finch.Pool.to_name(pool)
-      start_pool(pool, pool_name, config)
+      start_pool(pool, pool_name, config, pool_config(config, pool))
     end)
 
-    :ignore
+    {:ok, config}
+  end
+
+  @impl true
+  def handle_call({:pool_config, pool}, _from, config) do
+    {:reply, pool_config(config, pool), config}
   end
 
   @spec get_pool(atom(), Finch.Pool.t(), Access.t()) ::
@@ -136,7 +145,8 @@ defmodule Finch.Pool.Manager do
           {pid(), module()} | :not_found | :not_ready
   defp maybe_start_pool(registry_name, pool, pool_name, opts) do
     {:ok, config} = Registry.meta(registry_name, :config)
-    {pool_supervisor, pool_mod} = start_pool(pool, pool_name, config)
+    pool_config = GenServer.call(config.manager_name, {:pool_config, pool}, :infinity)
+    {pool_supervisor, pool_mod} = start_pool(pool, pool_name, config, pool_config)
 
     case lookup_pool(registry_name, pool_name, opts) do
       [] ->
@@ -187,7 +197,7 @@ defmodule Finch.Pool.Manager do
   end
 
   @spec get_pool_supervisor(Finch.name(), Finch.Pool.t()) ::
-          {pid(), pool_name(), module(), pos_integer(), map()} | :not_found
+          {pid(), pool_name(), module(), pos_integer()} | :not_found
   def get_pool_supervisor(finch_name, %Finch.Pool{} = pool) do
     pool_name = Finch.Pool.to_name(pool)
 
@@ -198,9 +208,9 @@ defmodule Finch.Pool.Manager do
         [] ->
           :not_found
 
-        [{pid, {pool_mod, _pool_count, pool_config}}] ->
+        [{pid, {pool_mod, _pool_count}}] ->
           pool_count = Supervisor.count_children(pid).workers
-          {pid, pool_name, pool_mod, pool_count, pool_config}
+          {pid, pool_name, pool_mod, pool_count}
       end
     else
       :not_found
@@ -214,7 +224,7 @@ defmodule Finch.Pool.Manager do
 
     if Process.whereis(finch_name) do
       case Registry.lookup(supervisor_registry_name(finch_name), pool_name) do
-        [{_pid, {pool_mod, _pool_count, _pool_config}}] ->
+        [{_pid, {pool_mod, _pool_count}}] ->
           {pool_name, pool_mod}
 
         [] ->
@@ -236,8 +246,7 @@ defmodule Finch.Pool.Manager do
     {:ok, config} = Registry.meta(finch_name, :config)
     pool_name = Finch.Pool.to_name(pool)
     pool_config = sanitize_pool_config(opts, pool)
-    data = {pool_config.mod, pool_config.count, pool_config}
-    name = {:via, Registry, {config.supervisor_registry_name, pool_name, data}}
+    name = supervisor_via(config, pool_name, pool_config)
 
     Supervisor.child_spec(
       {Finch.Pool.Supervisor, {name, {config.registry_name, pool, pool_config, false}}},
@@ -251,19 +260,15 @@ defmodule Finch.Pool.Manager do
       :not_found ->
         {:error, :not_found}
 
-      {pid, _pool_name, _pool_mod, old_count, pool_config} ->
-        Finch.Pool.Supervisor.set_count(pid, pool, finch_name, pool_config, old_count, count)
+      {pid, _pool_name, _pool_mod, old_count} ->
+        Finch.Pool.Supervisor.set_count(pid, pool, finch_name, old_count, count)
     end
   end
 
   ## Callbacks
 
-  defp start_pool(pool, pool_name, config) do
-    pool_config = pool_config(config, pool)
-    track_default? = pool_config.start_pool_metrics? and not Map.has_key?(config.pools, pool)
-
-    data = {pool_config.mod, pool_config.count, pool_config}
-    name = {:via, Registry, {config.supervisor_registry_name, pool_name, data}}
+  defp start_pool(pool, pool_name, config, {pool_config, track_default?}) do
+    name = supervisor_via(config, pool_name, pool_config)
 
     config.supervisor_name
     |> DynamicSupervisor.start_child(
@@ -276,10 +281,18 @@ defmodule Finch.Pool.Manager do
     end
   end
 
-  defp pool_config(%{pools: config, default_pool_config: default}, %Finch.Pool{} = pool) do
-    config
-    |> Map.get(pool, default)
-    |> sanitize_pool_config(pool)
+  # The pool configuration is left out of the registry entry, so that it only
+  # reaches the pool through messages. See the registry in Finch.init/1.
+  defp supervisor_via(config, pool_name, pool_config) do
+    data = {pool_config.mod, pool_config.count}
+    {:via, Registry, {config.supervisor_registry_name, pool_name, data}}
+  end
+
+  defp pool_config(%{pools: pools, default_pool_config: default}, %Finch.Pool{} = pool) do
+    pool_config = pools |> Map.get(pool, default) |> sanitize_pool_config(pool)
+    track_default? = pool_config.start_pool_metrics? and not Map.has_key?(pools, pool)
+
+    {pool_config, track_default?}
   end
 
   defp sanitize_pool_config(pool_config, pool) do

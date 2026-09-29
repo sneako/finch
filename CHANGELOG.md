@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Stop copying connection options into every pool process, connection and caller. Pools configured with large options such as `cacerts: :public_key.cacerts_get()` used several megabytes per destination and were much slower since v0.22.0 #385
+
 ## v0.24.0 (2026-09-29)
 
 ### Added
