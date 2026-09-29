@@ -171,6 +171,12 @@ defmodule FinchTest do
   end
 
   describe "build/5" do
+    test "accepts query request method", %{bypass: bypass} do
+      for method <- [:query, "QUERY"] do
+        assert %Finch.Request{method: "QUERY"} = Finch.build(method, endpoint(bypass))
+      end
+    end
+
     test "raises if unsupported atom request method provided", %{bypass: bypass} do
       assert_raise ArgumentError, ~r/got unsupported atom method :gimme/, fn ->
         Finch.build(:gimme, endpoint(bypass))
@@ -237,6 +243,81 @@ defmodule FinchTest do
       assert {:ok, %Response{status: 200, headers: headers, body: ^response_body}} =
                Finch.build(
                  :post,
+                 endpoint(bypass, "?" <> query_string),
+                 [{header_key, header_val}],
+                 req_body
+               )
+               |> Finch.request(finch_name)
+
+      assert {"content-type", "application/json"} in headers
+    end
+
+    test "successful query request, with body and query string", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      req_body = "{\"response\":\"please\"}"
+      response_body = "{\"right\":\"here\"}"
+      header_key = "content-type"
+      header_val = "application/json"
+      query_string = "query=value"
+
+      Bypass.expect_once(bypass, fn conn ->
+        assert conn.method == "QUERY"
+        assert conn.request_path == "/"
+        assert Plug.Conn.get_req_header(conn, header_key) == [header_val]
+        assert conn.query_string == query_string
+        assert {:ok, ^req_body, conn} = Plug.Conn.read_body(conn)
+
+        conn
+        |> Plug.Conn.put_resp_header(header_key, header_val)
+        |> Plug.Conn.send_resp(200, response_body)
+      end)
+
+      assert {:ok, %Response{status: 200, headers: headers, body: ^response_body}} =
+               Finch.build(
+                 :query,
+                 endpoint(bypass, "?" <> query_string),
+                 [{header_key, header_val}],
+                 req_body
+               )
+               |> Finch.request(finch_name)
+
+      assert {"content-type", "application/json"} in headers
+    end
+
+    test "successful query HTTP/2 request, with body and query string", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      Finch.TestHelper.start_finch!(
+        name: finch_name,
+        pools: %{endpoint(bypass) => [protocols: [:http2], count: 1]}
+      )
+
+      req_body = "{\"response\":\"please\"}"
+      response_body = "{\"right\":\"here\"}"
+      header_key = "content-type"
+      header_val = "application/json"
+      query_string = "query=value"
+
+      Bypass.expect_once(bypass, fn conn ->
+        assert conn.method == "QUERY"
+        assert conn.request_path == "/"
+        assert Plug.Conn.get_req_header(conn, header_key) == [header_val]
+        assert conn.query_string == query_string
+        assert {:ok, ^req_body, conn} = Plug.Conn.read_body(conn)
+
+        conn
+        |> Plug.Conn.put_resp_header(header_key, header_val)
+        |> Plug.Conn.send_resp(200, response_body)
+      end)
+
+      assert {:ok, %Response{status: 200, headers: headers, body: ^response_body}} =
+               Finch.build(
+                 :query,
                  endpoint(bypass, "?" <> query_string),
                  [{header_key, header_val}],
                  req_body
@@ -561,7 +642,7 @@ defmodule FinchTest do
     end
 
     test "returns error when request times out", %{bypass: bypass, finch_name: finch_name} do
-      start_supervised!({Finch, name: finch_name})
+      start_supervised!({Finch, name: finch_name, pools: %{default: [size: 1, count: 1]}})
 
       timeout = 100
 
@@ -573,16 +654,16 @@ defmodule FinchTest do
           {:EXIT, _, _} -> {:halt, conn}
         after
           0 ->
-            Plug.Conn.send_resp(conn, 200, "delayed")
+            Plug.Conn.send_resp(conn, 200, conn.request_path)
         end
       end)
 
       assert {:error, %{reason: :timeout}} =
-               Finch.build(:get, endpoint(bypass))
+               Finch.build(:get, endpoint(bypass) <> "timed-out")
                |> Finch.request(finch_name, receive_timeout: timeout)
 
-      assert {:ok, %Response{}} =
-               Finch.build(:get, endpoint(bypass))
+      assert {:ok, %Response{status: 200, body: "/next-request"}} =
+               Finch.build(:get, endpoint(bypass) <> "next-request")
                |> Finch.request(finch_name, receive_timeout: timeout * 2)
     end
 

@@ -5,6 +5,8 @@
 ### Fixed
 
 - Avoid copying default and configured connection options, including CA certificates, into each pool supervisor and supervisor registry entry #385
+- Close HTTP/1 connections after request or response errors before returning them to the pool. Mint 1.11 keeps sockets open after receive timeouts; reusing an abandoned request's connection can otherwise deliver stale response references to the next request.
+
 
 ## v0.23.0 (2026-06-17)
 
@@ -52,7 +54,7 @@
 
 ### Removed
 
-- Remove deprecated `Finch.request/6` function, pool configuration options, and `:max_idle_time_exceeded` telemetry event #348
+- Remove deprecated six-argument `Finch.request` function, pool configuration options, and `:max_idle_time_exceeded` telemetry event #348
 
 ### Fixed
 
@@ -191,7 +193,7 @@
 ### Enhancements
 
 - Add support for private request metadata #180
-- Hide docs for deprecated `Finch.request/6` #195
+- Hide docs for deprecated six-argument `Finch.request` #195
 - Add support for Mint.UnsafeProxy connections #184
 
 ### Bug Fixes

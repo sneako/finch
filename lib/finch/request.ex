@@ -20,6 +20,7 @@ defmodule Finch.Request do
 
   @atom_methods [
     :get,
+    :query,
     :post,
     :put,
     :patch,
@@ -29,6 +30,7 @@ defmodule Finch.Request do
   ]
   @methods [
     "GET",
+    "QUERY",
     "POST",
     "PUT",
     "PATCH",
@@ -44,7 +46,8 @@ defmodule Finch.Request do
   The following atom methods are supported: `#{Enum.map_join(@atom_methods, "`, `", &inspect/1)}`.
   You can use any arbitrary method by providing it as a `String.t()`.
   """
-  @type method() :: :get | :post | :head | :patch | :delete | :options | :put | String.t()
+  @type method() ::
+          :get | :query | :post | :head | :patch | :delete | :options | :put | String.t()
 
   @typedoc """
   A Uniform Resource Locator, the address of a resource on the Web.
