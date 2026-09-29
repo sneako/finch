@@ -561,7 +561,7 @@ defmodule FinchTest do
     end
 
     test "returns error when request times out", %{bypass: bypass, finch_name: finch_name} do
-      start_supervised!({Finch, name: finch_name})
+      start_supervised!({Finch, name: finch_name, pools: %{default: [size: 1, count: 1]}})
 
       timeout = 100
 
@@ -573,16 +573,16 @@ defmodule FinchTest do
           {:EXIT, _, _} -> {:halt, conn}
         after
           0 ->
-            Plug.Conn.send_resp(conn, 200, "delayed")
+            Plug.Conn.send_resp(conn, 200, conn.request_path)
         end
       end)
 
       assert {:error, %{reason: :timeout}} =
-               Finch.build(:get, endpoint(bypass))
+               Finch.build(:get, endpoint(bypass) <> "timed-out")
                |> Finch.request(finch_name, receive_timeout: timeout)
 
-      assert {:ok, %Response{}} =
-               Finch.build(:get, endpoint(bypass))
+      assert {:ok, %Response{status: 200, body: "/next-request"}} =
+               Finch.build(:get, endpoint(bypass) <> "next-request")
                |> Finch.request(finch_name, receive_timeout: timeout * 2)
     end
 
