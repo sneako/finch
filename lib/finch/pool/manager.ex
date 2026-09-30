@@ -145,28 +145,36 @@ defmodule Finch.Pool.Manager do
           {pid(), module()} | :not_found | :not_ready
   defp maybe_start_pool(registry_name, pool, pool_name, opts) do
     {:ok, config} = Registry.meta(registry_name, :config)
-    pool_config = GenServer.call(config.manager_name, {:pool_config, pool}, :infinity)
-    {pool_supervisor, pool_mod} = start_pool(pool, pool_name, config, pool_config)
+    timeout = Access.get(opts, :pool_timeout, @default_pool_timeout)
 
-    case lookup_pool(registry_name, pool_name, opts) do
-      [] ->
-        timeout = Access.get(opts, :pool_timeout, @default_pool_timeout)
+    deadline =
+      if timeout == :infinity,
+        do: :infinity,
+        else: System.monotonic_time(:millisecond) + timeout
 
-        deadline =
-          if timeout == :infinity,
-            do: :infinity,
-            else: System.monotonic_time(:millisecond) + timeout
+    with {:ok, pool_config} <- fetch_pool_config(config.manager_name, pool, timeout) do
+      {pool_supervisor, pool_mod} = start_pool(pool, pool_name, config, pool_config)
 
-        wait_for_pool_initialization(pool_supervisor, pool_mod, deadline)
+      case lookup_pool(registry_name, pool_name, opts) do
+        [] ->
+          wait_for_pool_initialization(pool_supervisor, pool_mod, deadline)
 
-        case lookup_pool(registry_name, pool_name, opts) do
-          [] -> :not_ready
-          pool -> pool
-        end
+          case lookup_pool(registry_name, pool_name, opts) do
+            [] -> :not_ready
+            pool -> pool
+          end
 
-      pool ->
-        pool
+        pool ->
+          pool
+      end
     end
+  end
+
+  # The manager answers slowly only while it starts the configured pools
+  defp fetch_pool_config(manager_name, pool, timeout) do
+    {:ok, GenServer.call(manager_name, {:pool_config, pool}, timeout)}
+  catch
+    :exit, {:timeout, {GenServer, :call, _}} -> :not_ready
   end
 
   defp wait_for_pool_initialization(pool_supervisor, pool_mod, deadline) do
