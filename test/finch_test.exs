@@ -728,6 +728,22 @@ defmodule FinchTest do
                Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name, pool_timeout: 1)
     end
 
+    test "returns error when the pool manager does not answer within the pool timeout",
+         %{bypass: bypass, finch_name: finch_name} do
+      start_supervised!({Finch, name: finch_name})
+      expect_any(bypass)
+      manager = Process.whereis(Finch.Pool.Manager.manager_name(finch_name))
+
+      :sys.suspend(manager)
+
+      assert {:error, %Finch.Error{reason: :pool_not_available}} =
+               Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name, pool_timeout: 10)
+
+      :sys.resume(manager)
+
+      assert {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+    end
+
     test "raises on invalid option", %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
 

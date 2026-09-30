@@ -316,7 +316,7 @@ defmodule Finch.HTTP2.IntegrationTest do
   end
 
   defp waiting_pool(pool) do
-    {supervisor, _, _, _, _} = Finch.Pool.Manager.get_pool_supervisor(TestFinch, pool)
+    {supervisor, _, _, _} = Finch.Pool.Manager.get_pool_supervisor(TestFinch, pool)
     [{_, pid, _, _}] = Supervisor.which_children(supervisor)
 
     assert eventually(fn ->
