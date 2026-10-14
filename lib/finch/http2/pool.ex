@@ -897,12 +897,17 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp stream_chunks(data, ref, body, %{stream: %{status: :done}}) do
-    with {:ok, data} <- stream_request_body(data, ref, body) do
+    with {:ok, data} <- stream_chunks(data, ref, body, nil) do
       stream_request_body(data, ref, :eof)
     end
   end
 
-  defp stream_chunks(data, ref, body, _), do: stream_request_body(data, ref, body)
+  defp stream_chunks(data, ref, body, _) do
+    # Flow-control stalls can yield empty chunks; only :eof should emit empty DATA.
+    if IO.iodata_length(body) == 0,
+      do: {:ok, data},
+      else: stream_request_body(data, ref, body)
+  end
 
   defp continue_requests(data) do
     Enum.reduce(data.requests, data, fn {ref, request}, data ->

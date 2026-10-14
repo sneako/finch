@@ -56,6 +56,173 @@ defmodule Finch.HTTP2.PoolTest do
     Pool.start_link({pool, :pool_name, :test, config, 1})
   end
 
+  describe "request body flow control" do
+    for {kind, body} <- [
+          binary: "request body",
+          iodata: ["request", [" body"]],
+          stream: {:stream, ["", "request", [], " body", ""]}
+        ] do
+      test "#{kind} body waits for a window without sending empty DATA", %{request: req} do
+        {:ok, pool} =
+          start_server_and_connect_with([server_settings: [initial_window_size: 0]], fn port ->
+            start_pool(port)
+          end)
+
+        ref = Pool.async_request(pool, %{req | body: unquote(Macro.escape(body))}, nil, [])
+        assert_recv_frames([headers(stream_id: stream_id)])
+
+        # Unrelated incoming frames must not cause blocked bodies to send empty DATA.
+        for opaque_data <- ["ping0001", "ping0002", "ping0003"] do
+          server_send_frames([ping(opaque_data: opaque_data)])
+          ack = set_flags(:ping, [:ack])
+          assert_recv_frames([ping(opaque_data: ^opaque_data, flags: ^ack)])
+        end
+
+        server_send_frames([window_update(stream_id: stream_id, window_size_increment: 100)])
+        end_stream = set_flags(:data, [:end_stream])
+
+        assert_recv_frames([
+          data(stream_id: ^stream_id, data: "request body", flags: 0),
+          data(stream_id: ^stream_id, data: "", flags: ^end_stream)
+        ])
+
+        hbf = server_encode_headers([{":status", "200"}])
+
+        server_send_frames([
+          headers(
+            stream_id: stream_id,
+            hbf: hbf,
+            flags: set_flags(:headers, [:end_headers, :end_stream])
+          )
+        ])
+
+        assert_receive {^ref, :done}
+      end
+    end
+
+    for {kind, body} <- [
+          binary: "",
+          list: [],
+          nested_iodata: ["", []],
+          stream: {:stream, ["", []]}
+        ] do
+      test "empty #{kind} body sends only the terminal DATA frame", %{request: req} do
+        {:ok, pool} =
+          start_server_and_connect_with([server_settings: [initial_window_size: 0]], fn port ->
+            start_pool(port)
+          end)
+
+        ref = Pool.async_request(pool, %{req | body: unquote(Macro.escape(body))}, nil, [])
+        end_stream = set_flags(:data, [:end_stream])
+
+        assert_recv_frames([
+          headers(stream_id: stream_id),
+          data(stream_id: stream_id, data: "", flags: ^end_stream)
+        ])
+
+        hbf = server_encode_headers([{":status", "200"}])
+
+        server_send_frames([
+          headers(
+            stream_id: stream_id,
+            hbf: hbf,
+            flags: set_flags(:headers, [:end_headers, :end_stream])
+          )
+        ])
+
+        assert_receive {^ref, :done}
+      end
+    end
+
+    test "a partially sent body waits until the stream window reopens", %{request: req} do
+      {:ok, pool} =
+        start_server_and_connect_with([server_settings: [initial_window_size: 3]], fn port ->
+          start_pool(port)
+        end)
+
+      ref = Pool.async_request(pool, %{req | body: "request body"}, nil, [])
+
+      assert_recv_frames([
+        headers(stream_id: stream_id),
+        data(stream_id: stream_id, data: "req", flags: 0)
+      ])
+
+      server_send_frames([ping(opaque_data: "blocked!")])
+      ack = set_flags(:ping, [:ack])
+      assert_recv_frames([ping(flags: ^ack)])
+
+      server_send_frames([window_update(stream_id: stream_id, window_size_increment: 9)])
+      end_stream = set_flags(:data, [:end_stream])
+      assert_recv_frames([data(stream_id: ^stream_id, data: "uest body", flags: 0)])
+      server_send_frames([ping(opaque_data: "finish!!")])
+
+      assert_recv_frames([
+        ping(flags: ^ack),
+        data(stream_id: ^stream_id, data: "", flags: ^end_stream)
+      ])
+
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(
+          stream_id: stream_id,
+          hbf: hbf,
+          flags: set_flags(:headers, [:end_headers, :end_stream])
+        )
+      ])
+
+      assert_receive {^ref, :done}
+    end
+
+    test "concurrent bodies wait when the connection window is exhausted", %{request: req} do
+      {:ok, pool} = start_server_and_connect_with(fn port -> start_pool(port) end)
+      body = String.duplicate("x", 32_768)
+      end_stream = set_flags(:data, [:end_stream])
+      _ref1 = Pool.async_request(pool, %{req | body: body}, nil, [])
+      first_frames = recv_next_frames(4)
+      [headers(stream_id: stream1) | _] = first_frames
+      assert Enum.count(first_frames, &match?(data(flags: ^end_stream), &1)) == 1
+
+      ref2 = Pool.async_request(pool, %{req | body: body}, nil, [])
+      second_frames = recv_next_frames(3)
+      [headers(stream_id: stream2) | _] = second_frames
+      ref3 = Pool.async_request(pool, %{req | body: body}, nil, [])
+      assert_recv_frames([headers(stream_id: stream3)])
+
+      server_send_frames([ping(opaque_data: "blocked!")])
+      ack = set_flags(:ping, [:ack])
+      assert_recv_frames([ping(flags: ^ack)])
+
+      server_send_frames([window_update(stream_id: 0, window_size_increment: 32_770)])
+      # The large body is split at Mint's max frame size, with one terminal frame per stream.
+      resumed = recv_next_frames(5)
+      all_frames = first_frames ++ second_frames ++ resumed
+
+      for stream_id <- [stream1, stream2, stream3] do
+        chunks = for data(stream_id: ^stream_id, data: chunk) <- all_frames, do: chunk
+        assert IO.iodata_to_binary(chunks) == body
+      end
+
+      for data(data: "", flags: flags) <- all_frames, do: assert(flags == end_stream)
+
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames(
+        for stream_id <- [stream1, stream2, stream3] do
+          headers(
+            stream_id: stream_id,
+            hbf: hbf,
+            flags: set_flags(:headers, [:end_headers, :end_stream])
+          )
+        end
+      )
+
+      assert_receive {^ref2, :done}
+      assert_receive {^ref3, :done}
+    end
+  end
+
+
   describe "requests" do
     test "request/response", %{request: req} do
       us = self()
