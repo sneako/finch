@@ -266,10 +266,7 @@ defmodule Finch.HTTP2.Pool do
 
     :ok =
       Enum.each(data.requests, fn {_ref, request} ->
-        send(
-          request.from_pid,
-          {request.request_ref, {:error, Error.exception(:connection_closed)}}
-        )
+        fail_request(request, Error.exception(:connection_closed))
       end)
 
     # Fail any pending on-demand ping callers
@@ -285,10 +282,14 @@ defmodule Finch.HTTP2.Pool do
       HTTP2.close(data.conn)
     end
 
+    PoolMetrics.maybe_add(data.metrics_ref, :in_flight_requests, -map_size(data.requests))
+
     data = %{
       data
       | conn: nil,
         requests: %{},
+        refs: %{},
+        requests_by_pid: %{},
         pings: %{},
         draining: false
     }
@@ -851,17 +852,24 @@ defmodule Finch.HTTP2.Pool do
     {request, data} = pop_request(data, ref)
 
     if request do
-      wrapped_error = Error.wrap(error)
-      send(request.from_pid, {request.request_ref, {:error, wrapped_error}})
-
-      Telemetry.stop(
-        :recv,
-        request.telemetry.recv,
-        Map.put(request.telemetry.metadata, :error, wrapped_error)
-      )
+      fail_request(request, Error.wrap(error))
     end
 
     {data, [cancel_request_timeout_action(ref) | actions]}
+  end
+
+  defp fail_request(request, error) do
+    metadata = Map.put(request.telemetry.metadata, :error, error)
+
+    case request.telemetry do
+      %{recv: recv_start} ->
+        send(request.from_pid, {request.request_ref, {:error, error}})
+        Telemetry.stop(:recv, recv_start, metadata)
+
+      %{send: send_start} ->
+        reply(request, {:error, error})
+        Telemetry.stop(:send, send_start, metadata)
+    end
   end
 
   defp cancel_request_timeout_action(request_ref) do
