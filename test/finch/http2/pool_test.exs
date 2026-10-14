@@ -261,6 +261,72 @@ defmodule Finch.HTTP2.PoolTest do
     end
   end
 
+  describe "connection error cleanup" do
+    test "disconnect clears references and metrics before the same pool reconnects", %{
+      request: req
+    } do
+      Finch.PoolMetrics.new(:test)
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port -> start_pool(port, start_pool_metrics?: true) end)
+
+      refs = for _ <- 1..3, do: Pool.async_request(pool, req, nil, [])
+      assert_recv_frames([headers(), headers(), headers()])
+      {_state, before} = :sys.get_state(pool)
+      old_mint_ref = Map.values(before.refs) |> hd()
+      assert map_size(before.refs) == 3
+
+      assert {:ok, [%{in_flight_requests: 3}]} =
+               Finch.HTTP2.PoolMetrics.get_pool_status(:test, :pool_name)
+
+      :ok = :ssl.close(server_socket())
+
+      for ref <- refs,
+          do: assert_receive({^ref, {:error, %Finch.Error{reason: :connection_closed}}})
+
+      assert_unregistered()
+
+      assert {:disconnected,
+              %{
+                requests: %{} = requests,
+                refs: %{} = remaining_refs,
+                requests_by_pid: %{} = callers
+              }} = :sys.get_state(pool)
+
+      assert requests == %{} && remaining_refs == %{} && callers == %{}
+
+      assert {:ok, [%{in_flight_requests: 0}]} =
+               Finch.HTTP2.PoolMetrics.get_pool_status(:test, :pool_name)
+
+      server = Process.get(@pdict_key) |> MockHTTP2Server.accept_socket()
+      Process.put(@pdict_key, server)
+      assert_registered()
+      {:connected, data} = :sys.get_state(pool)
+      assert data.refs == %{} && data.requests_by_pid == %{}
+      # A timeout queued before disconnection must not decrement the new connection's metrics.
+      Pool.connected({:timeout, {:request_timeout, old_mint_ref}}, nil, data)
+
+      assert {:ok, [%{in_flight_requests: 0}]} =
+               Finch.HTTP2.PoolMetrics.get_pool_status(:test, :pool_name)
+
+      ref = Pool.async_request(pool, req, nil, [])
+      assert_recv_frames([headers(stream_id: stream_id)])
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(
+          stream_id: stream_id,
+          hbf: hbf,
+          flags: set_flags(:headers, [:end_headers, :end_stream])
+        )
+      ])
+
+      assert_receive {^ref, :done}
+
+      assert {:ok, [%{in_flight_requests: 0}]} =
+               Finch.HTTP2.PoolMetrics.get_pool_status(:test, :pool_name)
+    end
+
 
   describe "requests" do
     test "request/response", %{request: req} do

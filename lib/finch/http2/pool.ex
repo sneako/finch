@@ -1010,13 +1010,13 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp pop_request(data, ref) do
-    PoolMetrics.maybe_add(data.metrics_ref, :in_flight_requests, -1)
-
     case pop_in(data.requests[ref]) do
       {nil, data} ->
         {nil, data}
 
       {request, data} ->
+        PoolMetrics.maybe_add(data.metrics_ref, :in_flight_requests, -1)
+
         {_ref, data} =
           data
           |> pop_pid(request.from_pid, request.request_ref)
