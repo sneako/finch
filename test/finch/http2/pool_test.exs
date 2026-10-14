@@ -174,6 +174,45 @@ defmodule Finch.HTTP2.PoolTest do
       assert_receive {^ref, :done}
     end
 
+    test "a SETTINGS reduction can make the stream window negative", %{request: req} do
+      {:ok, pool} =
+        start_server_and_connect_with([server_settings: [initial_window_size: 3]], fn port ->
+          start_pool(port)
+        end)
+
+      ref = Pool.async_request(pool, %{req | body: "request body"}, nil, [])
+
+      assert_recv_frames([
+        headers(stream_id: stream_id),
+        data(stream_id: stream_id, data: "req", flags: 0)
+      ])
+
+      server_send_frames([settings(params: [initial_window_size: 0])])
+      ack = set_flags(:settings, [:ack])
+      assert_recv_frames([settings(flags: ^ack)])
+      refute_receive {^ref, {:error, _}}
+
+      server_send_frames([window_update(stream_id: stream_id, window_size_increment: 13)])
+      end_stream = set_flags(:data, [:end_stream])
+
+      assert_recv_frames([
+        data(stream_id: ^stream_id, data: "uest body", flags: 0),
+        data(stream_id: ^stream_id, data: "", flags: ^end_stream)
+      ])
+
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(
+          stream_id: stream_id,
+          hbf: hbf,
+          flags: set_flags(:headers, [:end_headers, :end_stream])
+        )
+      ])
+
+      assert_receive {^ref, :done}
+    end
+
     test "concurrent bodies wait when the connection window is exhausted", %{request: req} do
       {:ok, pool} = start_server_and_connect_with(fn port -> start_pool(port) end)
       body = String.duplicate("x", 32_768)

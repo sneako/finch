@@ -932,7 +932,7 @@ defmodule Finch.HTTP2.Pool do
 
   defp continue_request(data, ref, request) do
     with :streaming <- request.stream.status,
-         window = smallest_window(data.conn, ref),
+         window = max(smallest_window(data.conn, ref), 0),
          {stream, chunks} = RequestStream.next_chunk(request.stream, window),
          request = %{request | stream: stream},
          {:ok, data} <- stream_chunks(data, ref, chunks, request) do
