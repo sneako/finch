@@ -24,11 +24,13 @@ defmodule Finch.Pool.Supervisor do
     Supervisor.init(specs, auto_shutdown: :all_significant, strategy: :one_for_one)
   end
 
-  @spec set_count(pid(), Pool.t(), Finch.name(), map(), pos_integer(), pos_integer()) ::
+  @spec set_count(pid(), Pool.t(), Finch.name(), pos_integer(), pos_integer()) ::
           :ok | {:error, {pool_idx(), term()}}
-  def set_count(sup_pid, pool, registry_name, pool_config, old_count, new_count) do
+  def set_count(sup_pid, pool, registry_name, old_count, new_count) do
     cond do
       new_count > old_count ->
+        pool_config = pool_config(sup_pid)
+
         Enum.reduce_while((old_count + 1)..new_count, :ok, fn pool_idx, :ok ->
           spec = build_child_spec(pool, registry_name, pool_config, pool_idx)
 
@@ -52,6 +54,15 @@ defmodule Finch.Pool.Supervisor do
       true ->
         :ok
     end
+  end
+
+  # The first worker is never removed by set_count/5, so its specification
+  # always holds the configuration that the pool was started with.
+  defp pool_config(sup_pid) do
+    {:ok, %{start: {_mod, _fun, [{_pool, _pool_name, _registry_name, pool_config, _pool_idx}]}}} =
+      :supervisor.get_childspec(sup_pid, 1)
+
+    pool_config
   end
 
   @spec build_child_spec(Pool.t(), Finch.name(), map(), pool_idx()) :: Supervisor.child_spec()

@@ -389,6 +389,7 @@ defmodule Finch do
     config = %{
       registry_name: name,
       registry_listeners: Keyword.get(opts, :registry_listeners, []),
+      manager_name: Pool.Manager.manager_name(name),
       supervisor_name: Pool.Manager.supervisor_name(name),
       supervisor_registry_name: Pool.Manager.supervisor_registry_name(name),
       default_pool_config: default_pool_config,
@@ -472,12 +473,17 @@ defmodule Finch do
   def init(config) do
     Finch.PoolMetrics.new(config.registry_name)
 
+    # The pool configurations are kept by the pool manager. Reading them from the
+    # registry would give every reader its own copy of terms that processes
+    # otherwise share, such as the certificates of :public_key.cacerts_get/0.
+    registry_config = Map.drop(config, [:default_pool_config, :pools])
+
     children = [
       {Registry,
        keys: :duplicate,
        name: config.registry_name,
        listeners: config.registry_listeners,
-       meta: [config: config]},
+       meta: [config: registry_config]},
       {Registry, keys: :unique, name: config.supervisor_registry_name},
       {DynamicSupervisor, name: config.supervisor_name, strategy: :one_for_one},
       {Pool.Manager, config}
@@ -1185,7 +1191,7 @@ defmodule Finch do
       :not_found ->
         {:error, :not_found}
 
-      {pid, pool_name, _pool_mod, _pool_count, _pool_config} ->
+      {pid, pool_name, _pool_mod, _pool_count} ->
         result = Supervisor.stop(pid)
         Finch.PoolMetrics.delete_pool(finch_name, pool_name)
         result
@@ -1207,7 +1213,7 @@ defmodule Finch do
 
     case Pool.Manager.get_pool_supervisor(finch_name, pool) do
       :not_found -> {:error, :not_found}
-      {_pid, _pool_name, _pool_mod, pool_count, _pool_config} -> {:ok, pool_count}
+      {_pid, _pool_name, _pool_mod, pool_count} -> {:ok, pool_count}
     end
   end
 
