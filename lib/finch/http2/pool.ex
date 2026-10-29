@@ -266,10 +266,7 @@ defmodule Finch.HTTP2.Pool do
 
     :ok =
       Enum.each(data.requests, fn {_ref, request} ->
-        send(
-          request.from_pid,
-          {request.request_ref, {:error, Error.exception(:connection_closed)}}
-        )
+        fail_request(request, Error.exception(:connection_closed))
       end)
 
     # Fail any pending on-demand ping callers
@@ -285,10 +282,14 @@ defmodule Finch.HTTP2.Pool do
       HTTP2.close(data.conn)
     end
 
+    PoolMetrics.maybe_add(data.metrics_ref, :in_flight_requests, -map_size(data.requests))
+
     data = %{
       data
       | conn: nil,
         requests: %{},
+        refs: %{},
+        requests_by_pid: %{},
         pings: %{},
         draining: false
     }
@@ -851,17 +852,24 @@ defmodule Finch.HTTP2.Pool do
     {request, data} = pop_request(data, ref)
 
     if request do
-      wrapped_error = Error.wrap(error)
-      send(request.from_pid, {request.request_ref, {:error, wrapped_error}})
-
-      Telemetry.stop(
-        :recv,
-        request.telemetry.recv,
-        Map.put(request.telemetry.metadata, :error, wrapped_error)
-      )
+      fail_request(request, Error.wrap(error))
     end
 
     {data, [cancel_request_timeout_action(ref) | actions]}
+  end
+
+  defp fail_request(request, error) do
+    metadata = Map.put(request.telemetry.metadata, :error, error)
+
+    case request.telemetry do
+      %{recv: recv_start} ->
+        send(request.from_pid, {request.request_ref, {:error, error}})
+        Telemetry.stop(:recv, recv_start, metadata)
+
+      %{send: send_start} ->
+        reply(request, {:error, error})
+        Telemetry.stop(:send, send_start, metadata)
+    end
   end
 
   defp cancel_request_timeout_action(request_ref) do
@@ -897,12 +905,17 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp stream_chunks(data, ref, body, %{stream: %{status: :done}}) do
-    with {:ok, data} <- stream_request_body(data, ref, body) do
+    with {:ok, data} <- stream_chunks(data, ref, body, nil) do
       stream_request_body(data, ref, :eof)
     end
   end
 
-  defp stream_chunks(data, ref, body, _), do: stream_request_body(data, ref, body)
+  defp stream_chunks(data, ref, body, _) do
+    # Flow-control stalls can yield empty chunks; only :eof should emit empty DATA.
+    if IO.iodata_length(body) == 0,
+      do: {:ok, data},
+      else: stream_request_body(data, ref, body)
+  end
 
   defp continue_requests(data) do
     Enum.reduce(data.requests, data, fn {ref, request}, data ->
@@ -927,7 +940,7 @@ defmodule Finch.HTTP2.Pool do
 
   defp continue_request(data, ref, request) do
     with :streaming <- request.stream.status,
-         window = smallest_window(data.conn, ref),
+         window = max(smallest_window(data.conn, ref), 0),
          {stream, chunks} = RequestStream.next_chunk(request.stream, window),
          request = %{request | stream: stream},
          {:ok, data} <- stream_chunks(data, ref, chunks, request) do
@@ -1005,13 +1018,13 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp pop_request(data, ref) do
-    PoolMetrics.maybe_add(data.metrics_ref, :in_flight_requests, -1)
-
     case pop_in(data.requests[ref]) do
       {nil, data} ->
         {nil, data}
 
       {request, data} ->
+        PoolMetrics.maybe_add(data.metrics_ref, :in_flight_requests, -1)
+
         {_ref, data} =
           data
           |> pop_pid(request.from_pid, request.request_ref)
