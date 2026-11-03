@@ -1351,6 +1351,115 @@ defmodule Finch.HTTP2.PoolTest do
     end
   end
 
+  describe "leaving read-only state" do
+    test "a synchronous caller that exits while read-only lets the pool disconnect", %{
+      request: req
+    } do
+      {:ok, pool} = start_server_and_connect_with(fn port -> start_pool(port) end)
+
+      caller = spawn(fn -> request(pool, req, receive_timeout: :infinity) end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      server_send_frames([
+        goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "bye")
+      ])
+
+      assert_unregistered()
+      assert {:connected_read_only, _data} = :sys.get_state(pool)
+
+      Process.exit(caller, :kill)
+
+      assert eventually(fn -> match?({:disconnected, _}, :sys.get_state(pool)) end)
+      assert {:error, %Finch.Error{reason: :disconnected}, _acc} = request(pool, req, [])
+    end
+
+    test "an async caller that exits while read-only lets the pool disconnect", %{
+      request: req
+    } do
+      us = self()
+
+      {:ok, pool} = start_server_and_connect_with(fn port -> start_pool(port) end)
+
+      caller =
+        spawn(fn ->
+          send(us, {:ref, Pool.async_request(pool, req, nil, receive_timeout: :infinity)})
+          Process.sleep(:infinity)
+        end)
+
+      assert_receive {:ref, _ref}
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      server_send_frames([
+        goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "bye")
+      ])
+
+      assert_unregistered()
+      assert {:connected_read_only, _data} = :sys.get_state(pool)
+
+      Process.exit(caller, :kill)
+
+      assert eventually(fn -> match?({:disconnected, _}, :sys.get_state(pool)) end)
+    end
+
+    test "cancelling the last request while read-only lets the pool disconnect", %{
+      request: req
+    } do
+      {:ok, pool} = start_server_and_connect_with(fn port -> start_pool(port) end)
+
+      ref = Pool.async_request(pool, req, nil, receive_timeout: :infinity)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      server_send_frames([
+        goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "bye")
+      ])
+
+      assert_unregistered()
+      assert {:connected_read_only, _data} = :sys.get_state(pool)
+
+      assert :ok = Pool.cancel_async_request(ref)
+      assert {:disconnected, _data} = :sys.get_state(pool)
+    end
+
+    test "a draining pool stops once its only caller exits", %{request: req} do
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port, max_connection_age: 200, max_connection_age_jitter: 0)
+        end)
+
+      pool_ref = Process.monitor(pool)
+
+      caller = spawn(fn -> request(pool, req, receive_timeout: :infinity) end)
+
+      assert_recv_frames([headers(stream_id: _stream_id)])
+      assert_receive {:unregister, _registry, _key, _pid}, 500
+      assert {:connected_read_only, %{draining: true}} = :sys.get_state(pool)
+
+      Process.exit(caller, :kill)
+
+      assert_receive {:DOWN, ^pool_ref, :process, ^pool, :normal}, 1_000
+    end
+
+    test "a draining pool replies to the last cancel before stopping", %{request: req} do
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port, max_connection_age: 200, max_connection_age_jitter: 0)
+        end)
+
+      pool_ref = Process.monitor(pool)
+
+      ref = Pool.async_request(pool, req, nil, receive_timeout: :infinity)
+
+      assert_recv_frames([headers(stream_id: _stream_id)])
+      assert_receive {:unregister, _registry, _key, _pid}, 500
+      assert {:connected_read_only, %{draining: true}} = :sys.get_state(pool)
+
+      assert :ok = Pool.cancel_async_request(ref)
+      assert_receive {:DOWN, ^pool_ref, :process, ^pool, :normal}, 1_000
+    end
+  end
+
   describe "pool registration" do
     test "GOAWAY causes pool to unregister from the registry", %{request: req} do
       us = self()

@@ -627,7 +627,9 @@ defmodule Finch.HTTP2.Pool do
 
   def connected_read_only({:call, from}, {:cancel, request_ref}, data) do
     data = cancel_request(data, request_ref)
-    {:keep_state, data, {:reply, from, :ok}}
+    # Reply before a possible stop, so the caller never sees the pool exit.
+    :ok = :gen_statem.reply(from, :ok)
+    continue_read_only(data)
   end
 
   def connected_read_only(:cast, {:async_request, pid, request_ref, _, _}, _) do
@@ -636,7 +638,9 @@ defmodule Finch.HTTP2.Pool do
   end
 
   def connected_read_only(:info, {:DOWN, _, :process, pid, _}, data) do
-    {:keep_state, cancel_requests(data, pid)}
+    data
+    |> cancel_requests(pid)
+    |> continue_read_only()
   end
 
   def connected_read_only(:info, message, data) do
@@ -717,10 +721,16 @@ defmodule Finch.HTTP2.Pool do
       send(request.from_pid, {request.request_ref, {:error, Error.exception(:timeout)}})
     end
 
-    # If requests remain, keep waiting for their responses. If the pool is
-    # draining and all requests are done, stop normally so the supervisor
-    # restarts it with a fresh DNS lookup. Otherwise enter the disconnected
-    # state so we can try to re-establish a connection.
+    continue_read_only(data)
+  end
+
+  # If requests remain, keep waiting for their responses. If the pool is
+  # draining and all requests are done, stop normally so the supervisor
+  # restarts it with a fresh DNS lookup. Otherwise enter the disconnected
+  # state so we can try to re-establish a connection. Every way a request
+  # leaves the read-only state other than a socket message must end here:
+  # with no requests left, the server has nothing more to send.
+  defp continue_read_only(data) do
     cond do
       Enum.any?(data.requests) ->
         {:keep_state, data}
