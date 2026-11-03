@@ -232,6 +232,7 @@ defmodule Finch.HTTP2.Pool do
       requests: %{},
       refs: %{},
       requests_by_pid: %{},
+      monitors: %{},
       awaiting_ready: [],
       backoff_base: @backoff_base,
       backoff_max: @backoff_max,
@@ -284,12 +285,17 @@ defmodule Finch.HTTP2.Pool do
 
     PoolMetrics.maybe_add(data.metrics_ref, :in_flight_requests, -map_size(data.requests))
 
+    Enum.each(data.monitors, fn {_pid, monitor_ref} ->
+      Process.demonitor(monitor_ref, [:flush])
+    end)
+
     data = %{
       data
       | conn: nil,
         requests: %{},
         refs: %{},
         requests_by_pid: %{},
+        monitors: %{},
         pings: %{},
         draining: false
     }
@@ -465,10 +471,6 @@ defmodule Finch.HTTP2.Pool do
   end
 
   def connected(:cast, {:async_request, pid, request_ref, req, opts}, data) do
-    if is_nil(data.requests_by_pid[pid]) do
-      Process.monitor(pid)
-    end
-
     send_request(nil, pid, request_ref, req, opts, data)
   end
 
@@ -1034,25 +1036,40 @@ defmodule Finch.HTTP2.Pool do
     end
   end
 
+  # Every caller, synchronous or async, is monitored while it has requests in
+  # flight, so that a caller exiting without cancelling releases its requests.
+  # The monitor is taken with the caller's first request and dropped with its
+  # last one, so a long-lived caller does not accumulate monitors.
   defp put_pid(data, pid, request_ref) do
+    data =
+      if Map.has_key?(data.monitors, pid) do
+        data
+      else
+        put_in(data.monitors[pid], Process.monitor(pid))
+      end
+
     update_in(data.requests_by_pid, fn requests_by_pid ->
       Map.update(requests_by_pid, pid, MapSet.new([request_ref]), &MapSet.put(&1, request_ref))
     end)
   end
 
   defp pop_pid(data, pid, request_ref) do
-    update_in(data.requests_by_pid, fn requests_by_pid ->
-      requests =
-        requests_by_pid
-        |> Map.get(pid, MapSet.new())
-        |> MapSet.delete(request_ref)
+    requests =
+      data.requests_by_pid
+      |> Map.get(pid, MapSet.new())
+      |> MapSet.delete(request_ref)
 
-      if Enum.empty?(requests) do
-        Map.delete(requests_by_pid, pid)
-      else
-        Map.put(requests_by_pid, pid, requests)
+    if Enum.empty?(requests) do
+      {monitor_ref, monitors} = Map.pop(data.monitors, pid)
+
+      if monitor_ref do
+        Process.demonitor(monitor_ref, [:flush])
       end
-    end)
+
+      %{data | requests_by_pid: Map.delete(data.requests_by_pid, pid), monitors: monitors}
+    else
+      put_in(data.requests_by_pid[pid], requests)
+    end
   end
 
   defp ping_action(data), do: {{:timeout, :ping}, data.ping_interval, :ping}

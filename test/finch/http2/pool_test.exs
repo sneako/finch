@@ -1241,6 +1241,116 @@ defmodule Finch.HTTP2.PoolTest do
     end
   end
 
+  describe "caller monitoring" do
+    test "a synchronous caller that exits mid-request has its stream cancelled", %{
+      request: req
+    } do
+      {:ok, pool} = start_server_and_connect_with(fn port -> start_pool(port) end)
+
+      caller = spawn(fn -> request(pool, req, receive_timeout: :infinity) end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      Process.exit(caller, :kill)
+
+      assert_recv_frames([rst_stream(stream_id: ^stream_id, error_code: :cancel)])
+
+      {:connected, data} = :sys.get_state(pool)
+      assert data.requests == %{} && data.refs == %{} && data.requests_by_pid == %{}
+    end
+
+    test "GOAWAY after a synchronous caller exited does not leave the pool read-only", %{
+      request: req
+    } do
+      {:ok, pool} = start_server_and_connect_with(fn port -> start_pool(port) end)
+
+      caller = spawn(fn -> request(pool, req, receive_timeout: :infinity) end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      Process.exit(caller, :kill)
+
+      assert_recv_frames([rst_stream(stream_id: ^stream_id, error_code: :cancel)])
+
+      server_send_frames([
+        goaway(last_stream_id: stream_id, error_code: :no_error, debug_data: "bye")
+      ])
+
+      assert_unregistered()
+      assert {:disconnected, _data} = :sys.get_state(pool)
+      assert {:error, %Finch.Error{reason: :disconnected}, _acc} = request(pool, req, [])
+    end
+
+    test "callers are monitored once and demonitored when their last request ends", %{
+      request: req
+    } do
+      us = self()
+
+      {:ok, pool} = start_server_and_connect_with(fn port -> start_pool(port) end)
+
+      ref1 = Pool.async_request(pool, req, nil, [])
+      ref2 = Pool.async_request(pool, req, nil, [])
+
+      assert_recv_frames([headers(stream_id: stream_id1), headers(stream_id: stream_id2)])
+
+      assert monitor_count(pool, us) == 1
+
+      server_send_frames([
+        headers(
+          stream_id: stream_id1,
+          hbf: server_encode_headers([{":status", "200"}]),
+          flags: set_flags(:headers, [:end_headers, :end_stream])
+        ),
+        headers(
+          stream_id: stream_id2,
+          hbf: server_encode_headers([{":status", "200"}]),
+          flags: set_flags(:headers, [:end_headers, :end_stream])
+        )
+      ])
+
+      assert_receive {^ref1, :done}
+      assert_receive {^ref2, :done}
+      assert monitor_count(pool, us) == 0
+
+      caller =
+        spawn(fn ->
+          send(us, {:resp, request(pool, req, [])})
+          Process.sleep(:infinity)
+        end)
+
+      assert_recv_frames([headers(stream_id: stream_id3)])
+      assert monitor_count(pool, caller) == 1
+
+      server_send_frames([
+        headers(
+          stream_id: stream_id3,
+          hbf: server_encode_headers([{":status", "200"}]),
+          flags: set_flags(:headers, [:end_headers, :end_stream])
+        )
+      ])
+
+      assert_receive {:resp, {:ok, {200, [], ""}}}
+      assert monitor_count(pool, caller) == 0
+
+      Process.exit(caller, :kill)
+    end
+
+    test "disconnecting drops the monitors of failed callers", %{request: req} do
+      {:ok, pool} = start_server_and_connect_with(fn port -> start_pool(port) end)
+
+      ref = Pool.async_request(pool, req, nil, [])
+
+      assert_recv_frames([headers(stream_id: _stream_id)])
+      assert monitor_count(pool, self()) == 1
+
+      :ok = :ssl.close(server_socket())
+
+      assert_receive {^ref, {:error, %Finch.Error{reason: :connection_closed}}}
+      assert {:disconnected, _data} = :sys.get_state(pool)
+      assert monitor_count(pool, self()) == 0
+    end
+  end
+
   describe "pool registration" do
     test "GOAWAY causes pool to unregister from the registry", %{request: req} do
       us = self()
@@ -1331,6 +1441,11 @@ defmodule Finch.HTTP2.PoolTest do
     end
 
     Pool.request(pool, req, acc, fun, nil, opts)
+  end
+
+  defp monitor_count(pool, pid) do
+    {:monitors, monitors} = Process.info(pool, :monitors)
+    Enum.count(monitors, &(&1 == {:process, pid}))
   end
 
   defp ready_waiter_count(pool) do
