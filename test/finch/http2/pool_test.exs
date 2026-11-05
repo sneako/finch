@@ -58,6 +58,55 @@ defmodule Finch.HTTP2.PoolTest do
     Pool.start_link({pool, :pool_name, :test, config, 1})
   end
 
+  test "capacity follows Mint streams and updated server limits", %{request: req} do
+    {:ok, pool} =
+      start_server_and_connect_with(
+        [server_settings: [max_concurrent_streams: 2, initial_window_size: 3]],
+        &start_pool/1
+      )
+
+    assert Pool.available?(pool, 100)
+    uploading = Pool.async_request(pool, %{req | body: "request body"}, nil, [])
+    assert_recv_frames([headers(stream_id: _), data(data: "req")])
+    assert Pool.available?(pool, 100)
+
+    ref = Pool.async_request(pool, req, nil, [])
+    assert_recv_frames([headers(stream_id: stream_id)])
+    refute Pool.available?(pool, 100)
+
+    for limit <- [1, 0, 3, 2] do
+      server_send_frames([settings(params: [max_concurrent_streams: limit])])
+      ack = set_flags(:settings, [:ack])
+      assert_recv_frames([settings(flags: ^ack)])
+      assert Pool.available?(pool, 100) == limit > 2
+    end
+
+    hbf = server_encode_headers([{":status", "200"}])
+
+    server_send_frames([
+      headers(
+        stream_id: stream_id,
+        hbf: hbf,
+        flags: set_flags(:headers, [:end_headers, :end_stream])
+      )
+    ])
+
+    assert_receive {^ref, :done}
+    assert Pool.available?(pool, 100)
+
+    server_send_frames([settings(params: [max_concurrent_streams: 1])])
+    ack = set_flags(:settings, [:ack])
+    assert_recv_frames([settings(flags: ^ack)])
+    refute Pool.available?(pool, 100)
+    Pool.cancel_async_request(uploading)
+    assert_recv_frames([rst_stream(stream_id: _)])
+    assert Pool.available?(pool, 100)
+
+    server_send_frames([settings(params: [max_concurrent_streams: 0])])
+    assert_recv_frames([settings(flags: ^ack)])
+    refute Pool.available?(pool, 100)
+  end
+
   describe "request body flow control" do
     for {kind, body} <- [
           binary: "request body",
@@ -469,6 +518,8 @@ defmodule Finch.HTTP2.PoolTest do
 
       # We can't send any more requests since the connection is closed for writing.
       assert {:error, %Finch.Error{reason: :read_only}, _acc} = request(pool, req, [])
+      refute Pool.available?(pool, 100)
+      assert ready_waiter_count(pool) == 0
 
       server_send_frames([
         headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
@@ -484,6 +535,8 @@ defmodule Finch.HTTP2.PoolTest do
 
       # If we try to make a request now that the server shut down, we get an error.
       assert {:error, %Finch.Error{reason: :disconnected}, _acc} = request(pool, req, [])
+      refute Pool.available?(pool, 100)
+      assert ready_waiter_count(pool) == 0
     end
 
     test "if server disconnects while there are waiting clients, we notify those clients", %{
@@ -582,6 +635,9 @@ defmodule Finch.HTTP2.PoolTest do
           [assert_registered: false, defer_settings: true],
           fn port -> start_pool(port, wait_for_server_settings?: true) end
         )
+
+      refute Pool.available?(pool, 100)
+      assert ready_waiter_count(pool) == 0
 
       {caller, ref} = spawn_monitor(fn -> Pool.ready?(pool, :infinity) end)
 
@@ -1215,6 +1271,8 @@ defmodule Finch.HTTP2.PoolTest do
 
       # New requests should fail with :read_only
       assert {:error, %Finch.Error{reason: :read_only}, _acc} = request(pool, req, [])
+      refute Pool.available?(pool, 100)
+      assert ready_waiter_count(pool) == 0
 
       # Complete the in-flight request
       hbf = server_encode_headers([{":status", "200"}])

@@ -120,11 +120,42 @@ defmodule Finch.Pool.Manager do
 
   defp lookup_pool(registry_name, pool_name, opts) do
     case Registry.lookup(registry_name, pool_name) do
-      [] -> []
-      [single] -> single
-      [_ | _] = entries -> select_pool(entries, opts[:pool_strategy])
+      [] ->
+        []
+
+      [single] ->
+        single
+
+      [_ | _] = entries ->
+        selected = select_pool(entries, opts[:pool_strategy])
+        prefer_available_pool(selected, entries, opts)
     end
   end
+
+  defp prefer_available_pool({_, Finch.HTTP2.Pool} = selected, entries, opts) do
+    timeout = Access.get(opts, :pool_timeout, @default_pool_timeout)
+
+    deadline =
+      if timeout == :infinity,
+        do: :infinity,
+        else: System.monotonic_time(:millisecond) + timeout
+
+    # Capacity is advisory: Mint still performs admission when the request arrives.
+    Enum.find([selected | List.delete(entries, selected)], selected, fn
+      {pid, Finch.HTTP2.Pool} ->
+        remaining =
+          if deadline == :infinity,
+            do: :infinity,
+            else: max(deadline - System.monotonic_time(:millisecond), 0)
+
+        Finch.HTTP2.Pool.available?(pid, remaining)
+
+      _ ->
+        false
+    end)
+  end
+
+  defp prefer_available_pool(selected, _entries, _opts), do: selected
 
   defp select_pool(entries, nil), do: Enum.random(entries)
   defp select_pool(entries, {fun, state}) when is_function(fun, 2), do: fun.(entries, state)
