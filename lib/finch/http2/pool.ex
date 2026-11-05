@@ -100,6 +100,13 @@ defmodule Finch.HTTP2.Pool do
     :exit, _reason -> :retry
   end
 
+  @doc false
+  def available?(pool, timeout) do
+    :gen_statem.call(pool, :available?, timeout)
+  catch
+    :exit, _reason -> false
+  end
+
   defp await_ready(data, from) do
     update_in(data.awaiting_ready, &[from | &1])
   end
@@ -259,6 +266,10 @@ defmodule Finch.HTTP2.Pool do
     {:keep_state, await_ready(data, from)}
   end
 
+  def disconnected({:call, from}, :available?, _data) do
+    {:keep_state_and_data, {:reply, from, false}}
+  end
+
   # When entering a disconnected state we need to fail all of the pending
   # requests
   def disconnected(:enter, _, data) do
@@ -395,6 +406,10 @@ defmodule Finch.HTTP2.Pool do
     {:keep_state, await_ready(data, from)}
   end
 
+  def connecting({:call, from}, :available?, _data) do
+    {:keep_state_and_data, {:reply, from, false}}
+  end
+
   def connecting({:call, from}, {:request, _, _, _}, _data),
     do: {:keep_state_and_data, {:reply, from, {:error, Error.exception(:connection_not_ready)}}}
 
@@ -451,6 +466,15 @@ defmodule Finch.HTTP2.Pool do
 
   def connected({:call, from}, :ready?, _data) do
     {:keep_state_and_data, {:reply, from, true}}
+  end
+
+  def connected({:call, from}, :available?, data) do
+    available? =
+      HTTP2.open?(data.conn, :write) &&
+        HTTP2.open_request_count(data.conn) <
+          HTTP2.get_server_setting(data.conn, :max_concurrent_streams)
+
+    {:keep_state_and_data, {:reply, from, available?}}
   end
 
   # Issue request to the upstream server. We store a ref to the request so we
@@ -611,6 +635,10 @@ defmodule Finch.HTTP2.Pool do
   end
 
   def connected_read_only({:call, from}, :ready?, _data) do
+    {:keep_state_and_data, {:reply, from, false}}
+  end
+
+  def connected_read_only({:call, from}, :available?, _data) do
     {:keep_state_and_data, {:reply, from, false}}
   end
 

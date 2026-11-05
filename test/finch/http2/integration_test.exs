@@ -4,10 +4,182 @@ defmodule Finch.HTTP2.IntegrationTest do
   alias Finch.MockHTTP2Server
   alias Finch.TestHelper
 
+  import Mint.HTTP2.Frame, only: [headers: 1, rst_stream: 1, set_flags: 2]
+
   @moduletag :capture_log
 
   setup_all do
     {:ok, url: Application.get_env(:finch, :test_https_h2_url)}
+  end
+
+  test "routes synchronous and asynchronous requests around a saturated worker" do
+    {url, server_a} =
+      MockHTTP2Server.start_and_connect_with(
+        [server_settings: [max_concurrent_streams: 1]],
+        fn port ->
+          url = "https://localhost:#{port}"
+
+          start_supervised!(
+            {Finch,
+             name: TestFinch,
+             pools: %{
+               url => [
+                 protocols: [:http2],
+                 count: 2,
+                 conn_opts: [transport_opts: [verify: :verify_none]]
+               ]
+             }}
+          )
+
+          url
+        end
+      )
+
+    server_b = MockHTTP2Server.accept_socket(server_a)
+    pool = Finch.Pool.new(url)
+    {supervisor, _, _, _, _} = Finch.Pool.Manager.get_pool_supervisor(TestFinch, pool)
+    workers = for {_, pid, :worker, _} <- Supervisor.which_children(supervisor), do: pid
+    {:ok, server_peer} = :ssl.peername(server_a.socket)
+
+    worker_a =
+      Enum.find(workers, fn pid ->
+        {:connected, state} = :sys.get_state(pid)
+        assert state.metrics_ref == nil
+        {:ok, address} = :ssl.sockname(Mint.HTTP2.get_socket(state.conn))
+        address == server_peer
+      end)
+
+    worker_b = Enum.find(workers, &(&1 != worker_a))
+    request = Finch.build(:get, url)
+    us = self()
+
+    strategy = fn entries ->
+      send(us, :selected)
+
+      assert Enum.sort(entries) ==
+               Enum.sort([{worker_a, Finch.HTTP2.Pool}, {worker_b, Finch.HTTP2.Pool}])
+
+      {worker_a, Finch.HTTP2.Pool}
+    end
+
+    opts = [pool_strategy: strategy]
+
+    held = Finch.async_request(request, TestFinch, opts)
+    assert_receive :selected
+    assert [headers(stream_id: held_stream_id)] = MockHTTP2Server.recv_next_frames(server_a, 1)
+
+    task = Task.async(fn -> Finch.request(request, TestFinch, opts) end)
+    assert_receive :selected
+    assert [headers(stream_id: stream_id)] = MockHTTP2Server.recv_next_frames(server_b, 1)
+    {server_b, hbf} = MockHTTP2Server.encode_headers(server_b, [{":status", "200"}])
+
+    MockHTTP2Server.send_frames(server_b, [
+      headers(
+        stream_id: stream_id,
+        hbf: hbf,
+        flags: set_flags(:headers, [:end_headers, :end_stream])
+      )
+    ])
+
+    assert {:ok, %Finch.Response{status: 200}} = Task.await(task)
+
+    ref = Finch.async_request(request, TestFinch, opts)
+    assert_receive :selected
+    assert {Finch.HTTP2.Pool, {^worker_b, _}} = ref
+    assert [headers(stream_id: stream_id)] = MockHTTP2Server.recv_next_frames(server_b, 1)
+
+    assert {:error, %Finch.HTTPError{reason: :too_many_concurrent_requests}} =
+             Finch.request(request, TestFinch, opts)
+
+    assert_receive :selected
+    assert :ok = Finch.cancel_async_request(ref)
+    assert [rst_stream(stream_id: ^stream_id)] = MockHTTP2Server.recv_next_frames(server_b, 1)
+    assert :ok = Finch.cancel_async_request(held)
+
+    assert [rst_stream(stream_id: ^held_stream_id)] =
+             MockHTTP2Server.recv_next_frames(server_a, 1)
+
+    ref = Finch.async_request(request, TestFinch, opts)
+    assert_receive :selected
+    assert {Finch.HTTP2.Pool, {^worker_a, _}} = ref
+    assert [headers(stream_id: _)] = MockHTTP2Server.recv_next_frames(server_a, 1)
+    Finch.cancel_async_request(ref)
+    refute_receive :selected
+  end
+
+  test "capacity probes tolerate a stale worker and share one timeout" do
+    start_supervised!({Registry, keys: :duplicate, name: TestFinch})
+    pool = Finch.Pool.new("https://localhost")
+    key = Finch.Pool.to_name(pool)
+    us = self()
+
+    workers =
+      for _ <- 1..4 do
+        pid =
+          spawn(fn ->
+            Registry.register(TestFinch, key, Finch.HTTP2.Pool)
+            send(us, {:registered, self()})
+
+            receive do
+              :stop -> :ok
+            end
+          end)
+
+        assert_receive {:registered, ^pid}
+        pid
+      end
+
+    on_exit(fn -> Enum.each(workers, &Process.exit(&1, :kill)) end)
+    [stale | _] = workers
+
+    strategy = fn entries ->
+      assert {stale, Finch.HTTP2.Pool} in entries
+      monitor = Process.monitor(stale)
+      Process.exit(stale, :kill)
+      assert_receive {:DOWN, ^monitor, :process, ^stale, :killed}
+      {stale, Finch.HTTP2.Pool}
+    end
+
+    started = System.monotonic_time(:millisecond)
+
+    assert {^stale, Finch.HTTP2.Pool} =
+             Finch.Pool.Manager.get_pool(TestFinch, pool,
+               pool_strategy: strategy,
+               pool_timeout: 100
+             )
+
+    elapsed = System.monotonic_time(:millisecond) - started
+    assert elapsed >= 90
+    assert elapsed < 250
+  end
+
+  test "HTTP/1 selection and single workers do not perform capacity probes" do
+    start_supervised!({Registry, keys: :duplicate, name: TestFinch})
+    pool = Finch.Pool.new("http://localhost")
+    key = Finch.Pool.to_name(pool)
+    Registry.register(TestFinch, key, Finch.HTTP1.Pool)
+    selected = {self(), Finch.HTTP1.Pool}
+    assert Finch.Pool.Manager.get_pool(TestFinch, pool) == selected
+
+    us = self()
+
+    worker =
+      spawn(fn ->
+        Registry.register(TestFinch, key, Finch.HTTP2.Pool)
+        send(us, :registered)
+
+        receive do
+          :stop -> :ok
+        end
+      end)
+
+    on_exit(fn -> Process.exit(worker, :kill) end)
+    assert_receive :registered
+
+    assert Finch.Pool.Manager.get_pool(TestFinch, pool, pool_strategy: fn _ -> selected end) ==
+             selected
+
+    refute_receive {:"$gen_call", _, :available?}
   end
 
   test "sends http2 requests", %{url: url} do
