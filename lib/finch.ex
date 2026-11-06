@@ -441,23 +441,69 @@ defmodule Finch do
   def start_pool(name, %Finch.Pool{} = pool, opts) do
     # Avoid building the child_spec (cast_pool_opts, sanitize, etc.) if the pool already exists
     if Process.whereis(name) do
-      supervisor_registry_name = Pool.Manager.supervisor_registry_name(name)
-
-      case Pool.Manager.get_pool(supervisor_registry_name, pool, %{start_pool?: false}) do
+      case Pool.Manager.get_pool(name, pool, %{start_pool?: false}) do
         :not_found ->
-          spec = Finch.Pool.child_spec([finch: name, pool: pool] ++ opts)
-          supervisor_name = Pool.Manager.supervisor_name(name)
-
-          case DynamicSupervisor.start_child(supervisor_name, spec) do
-            {:ok, _pid} -> :ok
-            {:error, {:already_started, _pid}} -> :ok
-          end
+          start_pool_after_registry_miss(name, pool, opts)
 
         _ ->
           :ok
       end
     else
       raise ArgumentError, "Finch instance #{inspect(name)} is not running"
+    end
+  end
+
+  defp start_pool_after_registry_miss(name, pool, opts) do
+    case get_pool_supervisor(name, pool) do
+      {pool_supervisor, _pool_name, _pool_mod, _pool_count, _pool_config} ->
+        # A supervisor's worker count includes child specs whose processes have exited.
+        if pool_supervisor_has_children?(pool_supervisor) do
+          :ok
+        else
+          wait_for_pool_supervisor(pool_supervisor)
+          start_pool_after_registry_miss(name, pool, opts)
+        end
+
+      :not_found ->
+        spec = Finch.Pool.child_spec([finch: name, pool: pool] ++ opts)
+        supervisor_name = Pool.Manager.supervisor_name(name)
+
+        case DynamicSupervisor.start_child(supervisor_name, spec) do
+          {:ok, _pid} ->
+            :ok
+
+          {:error, {:already_started, pool_supervisor}} ->
+            if pool_supervisor_has_children?(pool_supervisor) do
+              :ok
+            else
+              wait_for_pool_supervisor(pool_supervisor)
+              start_pool_after_registry_miss(name, pool, opts)
+            end
+        end
+    end
+  end
+
+  defp get_pool_supervisor(name, pool) do
+    Pool.Manager.get_pool_supervisor(name, pool)
+  catch
+    :exit, _ -> :not_found
+  end
+
+  defp pool_supervisor_has_children?(pool_supervisor) do
+    Enum.any?(Supervisor.which_children(pool_supervisor), fn
+      {_id, :restarting, _type, _modules} -> true
+      {_id, child_pid, _type, _modules} when is_pid(child_pid) -> Process.alive?(child_pid)
+      _ -> false
+    end)
+  catch
+    :exit, _ -> false
+  end
+
+  defp wait_for_pool_supervisor(pool_supervisor) do
+    ref = Process.monitor(pool_supervisor)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pool_supervisor, _reason} -> :ok
     end
   end
 
