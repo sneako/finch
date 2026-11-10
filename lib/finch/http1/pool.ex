@@ -158,7 +158,7 @@ defmodule Finch.HTTP1.Pool do
   @impl Finch.Pool.Manager
   def ready?(pool, timeout) do
     tag = :erlang.monitor(:process, pool, alias: :reply_demonitor)
-    :ok = NimblePool.pool_send(pool, {:ready?, tag})
+    :ok = NimblePool.pool_cast(pool, {:ready?, tag})
 
     receive do
       {^tag, :ready} ->
@@ -190,7 +190,7 @@ defmodule Finch.HTTP1.Pool do
           nil
 
         max_idle_time ->
-          NimblePool.pool_send_after(self(), :check_idle, max_idle_time)
+          NimblePool.pool_cast_after(self(), :check_idle, max_idle_time)
           init_activity_info()
       end
 
@@ -280,23 +280,23 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
-  def handle_pool_info(:check_idle, %__MODULE__.State{} = pool_state) do
+  def handle_pool_cast(:check_idle, %__MODULE__.State{} = pool_state) do
     case idle_time_left(pool_state) do
       0 ->
         # Need to unregister first to prevent the race condition described in
         # https://github.com/sneako/finch/issues/384
         Registry.unregister(pool_state.registry, Finch.Pool.to_name(pool_state.pool))
         ref = make_ref()
-        NimblePool.pool_send_after(self(), {:stop_idle, ref}, @idle_stop_grace_ms)
+        NimblePool.pool_cast_after(self(), {:stop_idle, ref}, @idle_stop_grace_ms)
         {:noreply, %{pool_state | idle_stop: ref}}
 
       time_left ->
-        NimblePool.pool_send_after(self(), :check_idle, time_left)
+        NimblePool.pool_cast_after(self(), :check_idle, time_left)
         {:noreply, pool_state}
     end
   end
 
-  def handle_pool_info({:stop_idle, ref}, %__MODULE__.State{idle_stop: ref} = pool_state) do
+  def handle_pool_cast({:stop_idle, ref}, %__MODULE__.State{idle_stop: ref} = pool_state) do
     if idle_time_left(pool_state) == 0 do
       %__MODULE__.State{pool: pool} = pool_state
       meta = %{scheme: pool.scheme, host: pool.host, port: pool.port}
@@ -310,11 +310,11 @@ defmodule Finch.HTTP1.Pool do
   end
 
   # A request brought the pool back after this stop was scheduled.
-  def handle_pool_info({:stop_idle, _ref}, %__MODULE__.State{} = pool_state) do
+  def handle_pool_cast({:stop_idle, _ref}, %__MODULE__.State{} = pool_state) do
     {:noreply, pool_state}
   end
 
-  def handle_pool_info({:ready?, tag}, %__MODULE__.State{} = pool_state) do
+  def handle_pool_cast({:ready?, tag}, %__MODULE__.State{} = pool_state) do
     send(tag, {tag, :ready})
     {:noreply, revive(pool_state)}
   end
@@ -400,7 +400,7 @@ defmodule Finch.HTTP1.Pool do
   defp revive(%__MODULE__.State{} = pool_state) do
     %__MODULE__.State{registry: registry, pool: pool, opts: opts} = pool_state
     {:ok, _} = Registry.register(registry, Finch.Pool.to_name(pool), __MODULE__)
-    NimblePool.pool_send_after(self(), :check_idle, opts.pool_max_idle_time)
+    NimblePool.pool_cast_after(self(), :check_idle, opts.pool_max_idle_time)
     now = System.monotonic_time(:millisecond)
     pool_state = put_in(pool_state.activity_info.last_checkout_ts, now)
     %{pool_state | idle_stop: nil}
