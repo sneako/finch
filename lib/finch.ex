@@ -82,9 +82,8 @@ defmodule Finch do
       type: :timeout,
       doc: """
       The maximum number of milliseconds that a pool can be idle before being terminated, used only by HTTP1 pools. \
-      This options is forwarded to NimblePool and it starts and idle verification cycle that may impact \
-      performance if misused. For instance setting a very low timeout may lead to pool restarts. \
-      For more information see NimblePool's `handle_ping/2` documentation.
+      A pool is idle when none of its connections is in use, counted from its last checkout, \
+      and it stops even if it has no connections. Setting a very low timeout may lead to pool restarts.
       """,
       default: :infinity
     ],
