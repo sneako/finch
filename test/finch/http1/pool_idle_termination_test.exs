@@ -105,6 +105,25 @@ defmodule Finch.HTTP1.PoolIdleTerminationTest do
       assert {:ok, %{status: 200}} = Task.await(task, @wait)
     end
 
+    test "is served by the same pool when it arrives during the grace period", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_finch!(finch_name, count: 1)
+      Bypass.expect(bypass, &Plug.Conn.send_resp(&1, 200, "OK"))
+
+      assert {:ok, %{status: 200}} = request(bypass, finch_name)
+      assert [{pool, _}] = pools(bypass, finch_name)
+
+      # The idle pool leaves the registry first and stops 1 s later. A request
+      # in that window asks the pool whether it is ready, which registers it again.
+      assert eventually(fn -> pools(bypass, finch_name) == [] end)
+      assert Process.alive?(pool)
+
+      assert {:ok, %{status: 200}} = request(bypass, finch_name)
+      assert [{^pool, _}] = pools(bypass, finch_name)
+    end
+
     test "is served when it arrives while the pool supervisor shuts down", %{
       bypass: bypass,
       finch_name: finch_name
