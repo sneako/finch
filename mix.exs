@@ -34,7 +34,9 @@ defmodule Finch.MixProject do
   defp deps do
     [
       {:mint, "~> 1.8"},
-      {:nimble_pool, "~> 1.1"},
+      # Temporary until https://github.com/dashbitco/nimble_pool/pull/55 is released.
+      {:nimble_pool,
+       github: "oliveigah/nimble_pool", ref: "26c40b42bbed05b135e46442e594b75e6207f2ce"},
       {:nimble_options, "~> 0.4 or ~> 1.0"},
       {:telemetry, "~> 0.4 or ~> 1.0"},
       {:mime, "~> 1.0 or ~> 2.0"},
