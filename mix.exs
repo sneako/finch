@@ -36,7 +36,7 @@ defmodule Finch.MixProject do
       {:mint, "~> 1.8"},
       # Temporary until https://github.com/dashbitco/nimble_pool/pull/55 is released.
       {:nimble_pool,
-       github: "oliveigah/nimble_pool", ref: "1852a6c04f12161d170219209584fb29e65367c9"},
+       github: "oliveigah/nimble_pool", ref: "c625a5ca3323d26ad6ff62bb7cb8f75274dbe3df"},
       {:nimble_options, "~> 0.4 or ~> 1.0"},
       {:telemetry, "~> 0.4 or ~> 1.0"},
       {:mime, "~> 1.0 or ~> 2.0"},

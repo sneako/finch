@@ -153,24 +153,14 @@ defmodule Finch.HTTP1.Pool do
   defdelegate get_pool_status(finch_name, pool_name), to: PoolMetrics
 
   # A pool that is about to stop on idle is no longer registered. Asking it
-  # whether it is ready brings it back, and a pool that already stopped never
-  # answers.
+  # whether it is ready brings it back. If it already stopped, the call exits
+  # and the manager retries.
   @impl Finch.Pool.Manager
   def ready?(pool, timeout) do
-    tag = :erlang.monitor(:process, pool, alias: :reply_demonitor)
-    :ok = NimblePool.pool_cast(pool, {:ready?, tag})
-
-    receive do
-      {^tag, :ready} ->
-        true
-
-      {:DOWN, ^tag, _, _, _} ->
-        :retry
-    after
-      timeout ->
-        :erlang.demonitor(tag, [:flush])
-        false
-    end
+    NimblePool.pool_call(pool, :ready?, timeout)
+  catch
+    :exit, {:timeout, _} -> false
+    :exit, _reason -> :retry
   end
 
   @impl NimblePool
@@ -314,9 +304,9 @@ defmodule Finch.HTTP1.Pool do
     {:noreply, pool_state}
   end
 
-  def handle_pool_cast({:ready?, tag}, %__MODULE__.State{} = pool_state) do
-    send(tag, {tag, :ready})
-    {:noreply, revive(pool_state)}
+  @impl NimblePool
+  def handle_pool_call(:ready?, _from, %__MODULE__.State{} = pool_state) do
+    {:reply, true, revive(pool_state)}
   end
 
   @impl NimblePool
