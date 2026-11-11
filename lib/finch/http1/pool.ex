@@ -157,7 +157,7 @@ defmodule Finch.HTTP1.Pool do
   # and the manager retries.
   @impl Finch.Pool.Manager
   def ready?(pool, timeout) do
-    NimblePool.pool_call(pool, :ready?, timeout)
+    NimblePool.call(pool, :ready?, timeout)
   catch
     :exit, {:timeout, _} -> false
     :exit, _reason -> :retry
@@ -180,7 +180,7 @@ defmodule Finch.HTTP1.Pool do
           nil
 
         max_idle_time ->
-          NimblePool.pool_cast_after(self(), :check_idle, max_idle_time)
+          NimblePool.cast_after(self(), :check_idle, max_idle_time)
           init_activity_info()
       end
 
@@ -277,11 +277,11 @@ defmodule Finch.HTTP1.Pool do
         # https://github.com/sneako/finch/issues/384
         Registry.unregister(pool_state.registry, Finch.Pool.to_name(pool_state.pool))
         ref = make_ref()
-        NimblePool.pool_cast_after(self(), {:stop_idle, ref}, @idle_stop_grace_ms)
+        NimblePool.cast_after(self(), {:stop_idle, ref}, @idle_stop_grace_ms)
         {:noreply, %{pool_state | idle_stop: ref}}
 
       time_left ->
-        NimblePool.pool_cast_after(self(), :check_idle, time_left)
+        NimblePool.cast_after(self(), :check_idle, time_left)
         {:noreply, pool_state}
     end
   end
@@ -390,7 +390,7 @@ defmodule Finch.HTTP1.Pool do
   defp revive(%__MODULE__.State{} = pool_state) do
     %__MODULE__.State{registry: registry, pool: pool, opts: opts} = pool_state
     {:ok, _} = Registry.register(registry, Finch.Pool.to_name(pool), __MODULE__)
-    NimblePool.pool_cast_after(self(), :check_idle, opts.pool_max_idle_time)
+    NimblePool.cast_after(self(), :check_idle, opts.pool_max_idle_time)
     now = System.monotonic_time(:millisecond)
     pool_state = put_in(pool_state.activity_info.last_checkout_ts, now)
     %{pool_state | idle_stop: nil}

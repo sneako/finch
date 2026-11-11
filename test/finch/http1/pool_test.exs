@@ -248,7 +248,7 @@ defmodule Finch.HTTP1.PoolTest do
     assert new_state.activity_info.last_checkout_ts > old_checkout
 
     # An idle check must not stop the pool after another checkout refreshed it.
-    :ok = NimblePool.pool_cast(pool, :check_idle)
+    :ok = NimblePool.cast(pool, :check_idle)
     assert :sys.get_state(pool).state.idle_stop == nil
     assert [{^pool, _pool_mod}] = Registry.lookup(finch_name, Finch.Pool.to_name(pool_key))
 
@@ -258,7 +258,7 @@ defmodule Finch.HTTP1.PoolTest do
     end)
 
     ref = Process.monitor(pool)
-    :ok = NimblePool.pool_cast(pool, :check_idle)
+    :ok = NimblePool.cast(pool, :check_idle)
     assert_receive {:DOWN, ^ref, :process, ^pool, {:shutdown, :idle_timeout}}, @idle_stop_wait
   end
 
