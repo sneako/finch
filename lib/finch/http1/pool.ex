@@ -11,13 +11,19 @@ defmodule Finch.HTTP1.Pool do
       :pool_idx,
       :metric_ref,
       :opts,
-      :activity_info
+      :activity_info,
+      :idle_stop
     ]
   end
 
   alias Finch.HTTP1.Conn
   alias Finch.Telemetry
   alias Finch.HTTP1.PoolMetrics
+
+  # How long an idle pool stays out of the registry before it stops. A caller
+  # that found the pool just before it left the registry reaches it within
+  # this window, and its checkout brings the pool back.
+  @idle_stop_grace_ms 1000
 
   def child_spec(opts) do
     {_pool, _pool_name, _registry_name, pool_config, _pool_idx} = opts
@@ -33,8 +39,7 @@ defmodule Finch.HTTP1.Pool do
     NimblePool.start_link(
       worker: {__MODULE__, arg},
       pool_size: pool_config.size,
-      lazy: true,
-      worker_idle_timeout: pool_idle_timeout(pool_config.pool_max_idle_time)
+      lazy: true
     )
   end
 
@@ -147,8 +152,16 @@ defmodule Finch.HTTP1.Pool do
   @impl Finch.Pool.Manager
   defdelegate get_pool_status(finch_name, pool_name), to: PoolMetrics
 
+  # A pool that is about to stop on idle is no longer registered. Asking it
+  # whether it is ready brings it back. If it already stopped, the call exits
+  # and the manager retries.
   @impl Finch.Pool.Manager
-  def ready?(_pool, _timeout), do: true
+  def ready?(pool, timeout) do
+    NimblePool.call(pool, :ready?, timeout)
+  catch
+    :exit, {:timeout, _} -> false
+    :exit, _reason -> :retry
+  end
 
   @impl NimblePool
   def init_pool({pool, pool_name, registry, pool_config, pool_idx}) do
@@ -162,7 +175,14 @@ defmodule Finch.HTTP1.Pool do
     {:ok, _} = Registry.register(registry, pool_name, __MODULE__)
 
     acitivity_info =
-      if pool_config.pool_max_idle_time != :infinity, do: init_activity_info(), else: nil
+      case pool_config.pool_max_idle_time do
+        :infinity ->
+          nil
+
+        max_idle_time ->
+          NimblePool.cast_after(self(), :check_idle, max_idle_time)
+          init_activity_info()
+      end
 
     state = %__MODULE__.State{
       registry: registry,
@@ -250,41 +270,43 @@ defmodule Finch.HTTP1.Pool do
   end
 
   @impl NimblePool
-  def handle_ping(conn, %__MODULE__.State{} = pool_state) do
-    %__MODULE__.State{
-      pool: pool,
-      opts: opts,
-      activity_info: activity_info
-    } = pool_state
+  def handle_pool_cast(:check_idle, %__MODULE__.State{} = pool_state) do
+    case idle_time_left(pool_state) do
+      0 ->
+        # Need to unregister first to prevent the race condition described in
+        # https://github.com/sneako/finch/issues/384
+        Registry.unregister(pool_state.registry, Finch.Pool.to_name(pool_state.pool))
+        ref = make_ref()
+        NimblePool.cast_after(self(), {:stop_idle, ref}, @idle_stop_grace_ms)
+        {:noreply, %{pool_state | idle_stop: ref}}
 
-    max_idle_time = Map.get(opts, :pool_max_idle_time, :infinity)
-    now = System.monotonic_time(:millisecond)
-    diff_from_last_checkout = now - activity_info.last_checkout_ts
-
-    is_idle? = diff_from_last_checkout > max_idle_time
-    max_idle_time_configured? = is_number(max_idle_time)
-    any_connection_in_use? = activity_info.in_use_count > 0
-
-    cond do
-      not max_idle_time_configured? ->
-        {:ok, conn}
-
-      any_connection_in_use? ->
-        {:ok, conn}
-
-      is_idle? ->
-        meta = %{
-          scheme: pool.scheme,
-          host: pool.host,
-          port: pool.port
-        }
-
-        Telemetry.event(:pool_max_idle_time_exceeded, %{}, meta)
-        {:stop, :idle_timeout}
-
-      true ->
-        {:ok, conn}
+      time_left ->
+        NimblePool.cast_after(self(), :check_idle, time_left)
+        {:noreply, pool_state}
     end
+  end
+
+  def handle_pool_cast({:stop_idle, ref}, %__MODULE__.State{idle_stop: ref} = pool_state) do
+    if idle_time_left(pool_state) == 0 do
+      %__MODULE__.State{pool: pool} = pool_state
+      meta = %{scheme: pool.scheme, host: pool.host, port: pool.port}
+      Telemetry.event(:pool_max_idle_time_exceeded, %{}, meta)
+      {:stop, {:shutdown, :idle_timeout}, pool_state}
+    else
+      # If we endup here, it means some checkout happened during the
+      # termination grace period, so we need to revive the pool
+      {:noreply, revive(pool_state)}
+    end
+  end
+
+  # A request brought the pool back after this stop was scheduled.
+  def handle_pool_cast({:stop_idle, _ref}, %__MODULE__.State{} = pool_state) do
+    {:noreply, pool_state}
+  end
+
+  @impl NimblePool
+  def handle_pool_call(:ready?, _from, %__MODULE__.State{} = pool_state) do
+    {:reply, true, revive(pool_state)}
   end
 
   @impl NimblePool
@@ -301,7 +323,7 @@ defmodule Finch.HTTP1.Pool do
   def handle_cancelled(:checked_out, %__MODULE__.State{} = pool_state) do
     %__MODULE__.State{metric_ref: metric_ref} = pool_state
     PoolMetrics.maybe_add(metric_ref, :in_use_connections, -1)
-    :ok
+    {:ok, update_activity_info(:checkin, pool_state)}
   end
 
   def handle_cancelled(:queued, _pool_state), do: :ok
@@ -331,9 +353,6 @@ defmodule Finch.HTTP1.Pool do
   defp restart_option(:infinity), do: :permanent
   defp restart_option(_pool_max_idle_time), do: :transient
 
-  defp pool_idle_timeout(:infinity), do: nil
-  defp pool_idle_timeout(pool_max_idle_time), do: pool_max_idle_time
-
   defp init_activity_info() do
     %{in_use_count: 0, last_checkout_ts: System.monotonic_time(:millisecond)}
   end
@@ -353,5 +372,27 @@ defmodule Finch.HTTP1.Pool do
 
   defp update_activity_info(:checkin, %__MODULE__.State{} = pool_state) do
     update_in(pool_state.activity_info.in_use_count, &max(&1 - 1, 0))
+  end
+
+  defp idle_time_left(%__MODULE__.State{activity_info: activity_info, opts: opts}) do
+    max_idle_time = opts.pool_max_idle_time
+
+    if activity_info.in_use_count > 0 do
+      max_idle_time
+    else
+      idle_time = System.monotonic_time(:millisecond) - activity_info.last_checkout_ts
+      max(max_idle_time - idle_time, 0)
+    end
+  end
+
+  defp revive(%__MODULE__.State{idle_stop: nil} = pool_state), do: pool_state
+
+  defp revive(%__MODULE__.State{} = pool_state) do
+    %__MODULE__.State{registry: registry, pool: pool, opts: opts} = pool_state
+    {:ok, _} = Registry.register(registry, Finch.Pool.to_name(pool), __MODULE__)
+    NimblePool.cast_after(self(), :check_idle, opts.pool_max_idle_time)
+    now = System.monotonic_time(:millisecond)
+    pool_state = put_in(pool_state.activity_info.last_checkout_ts, now)
+    %{pool_state | idle_stop: nil}
   end
 end

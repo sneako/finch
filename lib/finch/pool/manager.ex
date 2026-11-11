@@ -134,24 +134,36 @@ defmodule Finch.Pool.Manager do
 
   @spec maybe_start_pool(atom(), Finch.Pool.t(), term(), Access.t()) ::
           {pid(), module()} | :not_found | :not_ready
-  defp maybe_start_pool(registry_name, pool, pool_name, opts) do
+  defp maybe_start_pool(registry_name, pool, pool_name, opts, deadline \\ nil) do
+    timeout = Access.get(opts, :pool_timeout, @default_pool_timeout)
+
+    deadline =
+      deadline ||
+        if timeout == :infinity,
+          do: :infinity,
+          else: System.monotonic_time(:millisecond) + timeout
+
     {:ok, config} = Registry.meta(registry_name, :config)
     {pool_supervisor, pool_mod} = start_pool(pool, pool_name, config)
 
     case lookup_pool(registry_name, pool_name, opts) do
       [] ->
-        timeout = Access.get(opts, :pool_timeout, @default_pool_timeout)
-
-        deadline =
-          if timeout == :infinity,
-            do: :infinity,
-            else: System.monotonic_time(:millisecond) + timeout
-
-        wait_for_pool_initialization(pool_supervisor, pool_mod, deadline)
+        ready? = wait_for_pool_initialization(pool_supervisor, pool_mod, deadline)
 
         case lookup_pool(registry_name, pool_name, opts) do
-          [] -> :not_ready
-          pool -> pool
+          [] when ready? == false ->
+            :not_ready
+
+          # The pool said it was ready but left the registry again to stop on
+          # idle, or the supervisor shut down after its last pool stopped.
+          # Either way, starting over finds or starts a pool.
+          [] ->
+            if expired?(deadline),
+              do: :not_ready,
+              else: maybe_start_pool(registry_name, pool, pool_name, opts, deadline)
+
+          pool ->
+            pool
         end
 
       pool ->
@@ -184,7 +196,16 @@ defmodule Finch.Pool.Manager do
       nil ->
         false
     end
+  catch
+    # An existing supervisor may shut down on idle before answering which_children.
+    # Retry so the caller can find or start a replacement.
+    :exit, {reason, {GenServer, :call, [^pool_supervisor, :which_children, _]}}
+    when reason in [:noproc, :normal, :shutdown] ->
+      :retry
   end
+
+  defp expired?(:infinity), do: false
+  defp expired?(deadline), do: System.monotonic_time(:millisecond) >= deadline
 
   @spec get_pool_supervisor(Finch.name(), Finch.Pool.t()) ::
           {pid(), pool_name(), module(), pos_integer(), map()} | :not_found

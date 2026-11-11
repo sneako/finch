@@ -3,6 +3,10 @@ defmodule Finch.HTTP1.PoolTest do
 
   alias Finch.HTTP1Server
 
+  # An idle pool leaves the registry first and stops @idle_stop_grace_ms (1 s)
+  # later, see Finch.HTTP1.Pool.
+  @idle_stop_wait 2_000
+
   defmodule SlowTransport do
     def close(test_pid) do
       send(test_pid, {:closing, self()})
@@ -196,7 +200,7 @@ defmodule Finch.HTTP1.PoolTest do
     Process.monitor(supervisor)
     Process.monitor(pool)
 
-    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
+    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, @idle_stop_wait
     assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}, 200
 
     assert [] = DynamicSupervisor.which_children(IdleFinch.PoolSupervisor)
@@ -236,17 +240,26 @@ defmodule Finch.HTTP1.PoolTest do
         put_in(state.state.activity_info.last_checkout_ts, old_checkout)
       end)
 
-    [{conn, _metadata}] = :queue.to_list(old_state.resources)
     assert old_state.state.activity_info.in_use_count == 0
-    assert {:stop, :idle_timeout} = Finch.HTTP1.Pool.handle_ping(conn, old_state.state)
 
     assert {:ok, %{status: 200}} = Finch.request(request, finch_name, receive_timeout: 5_000)
     new_state = :sys.get_state(pool).state
     assert new_state.activity_info.in_use_count == 0
     assert new_state.activity_info.last_checkout_ts > old_checkout
 
-    # An idle connection must not stop the pool after another checkout refreshed it.
-    assert {:ok, ^conn} = Finch.HTTP1.Pool.handle_ping(conn, new_state)
+    # An idle check must not stop the pool after another checkout refreshed it.
+    :ok = NimblePool.cast(pool, :check_idle)
+    assert :sys.get_state(pool).state.idle_stop == nil
+    assert [{^pool, _pool_mod}] = Registry.lookup(finch_name, Finch.Pool.to_name(pool_key))
+
+    # Once the last checkout is old enough, the idle check stops the pool.
+    :sys.replace_state(pool, fn state ->
+      put_in(state.state.activity_info.last_checkout_ts, old_checkout)
+    end)
+
+    ref = Process.monitor(pool)
+    :ok = NimblePool.cast(pool, :check_idle)
+    assert_receive {:DOWN, ^ref, :process, ^pool, {:shutdown, :idle_timeout}}, @idle_stop_wait
   end
 
   # @tag capture_log: true
@@ -307,7 +320,7 @@ defmodule Finch.HTTP1.PoolTest do
     refute_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 1000
 
     assert_receive {^ref2, :done}
-    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, 200
+    assert_receive {:DOWN, _, :process, ^pool, {:shutdown, :idle_timeout}}, @idle_stop_wait
 
     assert_receive {:DOWN, _, :process, ^supervisor, :shutdown}, 200
   end
