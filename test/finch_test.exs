@@ -760,6 +760,37 @@ defmodule FinchTest do
         Finch.build(:get, "http://idontexist.wat") |> Finch.request!(finch_name)
       end)
     end
+
+    test "marks an HTTP/1 connection that failed to open with phase: :connect", %{
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+      {:ok, listen} = :gen_tcp.listen(0, [])
+      {:ok, port} = :inet.port(listen)
+      :ok = :gen_tcp.close(listen)
+
+      assert {:error, %Finch.TransportError{reason: :econnrefused, phase: :connect}} =
+               Finch.build(:put, "http://localhost:#{port}/", [], "body")
+               |> Finch.request(finch_name)
+    end
+
+    test "leaves phase unset for a timeout after the request was sent", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!({Finch, name: finch_name})
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        Process.sleep(200)
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      assert {:error, %Finch.TransportError{reason: :timeout, phase: nil}} =
+               Finch.build(:get, endpoint(bypass))
+               |> Finch.request(finch_name, receive_timeout: 50)
+
+      Bypass.pass(bypass)
+    end
   end
 
   describe "connection options" do

@@ -57,7 +57,12 @@ defmodule Finch.HTTP1.Conn do
         {:ok, %{conn | mint: mint}}
 
       {:error, error} ->
-        wrapped_error = Error.wrap(error)
+        wrapped_error =
+          case Error.wrap(error) do
+            %Finch.TransportError{} = transport -> %{transport | phase: :connect}
+            other -> other
+          end
+
         meta = Map.put(meta, :error, wrapped_error)
         Telemetry.stop(:connect, start_time, meta)
         {:error, conn, wrapped_error}
