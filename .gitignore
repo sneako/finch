@@ -22,3 +22,5 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 finch-*.tar
 
+# Saved runs of bench/throughput.exs
+/bench/results/
