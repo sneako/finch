@@ -237,6 +237,9 @@ defmodule Finch.HTTP2.Pool do
       backoff_max: @backoff_max,
       connect_opts: pool_config.conn_opts,
       metrics_ref: metrics_ref,
+      # [open streams, server's max_concurrent_streams], registered with this worker
+      # so that Finch.Pool.Manager can skip it while it has no free stream.
+      capacity: :counters.new(2, [:atomics]),
       wait_for_server_settings?: pool_config.wait_for_server_settings?,
       ping_interval: pool_config.ping_interval,
       pings: %{},
@@ -452,8 +455,9 @@ defmodule Finch.HTTP2.Pool do
   def connected(event, content, data)
 
   def connected(:enter, _old_state, data) do
-    {:ok, _} = Registry.register(data.finch_name, data.pool_name, __MODULE__)
+    :counters.put(data.capacity, 1, map_size(data.requests))
     update_max_concurrent_streams(data)
+    {:ok, _} = Registry.register(data.finch_name, data.pool_name, {__MODULE__, data.capacity})
     data = reply_to_awaiting_ready(data)
     {:keep_state, data, [ping_action(data) | connection_age_action(data)]}
   end
@@ -1074,6 +1078,7 @@ defmodule Finch.HTTP2.Pool do
 
   defp put_request(data, ref, request) do
     PoolMetrics.maybe_add(data.metrics_ref, :in_flight_requests, 1)
+    :counters.add(data.capacity, 1, 1)
 
     data
     |> put_in([:requests, ref], request)
@@ -1088,6 +1093,7 @@ defmodule Finch.HTTP2.Pool do
 
       {request, data} ->
         PoolMetrics.maybe_add(data.metrics_ref, :in_flight_requests, -1)
+        :counters.add(data.capacity, 1, -1)
 
         {_ref, data} =
           data
@@ -1162,10 +1168,12 @@ defmodule Finch.HTTP2.Pool do
     Finch.Pool.cleanup(data.finch_name, data.pool_name, data.metrics_ref)
   end
 
-  defp update_max_concurrent_streams(%{metrics_ref: nil}), do: :ok
+  @doc false
+  def free_streams?(capacity), do: :counters.get(capacity, 1) < :counters.get(capacity, 2)
 
-  defp update_max_concurrent_streams(%{conn: conn, metrics_ref: metrics_ref}) do
-    value = HTTP2.get_server_setting(conn, :max_concurrent_streams)
-    PoolMetrics.maybe_put(metrics_ref, :max_concurrent_streams, value)
+  defp update_max_concurrent_streams(data) do
+    value = HTTP2.get_server_setting(data.conn, :max_concurrent_streams)
+    :counters.put(data.capacity, 2, value)
+    PoolMetrics.maybe_put(data.metrics_ref, :max_concurrent_streams, value)
   end
 end

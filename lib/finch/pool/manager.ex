@@ -129,11 +129,42 @@ defmodule Finch.Pool.Manager do
 
   defp lookup_pool(registry_name, pool_name, opts) do
     case Registry.lookup(registry_name, pool_name) do
-      [] -> []
-      [single] -> single
-      [_ | _] = entries -> select_pool(entries, opts[:pool_strategy])
+      [] ->
+        []
+
+      [single] ->
+        to_pool_entry(single)
+
+      [_ | _] = entries ->
+        entries
+        |> Enum.map(&to_pool_entry/1)
+        |> select_pool(opts[:pool_strategy])
+        |> prefer_free_streams(entries)
     end
   end
+
+  # HTTP/2 workers register {module, capacity}; strategies and callers get {pid, module}.
+  defp to_pool_entry({pid, {mod, _capacity}}), do: {pid, mod}
+  defp to_pool_entry(entry), do: entry
+
+  # If the strategy picked an HTTP/2 worker whose streams are all in use, pick one
+  # with room instead. If none has room, keep the choice and let Mint reject the request.
+  defp prefer_free_streams({pid, Finch.HTTP2.Pool} = selected, entries) do
+    with {_pid, {_mod, capacity}} <- List.keyfind(entries, pid, 0),
+         false <- Finch.HTTP2.Pool.free_streams?(capacity) do
+      Enum.find_value(entries, selected, fn
+        {pid, {Finch.HTTP2.Pool, capacity}} ->
+          Finch.HTTP2.Pool.free_streams?(capacity) && {pid, Finch.HTTP2.Pool}
+
+        _ ->
+          nil
+      end)
+    else
+      _ -> selected
+    end
+  end
+
+  defp prefer_free_streams(selected, _entries), do: selected
 
   defp select_pool(entries, nil), do: Enum.random(entries)
   defp select_pool(entries, {fun, state}) when is_function(fun, 2), do: fun.(entries, state)

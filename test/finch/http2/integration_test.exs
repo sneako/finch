@@ -1,6 +1,8 @@
 defmodule Finch.HTTP2.IntegrationTest do
   use ExUnit.Case, async: false
 
+  import Mint.HTTP2.Frame, only: [headers: 1, rst_stream: 1, set_flags: 2]
+
   alias Finch.MockHTTP2Server
   alias Finch.TestHelper
 
@@ -351,5 +353,105 @@ defmodule Finch.HTTP2.IntegrationTest do
          ]
        }}
     )
+  end
+
+  test "routes synchronous and asynchronous requests around a saturated worker" do
+    {url, server_a} =
+      MockHTTP2Server.start_and_connect_with(
+        [server_settings: [max_concurrent_streams: 1]],
+        fn port ->
+          url = "https://localhost:#{port}"
+
+          start_supervised!(
+            {Finch,
+             name: TestFinch,
+             pools: %{
+               url => [
+                 protocols: [:http2],
+                 count: 2,
+                 conn_opts: [transport_opts: [verify: :verify_none]]
+               ]
+             }}
+          )
+
+          url
+        end
+      )
+
+    server_b = MockHTTP2Server.accept_socket(server_a)
+    pool = Finch.Pool.new(url)
+    {supervisor, _, _, _} = Finch.Pool.Manager.get_pool_supervisor(TestFinch, pool)
+    workers = for {_, pid, :worker, _} <- Supervisor.which_children(supervisor), do: pid
+    {:ok, server_peer} = :ssl.peername(server_a.socket)
+
+    worker_a =
+      Enum.find(workers, fn pid ->
+        {:connected, state} = :sys.get_state(pid)
+        assert state.metrics_ref == nil
+        {:ok, address} = :ssl.sockname(Mint.HTTP2.get_socket(state.conn))
+        address == server_peer
+      end)
+
+    worker_b = Enum.find(workers, &(&1 != worker_a))
+    request = Finch.build(:get, url)
+    us = self()
+
+    # Always pick worker_a, so any request that lands on worker_b was rerouted.
+    strategy = fn entries ->
+      send(us, :selected)
+
+      assert Enum.sort(entries) ==
+               Enum.sort([{worker_a, Finch.HTTP2.Pool}, {worker_b, Finch.HTTP2.Pool}])
+
+      {worker_a, Finch.HTTP2.Pool}
+    end
+
+    opts = [pool_strategy: strategy]
+
+    held = Finch.async_request(request, TestFinch, opts)
+    assert_receive :selected
+    assert [headers(stream_id: held_stream_id)] = MockHTTP2Server.recv_next_frames(server_a, 1)
+    # Workers publish capacity after sending HEADERS; wait until worker_a has.
+    :sys.get_state(worker_a)
+
+    task = Task.async(fn -> Finch.request(request, TestFinch, opts) end)
+    assert_receive :selected
+    assert [headers(stream_id: stream_id)] = MockHTTP2Server.recv_next_frames(server_b, 1)
+    {server_b, hbf} = MockHTTP2Server.encode_headers(server_b, [{":status", "200"}])
+
+    MockHTTP2Server.send_frames(server_b, [
+      headers(
+        stream_id: stream_id,
+        hbf: hbf,
+        flags: set_flags(:headers, [:end_headers, :end_stream])
+      )
+    ])
+
+    assert {:ok, %Finch.Response{status: 200}} = Task.await(task)
+
+    ref = Finch.async_request(request, TestFinch, opts)
+    assert_receive :selected
+    assert {Finch.HTTP2.Pool, {^worker_b, _}} = ref
+    assert [headers(stream_id: stream_id)] = MockHTTP2Server.recv_next_frames(server_b, 1)
+    :sys.get_state(worker_b)
+
+    # Both workers are full: keep the strategy's choice and let Mint reject it.
+    assert {:error, %Finch.HTTPError{reason: :too_many_concurrent_requests}} =
+             Finch.request(request, TestFinch, opts)
+
+    assert_receive :selected
+    assert :ok = Finch.cancel_async_request(ref)
+    assert [rst_stream(stream_id: ^stream_id)] = MockHTTP2Server.recv_next_frames(server_b, 1)
+    assert :ok = Finch.cancel_async_request(held)
+
+    assert [rst_stream(stream_id: ^held_stream_id)] =
+             MockHTTP2Server.recv_next_frames(server_a, 1)
+
+    ref = Finch.async_request(request, TestFinch, opts)
+    assert_receive :selected
+    assert {Finch.HTTP2.Pool, {^worker_a, _}} = ref
+    assert [headers(stream_id: _)] = MockHTTP2Server.recv_next_frames(server_a, 1)
+    Finch.cancel_async_request(ref)
+    refute_receive :selected
   end
 end

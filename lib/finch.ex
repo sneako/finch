@@ -374,6 +374,11 @@ defmodule Finch do
   `Finch.Pool.Strategy.Hash` (stable mapping from a key to a shard, useful for affinity).
   You can also pass a custom module or function.
 
+  For HTTP/2, if the selected shard is already using every stream the server allows
+  (its `max_concurrent_streams` setting), Finch sends the request to another shard that
+  has a free stream, if there is one. This takes precedence over the strategy, including
+  `Finch.Pool.Strategy.Hash` affinity.
+
   ### Pool Configuration Options
 
   #{NimbleOptions.docs(@pool_config_schema)}
