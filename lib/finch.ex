@@ -893,7 +893,8 @@ defmodule Finch do
       Default value is `15_000`.
 
     * `:request_timeout` - The total wall-clock time to wait for a complete response before returning
-      an error. Default value is `:infinity`.
+      an error. On HTTP/1 this is a best effort timeout: it is only checked between reads from the
+      socket, so the call may return up to `:receive_timeout` later. Default value is `:infinity`.
 
     * `:pool_strategy` - When the pool has multiple shards (`count: N`), selects which shards handles
       the request. Default is random selection. See `t:pool_strategy/0` for details.

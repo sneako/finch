@@ -778,6 +778,64 @@ defmodule Finch.HTTP2.PoolTest do
       assert_receive {:resp, {:ok, _}}, 500
     end
 
+    test "receive timeout resets when status and headers arrive", %{request: req} do
+      us = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      spawn(fn ->
+        resp = request(pool, req, receive_timeout: 200, request_timeout: :infinity)
+        send(us, {:resp, resp})
+      end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+
+      # Each gap is within receive_timeout, but the response as a whole is not.
+      Process.sleep(120)
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers]))
+      ])
+
+      Process.sleep(120)
+
+      server_send_frames([
+        data(stream_id: stream_id, data: "ok", flags: set_flags(:data, [:end_stream]))
+      ])
+
+      assert_receive {:resp, {:ok, {200, [], "ok"}}}, 500
+    end
+
+    test "no request timers remain once a response completes", %{request: req} do
+      us = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      spawn(fn ->
+        resp = request(pool, req, receive_timeout: 5_000, request_timeout: 5_000)
+        send(us, {:resp, resp})
+      end)
+
+      assert_recv_frames([headers(stream_id: stream_id)])
+      hbf = server_encode_headers([{":status", "200"}])
+
+      # Sent together so the pool handles them in one batch.
+      server_send_frames([
+        headers(stream_id: stream_id, hbf: hbf, flags: set_flags(:headers, [:end_headers])),
+        data(stream_id: stream_id, data: "ok", flags: set_flags(:data, [:end_stream]))
+      ])
+
+      assert_receive {:resp, {:ok, {200, [], "ok"}}}
+      assert request_timers(pool) == []
+    end
+
     test "request_timeout fires when total duration is exceeded", %{request: req} do
       us = self()
 
@@ -1612,6 +1670,16 @@ defmodule Finch.HTTP2.PoolTest do
     end
 
     Pool.request(pool, req, acc, fun, nil, opts)
+  end
+
+  defp request_timers(pool) do
+    {:status, _pid, _mod, [_pdict, _sys_state, _parent, _debug, status]} = :sys.get_status(pool)
+
+    for {:data, items} <- status,
+        {~c"Time-outs", {_count, timers}} <- items,
+        {{:timeout, {name, _ref}}, _content} <- timers,
+        name in [:receive_timeout, :request_timeout],
+        do: name
   end
 
   defp monitor_count(pool, pid) do

@@ -771,8 +771,8 @@ defmodule Finch.HTTP2.Pool do
 
     case continue_request(data, ref, request) do
       {:ok, data} ->
-        # Idle timeout: re-armed on each data chunk (see handle_response for :data)
-        idle_timeout = {{:timeout, {:receive_timeout, ref}}, request.receive_timeout, nil}
+        # Idle timeout: re-armed whenever part of the response arrives (see handle_response)
+        idle_timeout = receive_timeout_action(ref, request)
         # Total wall-clock cap (one-shot, never re-armed)
         total_timeout = {{:timeout, {:request_timeout, ref}}, request.request_timeout, nil}
 
@@ -804,31 +804,31 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp handle_responses(data, responses) do
-    Enum.reduce(responses, {data, _actions = []}, fn response, {data, actions} ->
-      handle_response(data, response, actions)
-    end)
+    {data, actions} =
+      Enum.reduce(responses, {data, _actions = []}, fn response, {data, actions} ->
+        handle_response(data, response, actions)
+      end)
+
+    # Actions are prepended, so restore event order: a timer cancelled by :done must
+    # not be re-armed by a chunk that arrived earlier in the same batch.
+    {data, Enum.reverse(actions)}
   end
 
   defp handle_response(data, {kind, ref, value}, actions)
        when kind in [:status, :headers] do
-    data =
-      if request = data.requests[ref] do
-        send(request.from_pid, {request.request_ref, {kind, value}})
-        request = put_in(request.telemetry.metadata[kind], value)
-        put_in(data.requests[ref], request)
-      else
-        data
-      end
-
-    {data, actions}
+    if request = data.requests[ref] do
+      send(request.from_pid, {request.request_ref, {kind, value}})
+      request = put_in(request.telemetry.metadata[kind], value)
+      {put_in(data.requests[ref], request), [receive_timeout_action(ref, request) | actions]}
+    else
+      {data, actions}
+    end
   end
 
   defp handle_response(data, {:data, ref, value}, actions) do
     if request = data.requests[ref] do
       send(request.from_pid, {request.request_ref, {:data, value}})
-      # Re-arm the idle timeout on each chunk so it acts as an inter-chunk timeout
-      rearm = {{:timeout, {:receive_timeout, ref}}, request.receive_timeout, nil}
-      {data, [rearm | actions]}
+      {data, [receive_timeout_action(ref, request) | actions]}
     else
       {data, actions}
     end
@@ -879,6 +879,10 @@ defmodule Finch.HTTP2.Pool do
         reply(request, {:error, error})
         Telemetry.stop(:send, send_start, metadata)
     end
+  end
+
+  defp receive_timeout_action(ref, request) do
+    {{:timeout, {:receive_timeout, ref}}, request.receive_timeout, nil}
   end
 
   defp cancel_request_timeout_actions(request_ref, actions) do
