@@ -892,10 +892,9 @@ defmodule Finch do
     * `:receive_timeout` - The maximum time to wait for each chunk to be received before returning an error.
       Default value is `15_000`.
 
-    * `:request_timeout` - The amount of time to wait for a complete response before returning an error.
-      This timeout only applies to HTTP/1, and its current implementation is a best effort timeout,
-      it does not guarantee the call will return precisely when the time has elapsed.
-      Default value is `:infinity`.
+    * `:request_timeout` - The total wall-clock time to wait for a complete response before returning
+      an error. On HTTP/1 this is a best effort timeout: it is only checked between reads from the
+      socket, so the call may return up to `:receive_timeout` later. Default value is `:infinity`.
 
     * `:pool_strategy` - When the pool has multiple shards (`count: N`), selects which shards handles
       the request. Default is random selection. See `t:pool_strategy/0` for details.
