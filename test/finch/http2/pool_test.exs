@@ -428,6 +428,94 @@ defmodule Finch.HTTP2.PoolTest do
       assert_receive {:resp, {:ok, {200, [], "hello to you"}}}
     end
 
+    test "keeps the pool alive when the server ends a response before upload completes", %{
+      request: req
+    } do
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      request = %{
+        req
+        | method: "POST",
+          body: {:stream, Stream.repeatedly(fn -> String.duplicate("x", 16_384) end)}
+      }
+
+      request_ref = Pool.async_request(pool, request, nil, [])
+
+      # The initial HTTP/2 flow-control window permits only part of this
+      # unbounded body, leaving the request's :send span active.
+      assert [headers(stream_id: stream_id)] = recv_next_frames(1)
+
+      assert_recv_frames([
+        data(stream_id: ^stream_id),
+        data(stream_id: ^stream_id),
+        data(stream_id: ^stream_id),
+        data(stream_id: ^stream_id)
+      ])
+
+      assert {_, %{requests: requests}} = :sys.get_state(pool)
+      assert [%{telemetry: telemetry}] = Map.values(requests)
+      refute Map.has_key?(telemetry, :recv)
+
+      server_send_frames([
+        headers(
+          stream_id: stream_id,
+          hbf: server_encode_headers([{":status", "413"}]),
+          flags: set_flags(:headers, [:end_headers, :end_stream])
+        )
+      ])
+
+      assert_receive {^request_ref, {:status, 413}}
+      assert_receive {^request_ref, {:headers, []}}
+      assert_receive {^request_ref, :done}
+      assert {_, %{requests: %{}}} = :sys.get_state(pool)
+      assert Process.alive?(pool)
+    end
+
+    test "replies to a sync caller when the server ends a response before upload completes", %{
+      request: req
+    } do
+      us = self()
+
+      {:ok, pool} =
+        start_server_and_connect_with(fn port ->
+          start_pool(port)
+        end)
+
+      request = %{
+        req
+        | method: "POST",
+          body: {:stream, Stream.repeatedly(fn -> String.duplicate("x", 16_384) end)}
+      }
+
+      spawn(fn -> send(us, {:resp, request(pool, request, [])}) end)
+
+      # The flow-control window stops the upload part way, leaving the caller
+      # blocked in its request call.
+      assert [headers(stream_id: stream_id)] = recv_next_frames(1)
+
+      assert_recv_frames([
+        data(stream_id: ^stream_id),
+        data(stream_id: ^stream_id),
+        data(stream_id: ^stream_id),
+        data(stream_id: ^stream_id)
+      ])
+
+      server_send_frames([
+        headers(
+          stream_id: stream_id,
+          hbf: server_encode_headers([{":status", "413"}]),
+          flags: set_flags(:headers, [:end_headers, :end_stream])
+        )
+      ])
+
+      assert_receive {:resp, {:ok, {413, [], ""}}}
+      assert {_, %{requests: %{}}} = :sys.get_state(pool)
+      assert Process.alive?(pool)
+    end
+
     test "errors such as :max_header_list_size_reached are returned to the caller", %{
       request: req
     } do
