@@ -841,8 +841,14 @@ defmodule Finch.HTTP2.Pool do
     {request, data} = pop_request(data, ref)
 
     if request do
+      # The server may finish its response before we finish sending the body (for
+      # example an early 413, RFC 9113 section 8.1), so enter the receive phase here:
+      # this replies to a synchronous caller still blocked in its request call.
+      request =
+        if Map.has_key?(request.telemetry, :recv), do: request, else: start_receiving(request)
+
       send(request.from_pid, {request.request_ref, :done})
-      stop_response_telemetry(request)
+      Telemetry.stop(:recv, request.telemetry.recv, request.telemetry.metadata)
     end
 
     {data, [cancel_request_timeout_action(ref) | actions]}
@@ -881,19 +887,6 @@ defmodule Finch.HTTP2.Pool do
       %{send: send_start} ->
         reply(request, {:error, error})
         Telemetry.stop(:send, send_start, metadata)
-    end
-  end
-
-  # The server may send a terminal response before the client finishes
-  # streaming its own request body (e.g. an early 413 rejection) this is
-  # valid, spec-sanctioned HTTP/2 behavior (RFC 9113). In that case `:recv`
-  # was never started, since it's only set in `complete_request_if_done/3`
-  # once sending completes. Stop whichever span actually started instead of
-  # assuming `:recv` exists, to avoid `KeyError: key :recv not found`.
-  defp stop_response_telemetry(%{telemetry: telemetry}) do
-    case telemetry do
-      %{recv: recv_start} -> Telemetry.stop(:recv, recv_start, telemetry.metadata)
-      %{send: send_start} -> Telemetry.stop(:send, send_start, telemetry.metadata)
     end
   end
 
@@ -982,7 +975,15 @@ defmodule Finch.HTTP2.Pool do
   end
 
   defp complete_request_if_done(data, ref, %{stream: %{status: :done}} = request) do
-    %{from: from, telemetry: telemetry} = request
+    put_in(data.requests[ref], start_receiving(request))
+  end
+
+  defp complete_request_if_done(data, ref, request) do
+    put_in(data.requests[ref], request)
+  end
+
+  # Ends the :send span, starts :recv and lets a synchronous caller start reading.
+  defp start_receiving(%{from: from, telemetry: telemetry} = request) do
     Telemetry.stop(:send, telemetry.send, telemetry.metadata)
     recv_start = Telemetry.start(:recv, telemetry.metadata)
     request = put_in(request.telemetry[:recv], recv_start)
@@ -991,11 +992,7 @@ defmodule Finch.HTTP2.Pool do
       reply(request, {:ok, recv_start})
     end
 
-    put_in(data.requests[ref], request)
-  end
-
-  defp complete_request_if_done(data, ref, request) do
-    put_in(data.requests[ref], request)
+    request
   end
 
   defp smallest_window(conn, ref) do
