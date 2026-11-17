@@ -744,6 +744,20 @@ defmodule FinchTest do
       assert {:ok, %Response{}} = Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
     end
 
+    test "raises in the caller when the pool options cannot be used",
+         %{bypass: bypass, finch_name: finch_name} do
+      # Not a keyword list, which only shows when a pool is started with it
+      pools = %{default: [conn_opts: [transport_opts: [:inet6]]]}
+      start_supervised!({Finch, name: finch_name, pools: pools})
+      manager = Process.whereis(Finch.Pool.Manager.manager_name(finch_name))
+
+      assert_raise FunctionClauseError, fn ->
+        Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+      end
+
+      assert Process.whereis(Finch.Pool.Manager.manager_name(finch_name)) == manager
+    end
+
     test "raises on invalid option", %{bypass: bypass, finch_name: finch_name} do
       start_supervised!({Finch, name: finch_name})
 

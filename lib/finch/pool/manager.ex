@@ -276,6 +276,8 @@ defmodule Finch.Pool.Manager do
   ## Callbacks
 
   defp start_pool(pool, pool_name, config, {pool_config, track_default?}) do
+    # Not done by the manager, where options that raise would stop every pool
+    pool_config = sanitize_pool_config(pool_config, pool)
     name = supervisor_via(config, pool_name, pool_config)
 
     config.supervisor_name
@@ -297,7 +299,7 @@ defmodule Finch.Pool.Manager do
   end
 
   defp pool_config(%{pools: pools, default_pool_config: default}, %Finch.Pool{} = pool) do
-    pool_config = pools |> Map.get(pool, default) |> sanitize_pool_config(pool)
+    pool_config = Map.get(pools, pool, default)
     track_default? = pool_config.start_pool_metrics? and not Map.has_key?(pools, pool)
 
     {pool_config, track_default?}
