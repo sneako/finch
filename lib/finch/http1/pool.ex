@@ -271,23 +271,21 @@ defmodule Finch.HTTP1.Pool do
 
   @impl NimblePool
   def handle_pool_cast(:check_idle, %__MODULE__.State{} = pool_state) do
-    case idle_time_left(pool_state) do
-      0 ->
-        # Need to unregister first to prevent the race condition described in
-        # https://github.com/sneako/finch/issues/384
-        Registry.unregister(pool_state.registry, Finch.Pool.to_name(pool_state.pool))
-        ref = make_ref()
-        NimblePool.cast_after(self(), {:stop_idle, ref}, @idle_stop_grace_ms)
-        {:noreply, %{pool_state | idle_stop: ref}}
-
-      time_left ->
-        NimblePool.cast_after(self(), :check_idle, time_left)
-        {:noreply, pool_state}
+    if should_terminate_idle?(pool_state) do
+      # Need to unregister first to prevent the race condition described in
+      # https://github.com/sneako/finch/issues/384
+      Registry.unregister(pool_state.registry, Finch.Pool.to_name(pool_state.pool))
+      ref = make_ref()
+      NimblePool.cast_after(self(), {:stop_idle, ref}, @idle_stop_grace_ms)
+      {:noreply, %{pool_state | idle_stop: ref}}
+    else
+      NimblePool.cast_after(self(), :check_idle, pool_state.opts.pool_max_idle_time)
+      {:noreply, pool_state}
     end
   end
 
   def handle_pool_cast({:stop_idle, ref}, %__MODULE__.State{idle_stop: ref} = pool_state) do
-    if idle_time_left(pool_state) == 0 do
+    if should_terminate_idle?(pool_state) do
       %__MODULE__.State{pool: pool} = pool_state
       meta = %{scheme: pool.scheme, host: pool.host, port: pool.port}
       Telemetry.event(:pool_max_idle_time_exceeded, %{}, meta)
@@ -374,15 +372,10 @@ defmodule Finch.HTTP1.Pool do
     update_in(pool_state.activity_info.in_use_count, &max(&1 - 1, 0))
   end
 
-  defp idle_time_left(%__MODULE__.State{activity_info: activity_info, opts: opts}) do
-    max_idle_time = opts.pool_max_idle_time
+  defp should_terminate_idle?(%__MODULE__.State{activity_info: activity_info, opts: opts}) do
+    idle_time = System.monotonic_time(:millisecond) - activity_info.last_checkout_ts
 
-    if activity_info.in_use_count > 0 do
-      max_idle_time
-    else
-      idle_time = System.monotonic_time(:millisecond) - activity_info.last_checkout_ts
-      max(max_idle_time - idle_time, 0)
-    end
+    idle_time > opts.pool_max_idle_time and activity_info.in_use_count < 1
   end
 
   defp revive(%__MODULE__.State{idle_stop: nil} = pool_state), do: pool_state

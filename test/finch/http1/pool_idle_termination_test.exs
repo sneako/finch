@@ -158,6 +158,44 @@ defmodule Finch.HTTP1.PoolIdleTerminationTest do
       assert {:ok, %{status: 200}} = Task.await(task, @wait)
       assert pool_supervisor(bypass, finch_name) != supervisor
     end
+
+    test "zero idle timeout does not terminate a pool with a checked out connection", %{
+      bypass: bypass,
+      finch_name: finch_name
+    } do
+      start_supervised!(
+        {Finch,
+         name: finch_name,
+         pools: %{default: [protocols: [:http1], size: 1, pool_max_idle_time: 0]}}
+      )
+
+      parent = self()
+
+      Bypass.expect_once(bypass, "GET", "/", fn conn ->
+        send(parent, :request_started)
+        # Keep the connection checked out beyond the one-second shutdown grace period.
+        Process.sleep(2500)
+        Plug.Conn.send_resp(conn, 200, "OK")
+      end)
+
+      task =
+        Task.async(fn ->
+          Finch.build(:get, endpoint(bypass)) |> Finch.request(finch_name)
+        end)
+
+      assert_receive :request_started, 1_000
+
+      # The pool may already have left the request registry, so find it via its supervisor.
+      pool_name = Finch.Pool.to_name(Finch.Pool.new(endpoint(bypass)))
+      registry = Finch.Pool.Manager.supervisor_registry_name(finch_name)
+      [{supervisor, _}] = Registry.lookup(registry, pool_name)
+      [{_, pool, _, _}] = Supervisor.which_children(supervisor)
+      assert :sys.get_state(pool).state.activity_info.in_use_count == 1
+
+      ref = Process.monitor(pool)
+      refute_receive {:DOWN, ^ref, :process, ^pool, {:shutdown, :idle_timeout}}, 2200
+      assert {:ok, %{status: 200}} = Task.await(task)
+    end
   end
 
   defp start_finch!(finch_name, pool_opts) do
