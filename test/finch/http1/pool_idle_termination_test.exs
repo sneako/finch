@@ -174,7 +174,7 @@ defmodule Finch.HTTP1.PoolIdleTerminationTest do
       Bypass.expect_once(bypass, "GET", "/", fn conn ->
         send(parent, :request_started)
         # Keep the connection checked out beyond the one-second shutdown grace period.
-        Process.sleep(2500)
+        Process.sleep(1_500)
         Plug.Conn.send_resp(conn, 200, "OK")
       end)
 
@@ -193,7 +193,7 @@ defmodule Finch.HTTP1.PoolIdleTerminationTest do
       assert :sys.get_state(pool).state.activity_info.in_use_count == 1
 
       ref = Process.monitor(pool)
-      refute_receive {:DOWN, ^ref, :process, ^pool, {:shutdown, :idle_timeout}}, 2200
+      refute_receive {:DOWN, ^ref, :process, ^pool, {:shutdown, :idle_timeout}}, 1_200
       assert {:ok, %{status: 200}} = Task.await(task)
     end
   end
