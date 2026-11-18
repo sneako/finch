@@ -1,10 +1,30 @@
 # Changelog
 
-## Unreleased
+## v0.25.0 (2026-11-18)
+
+### Added
+
+- Add a `:phase` field to `Finch.TransportError`, set to `:connect` when an HTTP/1 connection fails to open (DNS, TCP or TLS), so callers can tell requests that never reached the server apart from ones that may have #407
+- Support `:request_timeout` on HTTP/2 as a wall-clock limit for the whole response #369
+
+### Changed
+
+- On HTTP/2, `:receive_timeout` is now an idle timeout that resets whenever part of the response arrives, matching HTTP/1. Previously it limited the whole response, so slow streaming responses were cut off. Use `:request_timeout` to cap the total time #369
+- HTTP/1 pools with `:pool_max_idle_time` now also terminate when they have no connections #406, fixes #311
+- Require NimblePool 1.2 #406
 
 ### Fixed
 
-- Stop copying connection options into every pool process, connection and caller. Pools configured with large options such as `cacerts: :public_key.cacerts_get()` used several megabytes per destination and were much slower since v0.22.0 #385
+- Stop copying connection options into every pool process, connection and caller. Pools configured with large options such as `cacerts: :public_key.cacerts_get()` used several megabytes per destination and were much slower since v0.22.0 #400, fixes #385
+- Fix HTTP/2 pools getting stuck in the read-only state after a GOAWAY once their last request went away, which made every request to the host fail with `:pool_not_available`. Synchronous callers are now monitored while they have requests in flight #403
+- Fix an HTTP/2 pool crash, and a synchronous caller blocking forever, when the server sends its complete response before the request body has finished uploading #409
+- Stop sending empty HTTP/2 DATA frames while flow control blocks a request body, which made servers close the connection with `ENHANCE_YOUR_CALM` #402
+- Treat negative HTTP/2 stream windows as no available capacity #402
+- Return errors to callers and stop telemetry events when an HTTP/2 connection fails while a request body is being sent, and clear request bookkeeping on disconnect #402
+
+### Other
+
+- Add a throughput benchmark comparing Finch versions and memory tests for the pool supervision tree #400
 
 ## v0.24.0 (2026-09-29)
 
