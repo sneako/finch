@@ -138,6 +138,105 @@ defmodule Finch.HTTP1.IntegrationTest do
     assert resp.trailers == [{"x-foo", "foo"}, {"x-bar", "bar"}]
   end
 
+  describe "trailers with an empty chunked body (#408)" do
+    test "are emitted as trailers, distinct from repeated header names" do
+      events =
+        stream_events([
+          "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\ntrailer: signature, digest\r\n",
+          "signature: initial\r\n\r\n0\r\nsignature: final\r\ndigest: a\r\ndigest: b\r\n\r\n"
+        ])
+
+      assert events == [
+               {:status, 200},
+               {:headers,
+                [
+                  {"transfer-encoding", "chunked"},
+                  {"trailer", "signature, digest"},
+                  {"signature", "initial"}
+                ]},
+               {:trailers, [{"signature", "final"}, {"digest", "a"}, {"digest", "b"}]}
+             ]
+
+      {:ok, url} =
+        serve(["HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n0\r\nx: y\r\n\r\n"])
+
+      {:ok, resp} = Finch.build(:get, url) |> Finch.request(H1Finch)
+      assert resp.headers == [{"transfer-encoding", "chunked"}]
+      assert resp.body == ""
+      assert resp.trailers == [{"x", "y"}]
+    end
+
+    test "without trailers emits no trailers event" do
+      assert stream_events(["HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n0\r\n\r\n"]) ==
+               [{:status, 200}, {:headers, [{"transfer-encoding", "chunked"}]}]
+    end
+
+    test "after an informational response" do
+      events =
+        stream_events([
+          "HTTP/1.1 103 Early Hints\r\nlink: </a>\r\n\r\n",
+          "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n0\r\nx: y\r\n\r\n"
+        ])
+
+      assert events == [
+               {:status, 103},
+               {:headers, [{"link", "</a>"}]},
+               {:status, 200},
+               {:headers, [{"transfer-encoding", "chunked"}]},
+               {:trailers, [{"x", "y"}]}
+             ]
+    end
+
+    test "streamed header blocks stay headers" do
+      events =
+        stream_events(
+          [
+            "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n",
+            "a: 1\r\n\r\n1\r\nx\r\n0\r\nx: y\r\n\r\n"
+          ],
+          stream_headers: true
+        )
+
+      assert events == [
+               {:status, 200},
+               {:headers, [{"transfer-encoding", "chunked"}]},
+               {:headers, [{"a", "1"}]},
+               {:data, "x"},
+               {:trailers, [{"x", "y"}]}
+             ]
+    end
+  end
+
+  defp stream_events(packets, conn_opts \\ []) do
+    {:ok, url} = serve(packets, conn_opts)
+
+    {:ok, events} =
+      Finch.build(:get, url)
+      |> Finch.stream_while(H1Finch, [], fn event, acc -> {:cont, [event | acc]} end)
+
+    Enum.reverse(events)
+  end
+
+  # Sends each packet separately so streamed headers arrive in distinct reads.
+  defp serve(packets, conn_opts \\ []) do
+    handler = fn transport, socket ->
+      for packet <- packets do
+        :ok = transport.send(socket, packet)
+        Process.sleep(20)
+      end
+    end
+
+    {:ok, %{url: url}} = Finch.MockSocketServer.start(socket: {nil, []}, handler: handler)
+
+    if Process.whereis(H1Finch) == nil do
+      start_supervised!(
+        {Finch, name: H1Finch, pools: %{default: [protocols: [:http1], conn_opts: conn_opts]}}
+      )
+    end
+
+    {:ok, url}
+  end
+
   defp start_finch(tls_versions) do
     start_supervised!(
       {Finch,

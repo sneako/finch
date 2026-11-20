@@ -133,7 +133,12 @@ defmodule Finch.HTTP1.Conn do
               Telemetry.stop(:send, start_time, metadata, extra_measurements)
               start_time = Telemetry.start(:recv, metadata, extra_measurements)
               resp_metadata = %{status: nil, headers: [], trailers: []}
-              timeouts = %{receive_timeout: receive_timeout, request_timeout: request_timeout}
+
+              recv_opts = %{
+                receive_timeout: receive_timeout,
+                request_timeout: request_timeout,
+                stream_headers: Keyword.get(conn.opts, :stream_headers, false)
+              }
 
               response =
                 receive_response(
@@ -142,7 +147,7 @@ defmodule Finch.HTTP1.Conn do
                   fun,
                   mint,
                   ref,
-                  timeouts,
+                  recv_opts,
                   :headers,
                   resp_metadata
                 )
@@ -272,7 +277,7 @@ defmodule Finch.HTTP1.Conn do
          fun,
          mint,
          ref,
-         timeouts,
+         recv_opts,
          fields,
          resp_metadata
        )
@@ -283,7 +288,7 @@ defmodule Finch.HTTP1.Conn do
          _fun,
          mint,
          ref,
-         _timeouts,
+         _recv_opts,
          _fields,
          resp_metadata
        ) do
@@ -296,11 +301,11 @@ defmodule Finch.HTTP1.Conn do
          _fun,
          mint,
          _ref,
-         timeouts,
+         recv_opts,
          _fields,
          resp_metadata
        )
-       when timeouts.request_timeout < 0 do
+       when recv_opts.request_timeout < 0 do
     {:ok, mint} = Mint.HTTP.close(mint)
     {:error, mint, %Mint.TransportError{reason: :timeout}, acc, resp_metadata}
   end
@@ -311,20 +316,20 @@ defmodule Finch.HTTP1.Conn do
          fun,
          mint,
          ref,
-         timeouts,
+         recv_opts,
          fields,
          resp_metadata
        ) do
     start_time = System.monotonic_time(:millisecond)
 
-    case Mint.HTTP.recv(mint, 0, timeouts.receive_timeout) do
+    case Mint.HTTP.recv(mint, 0, recv_opts.receive_timeout) do
       {:ok, mint, entries} ->
-        timeouts =
-          if is_integer(timeouts.request_timeout) do
+        recv_opts =
+          if is_integer(recv_opts.request_timeout) do
             elapsed_time = System.monotonic_time(:millisecond) - start_time
-            update_in(timeouts.request_timeout, &(&1 - elapsed_time))
+            update_in(recv_opts.request_timeout, &(&1 - elapsed_time))
           else
-            timeouts
+            recv_opts
           end
 
         receive_response(
@@ -333,7 +338,7 @@ defmodule Finch.HTTP1.Conn do
           fun,
           mint,
           ref,
-          timeouts,
+          recv_opts,
           fields,
           resp_metadata
         )
@@ -349,7 +354,7 @@ defmodule Finch.HTTP1.Conn do
          fun,
          mint,
          ref,
-         timeouts,
+         recv_opts,
          fields,
          resp_metadata
        ) do
@@ -363,7 +368,7 @@ defmodule Finch.HTTP1.Conn do
               fun,
               mint,
               ref,
-              timeouts,
+              recv_opts,
               fields,
               %{resp_metadata | status: value}
             )
@@ -379,6 +384,15 @@ defmodule Finch.HTTP1.Conn do
       {:headers, ^ref, value} ->
         resp_metadata = update_in(resp_metadata, [fields], &(&1 ++ value))
 
+        # Mint emits one :headers event per head section, so after a final status
+        # any further :headers event is the trailer section, even with an empty body.
+        # shortcut: with stream_headers the head can span several events, so we only
+        # flip on :data and empty-body trailers stay :headers; needs a Mint signal to fix.
+        next_fields =
+          if resp_metadata.status >= 200 and not recv_opts.stream_headers,
+            do: :trailers,
+            else: fields
+
         case fun.({fields, value}, acc) do
           {:cont, acc} ->
             receive_response(
@@ -387,8 +401,8 @@ defmodule Finch.HTTP1.Conn do
               fun,
               mint,
               ref,
-              timeouts,
-              fields,
+              recv_opts,
+              next_fields,
               resp_metadata
             )
 
@@ -409,7 +423,7 @@ defmodule Finch.HTTP1.Conn do
               fun,
               mint,
               ref,
-              timeouts,
+              recv_opts,
               :trailers,
               resp_metadata
             )
