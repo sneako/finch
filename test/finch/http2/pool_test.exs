@@ -281,6 +281,8 @@ defmodule Finch.HTTP2.PoolTest do
       assert {:ok, [%{in_flight_requests: 3}]} =
                Finch.HTTP2.PoolMetrics.get_pool_status(:test, :pool_name)
 
+      assert {3, _max} = capacity(pool)
+
       :ok = :ssl.close(server_socket())
 
       for ref <- refs,
@@ -305,6 +307,8 @@ defmodule Finch.HTTP2.PoolTest do
       assert_registered()
       {:connected, data} = :sys.get_state(pool)
       assert data.refs == %{} && data.requests_by_pid == %{}
+      # Otherwise the requests lost on disconnect would count against the new connection.
+      assert {0, _max} = capacity(pool)
       # A timeout queued before disconnection must not decrement the new connection's metrics.
       Pool.connected({:timeout, {:request_timeout, old_mint_ref}}, nil, data)
 
@@ -952,6 +956,52 @@ defmodule Finch.HTTP2.PoolTest do
       end
 
       assert_receive {:resp, {:error, %Finch.Error{reason: :timeout}, _acc}}, 500
+    end
+  end
+
+  describe "stream capacity" do
+    test "follows open streams and the server limit, and is registered", %{request: req} do
+      {:ok, pool} =
+        start_server_and_connect_with(
+          [server_settings: [max_concurrent_streams: 2]],
+          &start_pool/1
+        )
+
+      assert capacity(pool) == {0, 2}
+      {:connected, %{capacity: counters}} = :sys.get_state(pool)
+      assert [{^pool, {Pool, ^counters}}] = Registry.lookup(:test, :pool_name)
+      assert Pool.free_streams?(counters)
+
+      ref1 = Pool.async_request(pool, req, nil, [])
+      assert_recv_frames([headers(stream_id: _)])
+      assert capacity(pool) == {1, 2}
+
+      ref2 = Pool.async_request(pool, req, nil, [])
+      assert_recv_frames([headers(stream_id: stream_id)])
+      assert capacity(pool) == {2, 2}
+      refute Pool.free_streams?(counters)
+
+      ack = set_flags(:settings, [:ack])
+      server_send_frames([settings(params: [max_concurrent_streams: 3])])
+      assert_recv_frames([settings(flags: ^ack)])
+      assert capacity(pool) == {2, 3}
+      assert Pool.free_streams?(counters)
+
+      hbf = server_encode_headers([{":status", "200"}])
+
+      server_send_frames([
+        headers(
+          stream_id: stream_id,
+          hbf: hbf,
+          flags: set_flags(:headers, [:end_headers, :end_stream])
+        )
+      ])
+
+      assert_receive {^ref2, :done}
+      assert capacity(pool) == {1, 3}
+
+      :ok = Pool.cancel_async_request(ref1)
+      assert capacity(pool) == {0, 3}
     end
   end
 
@@ -1790,6 +1840,12 @@ defmodule Finch.HTTP2.PoolTest do
       Process.sleep(1)
       eventually(fun, attempts - 1)
     end
+  end
+
+  # {open_streams, max_concurrent_streams} once the pool has handled its pending messages.
+  defp capacity(pool) do
+    {_state, %{capacity: counters}} = :sys.get_state(pool)
+    {:counters.get(counters, 1), :counters.get(counters, 2)}
   end
 
   defp start_server_and_connect_with(opts \\ [], fun) do
